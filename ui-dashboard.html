@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevOps AI Dashboard</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',system-ui,sans-serif; height:100vh; display:flex; overflow:hidden; }
+
+/* Sidebar */
+.sidebar { width:220px; background:#010409; border-right:1px solid #21262d; display:flex; flex-direction:column; flex-shrink:0; }
+.logo { padding:14px 16px; font-size:14px; font-weight:700; border-bottom:1px solid #21262d; display:flex; align-items:center; gap:8px; }
+.logo span { color:#79c0ff; }
+.sec-label { padding:12px 14px 4px; font-size:10px; color:#484f58; text-transform:uppercase; letter-spacing:.8px; font-weight:600; }
+.server-list { flex:1; overflow-y:auto; }
+.srv { display:flex; align-items:center; gap:10px; padding:8px 14px; cursor:pointer; border-radius:6px; margin:1px 6px; font-size:13px; transition:background .15s; }
+.srv:hover { background:#161b22; }
+.srv.active { background:#1f3a5f; color:#79c0ff; }
+.srv-info { flex:1; min-width:0; }
+.srv-name { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.srv-ip { font-size:10px; color:#484f58; }
+.dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.dot.green  { background:#56d364; box-shadow:0 0 4px #56d364; }
+.dot.red    { background:#ff7b72; box-shadow:0 0 4px #ff7b72; }
+.dot.yellow { background:#e3b341; box-shadow:0 0 4px #e3b341; }
+.dot.grey   { background:#484f58; }
+.add-btn { margin:8px; padding:8px; background:#161b22; border:1px dashed #30363d; border-radius:6px; text-align:center; font-size:12px; color:#484f58; cursor:pointer; transition:all .15s; }
+.add-btn:hover { border-color:#79c0ff; color:#79c0ff; }
+.srv-del { background:none; border:none; color:#484f58; cursor:pointer; font-size:13px; padding:2px 5px; border-radius:4px; flex-shrink:0; line-height:1; }
+.srv-del:hover { color:#ff7b72; background:#3a1a1a; }
+.sidebar-nav { border-top:1px solid #21262d; padding:8px; }
+.nav-item { padding:8px 10px; border-radius:6px; font-size:13px; color:#8b949e; cursor:pointer; display:flex; align-items:center; gap:8px; }
+.nav-item:hover { background:#161b22; color:#e6edf3; }
+.nav-item.active { background:#161b22; color:#e6edf3; }
+
+/* Main */
+.main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.topbar { background:#161b22; border-bottom:1px solid #21262d; padding:10px 20px; display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.topbar h2 { font-size:15px; font-weight:600; }
+.topbar .sub { font-size:12px; color:#8b949e; }
+.topbar-right { margin-left:auto; display:flex; gap:8px; align-items:center; }
+.btn { padding:5px 12px; border-radius:6px; font-size:12px; cursor:pointer; border:1px solid #30363d; background:#21262d; color:#e6edf3; font-weight:500; }
+.btn:hover { background:#30363d; }
+.btn.primary { background:#1f6feb; border-color:#1f6feb; }
+.btn.primary:hover { background:#388bfd; }
+.btn:disabled { opacity:.5; cursor:default; }
+
+/* Tabs */
+.tabs { display:flex; background:#161b22; border-bottom:1px solid #21262d; padding:0 20px; flex-shrink:0; }
+.tab { padding:10px 16px; font-size:13px; color:#8b949e; cursor:pointer; border-bottom:2px solid transparent; }
+.tab:hover { color:#e6edf3; }
+.tab.active { color:#e6edf3; border-bottom-color:#1f6feb; }
+
+/* Content area */
+.content { flex:1; overflow-y:auto; padding:20px; }
+
+/* Overview grid */
+.metrics-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:16px; }
+.metric-card { background:#161b22; border:1px solid #21262d; border-radius:10px; padding:16px; }
+.metric-label { font-size:11px; color:#8b949e; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
+.metric-value { font-size:26px; font-weight:700; line-height:1; margin-bottom:4px; }
+.metric-sub { font-size:11px; color:#8b949e; }
+.metric-bar { height:4px; background:#21262d; border-radius:2px; margin-top:10px; }
+.metric-fill { height:100%; border-radius:2px; transition:width .5s; }
+.green { color:#56d364; } .yellow { color:#e3b341; } .red { color:#ff7b72; } .blue { color:#79c0ff; }
+.fill-green { background:#56d364; } .fill-yellow { background:#e3b341; } .fill-red { background:#ff7b72; }
+
+/* Cards */
+.cards-row { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-bottom:16px; }
+.card { background:#161b22; border:1px solid #21262d; border-radius:10px; overflow:hidden; }
+.card.full { grid-column:span 2; }
+.card-header { padding:12px 16px; border-bottom:1px solid #21262d; font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.card-body { padding:14px 16px; }
+.card-body.no-pad { padding:0; }
+
+/* Pre / code output */
+pre { font-family:'Cascadia Code','Consolas',monospace; font-size:12px; color:#8b949e; white-space:pre-wrap; line-height:1.6; overflow-x:auto; }
+pre .err  { color:#ff7b72; }
+pre .warn { color:#e3b341; }
+pre .ok   { color:#56d364; }
+
+/* Services list */
+.svc-row { display:flex; align-items:center; gap:10px; padding:8px 16px; border-bottom:1px solid #21262d; font-size:13px; }
+.svc-row:last-child { border-bottom:none; }
+
+/* Table */
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th { text-align:left; padding:8px 14px; color:#8b949e; font-weight:500; border-bottom:1px solid #21262d; font-size:11px; text-transform:uppercase; background:#161b22; }
+td { padding:8px 14px; border-bottom:1px solid #1c2128; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:#1c2128; }
+tr.clickable-row { cursor:pointer; }
+tr.clickable-row:hover td { background:#1f2d3d; }
+.badge { padding:2px 8px; border-radius:12px; font-size:11px; font-weight:500; }
+.badge-run   { background:#1a3a2a; color:#56d364; }
+.badge-err   { background:#3a1a1a; color:#ff7b72; }
+.badge-pend  { background:#2d2a1a; color:#e3b341; }
+
+/* Loading / empty states */
+.loading { display:flex; align-items:center; justify-content:center; gap:10px; padding:40px; color:#484f58; font-size:13px; }
+.spinner { width:16px; height:16px; border:2px solid #30363d; border-top-color:#79c0ff; border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.empty { text-align:center; padding:40px; color:#484f58; font-size:13px; }
+
+/* AI Chat */
+.ai-panel { width:340px; background:#161b22; border-left:1px solid #21262d; display:flex; flex-direction:column; flex-shrink:0; }
+.ai-header { padding:12px 16px; border-bottom:1px solid #21262d; font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.ai-messages { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:12px; }
+.ai-msg-user .bubble { background:#1f3a5f; border-radius:12px 12px 4px 12px; padding:8px 12px; font-size:13px; line-height:1.5; }
+.ai-msg-bot  .bubble { background:#1c2128; border:1px solid #30363d; border-radius:4px 12px 12px 12px; padding:8px 12px; font-size:13px; line-height:1.5; }
+.ai-label { font-size:10px; color:#484f58; margin-bottom:3px; }
+.ai-label.right { text-align:right; }
+.ai-cmd { background:#0d1117; border:1px solid #30363d; border-radius:5px; padding:5px 10px; font-family:monospace; font-size:11px; color:#79c0ff; margin:4px 0; }
+.ai-input-area { padding:12px; border-top:1px solid #21262d; }
+.ai-input-row { display:flex; gap:6px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:6px 10px; }
+.ai-input-row:focus-within { border-color:#79c0ff; }
+.ai-input-row input { flex:1; background:transparent; border:none; outline:none; color:#e6edf3; font-size:13px; }
+.ai-input-row input::placeholder { color:#484f58; }
+.ai-send { background:#1f6feb; border:none; border-radius:4px; padding:4px 10px; color:white; font-size:12px; cursor:pointer; }
+.ai-send:disabled { opacity:.5; cursor:default; }
+
+/* Modal */
+.overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; z-index:100; }
+.overlay.show { display:flex; }
+.modal { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:24px; width:420px; max-height:90vh; overflow-y:auto; }
+.modal h3 { font-size:15px; margin-bottom:16px; }
+.type-card { background:#0d1117; border:1px solid #21262d; border-radius:10px; padding:16px 12px; cursor:pointer; display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; transition:all .15s; }
+.type-card:hover { background:#161b22; transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.3); }
+.type-card.selected { background:#161b22; }
+.type-card .tc-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; margin-bottom:2px; }
+.type-card .tc-name { font-size:13px; font-weight:600; color:#e6edf3; }
+.type-card .tc-desc { font-size:11px; color:#8b949e; }
+#tc-ssh:hover,#tc-ssh.selected           { border-color:#FCC624; }
+#tc-kubernetes:hover,#tc-kubernetes.selected { border-color:#326CE5; }
+#tc-docker:hover,#tc-docker.selected     { border-color:#2496ED; }
+#tc-aws:hover,#tc-aws.selected           { border-color:#FF9900; }
+#tc-gcp:hover,#tc-gcp.selected           { border-color:#4285F4; }
+#tc-azure:hover,#tc-azure.selected       { border-color:#0078D4; }
+#tc-terraform:hover,#tc-terraform.selected { border-color:#7B42BC; }
+.type-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+.badge-ssh       { background:rgba(252,198,36,.12);   color:#FCC624; }
+.badge-kubernetes{ background:rgba(50,108,229,.12);  color:#326CE5; }
+.badge-docker    { background:rgba(36,150,237,.12);  color:#2496ED; }
+.badge-aws       { background:rgba(255,153,0,.12);   color:#FF9900; }
+.badge-gcp       { background:rgba(66,133,244,.12);  color:#4285F4; }
+.badge-azure     { background:rgba(0,120,212,.12);   color:#0078D4; }
+.badge-terraform { background:rgba(123,66,188,.12);  color:#7B42BC; }
+.badge-local     { background:rgba(86,211,100,.12);  color:#56d364; }
+.form-group { margin-bottom:12px; }
+.form-group label { font-size:12px; color:#8b949e; display:block; margin-bottom:4px; }
+.form-group input, .form-group select {
+  width:100%; background:#0d1117; border:1px solid #30363d;
+  border-radius:6px; padding:8px 10px; color:#e6edf3; font-size:13px; outline:none;
+}
+.form-group input:focus, .form-group select:focus { border-color:#79c0ff; }
+.form-group select option { background:#0d1117; }
+.modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+.modal-status { margin-top:10px; font-size:12px; padding:8px 10px; border-radius:6px; display:none; }
+.modal-status.ok   { background:#1a3a2a; color:#56d364; display:block; }
+.modal-status.err  { background:#3a1a1a; color:#ff7b72; display:block; }
+.modal-status.info { background:#1f2d3d; color:#79c0ff; display:block; }
+
+/* No server selected */
+.welcome { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:16px; color:#484f58; }
+.welcome h2 { font-size:20px; color:#8b949e; }
+.welcome p  { font-size:13px; }
+
+/* Thinking dots */
+.thinking-dots span { display:inline-block; width:5px; height:5px; background:#8b949e; border-radius:50%; margin:0 1px; animation:bounce 1.2s infinite; }
+.thinking-dots span:nth-child(2) { animation-delay:.2s; }
+.thinking-dots span:nth-child(3) { animation-delay:.4s; }
+@keyframes bounce { 0%,80%,100% { transform:translateY(0); opacity:.4; } 40% { transform:translateY(-4px); opacity:1; } }
+
+/* View wrappers */
+#view-dashboard  { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+#view-chat       { flex:1; display:none; flex-direction:column; overflow:hidden; }
+.dashboard-body  { flex:1; display:flex; overflow:hidden; }
+
+/* Full-page chat */
+.chat-messages { flex:1; overflow-y:auto; padding:32px 24px; display:flex; flex-direction:column; gap:20px; }
+.chat-row { display:flex; flex-direction:column; max-width:760px; width:100%; margin:0 auto; gap:6px; }
+.chat-row.user { align-items:flex-end; }
+.chat-row.user .bubble { background:#1f3a5f; border-radius:16px 16px 4px 16px; padding:10px 16px; font-size:13px; line-height:1.6; display:inline-block; max-width:80%; }
+.chat-row.bot  .bubble { background:#161b22; border:1px solid #30363d; border-radius:4px 16px 16px 16px; padding:12px 16px; font-size:13px; line-height:1.7; }
+.chat-lbl { font-size:10px; color:#484f58; }
+.chat-lbl.right { text-align:right; }
+.chat-cmd { background:#0d1117; border:1px solid #30363d; border-left:2px solid #326CE5; border-radius:0 5px 5px 0; padding:6px 12px; font-family:'Cascadia Code','Consolas',monospace; font-size:11px; color:#79c0ff; margin:3px 0; }
+.chat-input-bar { padding:16px 24px; border-top:1px solid #21262d; background:#161b22; flex-shrink:0; }
+.chat-input-row { display:flex; gap:8px; background:#0d1117; border:1px solid #30363d; border-radius:10px; padding:10px 16px; max-width:760px; margin:0 auto; transition:border-color .15s; }
+.chat-input-row:focus-within { border-color:#79c0ff; }
+.chat-input-row input { flex:1; background:transparent; border:none; outline:none; color:#e6edf3; font-size:14px; }
+.chat-input-row input::placeholder { color:#484f58; }
+.chat-send { background:#1f6feb; border:none; border-radius:6px; padding:6px 14px; color:white; font-size:14px; font-weight:600; cursor:pointer; line-height:1; transition:background .15s; }
+.chat-send:hover { background:#388bfd; }
+.chat-send:disabled { opacity:.4; cursor:default; }
+.chat-no-target { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px; color:#484f58; font-size:13px; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="#79c0ff"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    <span>DevOps</span> AI
+  </div>
+  <div class="sec-label">Servers</div>
+  <div class="server-list" id="serverList">
+    <div class="loading"><div class="spinner"></div> Loading...</div>
+  </div>
+  <div class="add-btn" onclick="openAddModal()">+ Add Server</div>
+  <div class="sidebar-nav">
+    <div class="nav-item active" id="nav-dashboard" onclick="showView('dashboard')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item" id="nav-chat" onclick="showView('chat')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      AI Chat
+    </div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="topbar" id="topbar">
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="dot grey" id="topDot"></div>
+        <h2 id="topName">Select a server</h2>
+      </div>
+      <div class="sub" id="topSub">Add a server from the sidebar to get started</div>
+    </div>
+    <div class="topbar-right">
+      <button class="btn" id="refreshBtn" onclick="refreshTab()" disabled style="display:flex;align-items:center;gap:5px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Dashboard view -->
+  <div id="view-dashboard">
+    <div class="tabs" id="tabs" style="display:none"></div>
+    <div class="dashboard-body">
+      <div class="content" id="content">
+        <div class="welcome">
+          <h2>DevOps AI Dashboard</h2>
+          <p>Add a server using the sidebar to get started.</p>
+          <button class="btn primary" onclick="openAddModal()">+ Add Server</button>
+        </div>
+      </div>
+      <!-- AI side panel (dashboard) -->
+      <div class="ai-panel" id="aiPanel" style="display:none">
+        <div class="ai-header">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#79c0ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M9 5a3 3 0 0 1 6 0v6H9V5z"/><circle cx="8.5" cy="16.5" r="1" fill="#79c0ff" stroke="none"/><circle cx="15.5" cy="16.5" r="1" fill="#79c0ff" stroke="none"/></svg>
+          AI Assistant
+          <button class="btn" onclick="showView('chat')" style="margin-left:auto;padding:3px 8px;font-size:11px" title="Open full chat">&#8599;</button>
+        </div>
+        <div class="ai-messages" id="aiMessages">
+          <div class="ai-msg-bot">
+            <div class="ai-label">AI</div>
+            <div class="bubble">Select a server to get started.</div>
+          </div>
+        </div>
+        <div class="ai-input-area">
+          <div class="ai-input-row">
+            <input type="text" id="aiInput" placeholder="Ask about this server..." onkeydown="if(event.key==='Enter')sendPanelChat()" />
+            <button class="ai-send" id="aiSend" onclick="sendPanelChat()">&#8593;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Chat view -->
+  <div id="view-chat">
+    <div class="chat-messages" id="chatMessages">
+      <div class="chat-no-target">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#30363d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Select a server from the sidebar to start chatting.</span>
+      </div>
+    </div>
+    <div class="chat-input-bar">
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" placeholder="Ask anything about this server..." onkeydown="if(event.key==='Enter')sendChat()" />
+        <button class="chat-send" id="chatSend" onclick="sendChat()">&#8593;</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- K8s Resource Detail Modal -->
+<div class="overlay" id="resourceModal" onclick="if(event.target===this)closeResource()">
+  <div class="modal" style="width:780px;max-width:95vw;padding:20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span class="type-badge" id="rKindBadge" style="font-size:12px;padding:3px 10px"></span>
+      <strong id="rName" style="font-size:15px"></strong>
+      <span id="rNs" style="font-size:12px;color:#8b949e"></span>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <button class="btn primary" id="rAiBtn" onclick="loadResourceTab('ai',this)" style="font-size:12px;padding:4px 12px">
+          &#10024; AI Analysis
+        </button>
+        <button class="btn" onclick="closeResource()" style="padding:4px 10px">&#x2715;</button>
+      </div>
+    </div>
+    <!-- tabs -->
+    <div class="tabs" style="margin:0 -20px;padding:0 20px;border-bottom:1px solid #21262d;margin-bottom:0">
+      <div class="tab active" id="rTab-describe" onclick="loadResourceTab('describe',this)">Describe</div>
+      <div class="tab" id="rTab-logs" onclick="loadResourceTab('logs',this)">Logs</div>
+      <div class="tab" id="rTab-previous" onclick="loadResourceTab('previous',this)">Previous Logs</div>
+      <div class="tab" id="rTab-ai" onclick="loadResourceTab('ai',this)">AI Analysis</div>
+    </div>
+    <div id="rContent" style="max-height:62vh;overflow-y:auto;padding-top:10px">
+      <div class="loading"><div class="spinner"></div> Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Connection Modal -->
+<div class="overlay" id="addModal" onclick="if(event.target===this)closeAddModal()">
+  <div class="modal">
+    <h3>Add Connection</h3>
+
+    <!-- Step 1: pick type -->
+    <div id="step-type">
+      <p style="font-size:12px;color:#8b949e;margin-bottom:12px;">What do you want to connect to?</p>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:4px">
+
+        <div class="type-card" onclick="pickType('ssh')" id="tc-ssh">
+          <div class="tc-icon" style="background:rgba(252,198,36,.1)">
+            <img src="https://cdn.simpleicons.org/linux/FCC624" width="28" height="28" alt="Linux">
+          </div>
+          <div class="tc-name">Linux Server</div>
+          <div class="tc-desc">SSH connection</div>
+        </div>
+
+        <div class="type-card" onclick="pickType('kubernetes')" id="tc-kubernetes">
+          <div class="tc-icon" style="background:rgba(50,108,229,.1)">
+            <img src="https://cdn.simpleicons.org/kubernetes/326CE5" width="28" height="28" alt="Kubernetes">
+          </div>
+          <div class="tc-name">Kubernetes</div>
+          <div class="tc-desc">kubectl context</div>
+        </div>
+
+        <div class="type-card" onclick="pickType('docker')" id="tc-docker">
+          <div class="tc-icon" style="background:rgba(36,150,237,.1)">
+            <img src="https://cdn.simpleicons.org/docker/2496ED" width="28" height="28" alt="Docker">
+          </div>
+          <div class="tc-name">Docker</div>
+          <div class="tc-desc">Remote daemon</div>
+        </div>
+
+        <div class="type-card" onclick="pickType('aws')" id="tc-aws">
+          <div class="tc-icon" style="background:rgba(255,153,0,.1)">
+            <img src="https://cdn.simpleicons.org/amazonaws/FF9900" width="28" height="28" alt="AWS">
+          </div>
+          <div class="tc-name">AWS</div>
+          <div class="tc-desc">CLI profile</div>
+        </div>
+
+        <div class="type-card" onclick="pickType('gcp')" id="tc-gcp">
+          <div class="tc-icon" style="background:rgba(66,133,244,.1)">
+            <img src="https://cdn.simpleicons.org/googlecloud/4285F4" width="28" height="28" alt="GCP">
+          </div>
+          <div class="tc-name">GCP</div>
+          <div class="tc-desc">Project</div>
+        </div>
+
+        <div class="type-card" onclick="pickType('azure')" id="tc-azure">
+          <div class="tc-icon" style="background:rgba(0,120,212,.1)">
+            <img src="https://cdn.simpleicons.org/microsoftazure/0078D4" width="28" height="28" alt="Azure">
+          </div>
+          <div class="tc-name">Azure</div>
+          <div class="tc-desc">Subscription</div>
+        </div>
+
+      </div>
+      <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px">
+        <div class="type-card" onclick="pickType('terraform')" id="tc-terraform">
+          <div class="tc-icon" style="background:rgba(123,66,188,.1)">
+            <img src="https://cdn.simpleicons.org/terraform/7B42BC" width="28" height="28" alt="Terraform">
+          </div>
+          <div class="tc-name">Terraform</div>
+          <div class="tc-desc">Workspace directory</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: fill details (hidden until type selected) -->
+    <div id="step-details" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <button class="btn" onclick="backToTypes()" style="padding:3px 8px;font-size:11px">← Back</button>
+        <span id="type-label" style="font-size:13px;font-weight:600;color:#79c0ff"></span>
+      </div>
+
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="f-name" placeholder="e.g. prod-server" />
+      </div>
+      <input type="hidden" id="f-type" />
+
+      <!-- SSH fields -->
+      <div id="ssh-fields" style="display:none">
+        <div class="form-group"><label>Host / IP</label><input type="text" id="f-host" placeholder="e.g. 172.30.44.145" /></div>
+        <div class="form-group"><label>Port</label><input type="text" id="f-port" value="22" /></div>
+        <div class="form-group"><label>Username</label><input type="text" id="f-user" placeholder="e.g. aziro" /></div>
+        <div class="form-group">
+          <label>Auth</label>
+          <select id="f-auth" onchange="updateAuthFields()">
+            <option value="password">Password</option>
+            <option value="key">SSH Key path</option>
+          </select>
+        </div>
+        <div id="auth-password"><div class="form-group"><label>Password</label><input type="password" id="f-password" placeholder="SSH password" /></div></div>
+        <div id="auth-key" style="display:none"><div class="form-group"><label>Key Path</label><input type="text" id="f-key" placeholder="~/.ssh/id_rsa" /></div></div>
+      </div>
+
+      <!-- Kubernetes fields -->
+      <div id="k8s-fields" style="display:none">
+        <div class="form-group"><label>Context (blank = current)</label><input type="text" id="f-context" placeholder="e.g. prod-context" /></div>
+        <div class="form-group"><label>Kubeconfig (blank = default)</label><input type="text" id="f-kubeconfig" placeholder="~/.kube/config" /></div>
+      </div>
+
+      <!-- Docker fields -->
+      <div id="docker-fields" style="display:none">
+        <div class="form-group"><label>Docker Host (blank = local)</label><input type="text" id="f-dockerhost" placeholder="tcp://10.0.0.1:2375" /></div>
+      </div>
+
+      <!-- AWS fields -->
+      <div id="aws-fields" style="display:none">
+        <div class="form-group"><label>AWS Profile</label><input type="text" id="f-profile" placeholder="e.g. prod" /></div>
+        <div class="form-group"><label>Region</label><input type="text" id="f-region" placeholder="e.g. us-east-1" /></div>
+      </div>
+
+      <!-- GCP fields -->
+      <div id="gcp-fields" style="display:none">
+        <div class="form-group"><label>GCP Project ID</label><input type="text" id="f-project" placeholder="e.g. my-project-id" /></div>
+      </div>
+
+      <!-- Azure fields -->
+      <div id="azure-fields" style="display:none">
+        <div class="form-group"><label>Subscription ID</label><input type="text" id="f-subscription" placeholder="e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div>
+      </div>
+
+      <!-- Terraform fields -->
+      <div id="tf-fields" style="display:none">
+        <div class="form-group"><label>Workspace Path</label><input type="text" id="f-workspace" placeholder="/path/to/terraform" /></div>
+      </div>
+
+      <div class="modal-status" id="modalStatus"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeAddModal()">Cancel</button>
+        <button class="btn primary" id="connectBtn" onclick="connectServer()">Connect</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─── Tabs config per target type ─────────────────────────────────────────────
+const TABS_CONFIG = {
+  ssh: [
+    { id:'overview',   label:'Overview'   },
+    { id:'kubernetes', label:'Kubernetes' },
+    { id:'logs',       label:'Logs'       },
+    { id:'network',    label:'Network'    },
+    { id:'storage',    label:'Storage'    },
+  ],
+  kubernetes: [
+    { id:'nodes',       label:'Nodes'       },
+    { id:'pods',        label:'Pods'        },
+    { id:'deployments', label:'Deployments' },
+    { id:'services',    label:'Services'    },
+    { id:'network',     label:'Network'     },
+    { id:'events',      label:'Events'      },
+  ],
+  docker: [
+    { id:'containers', label:'Containers' },
+    { id:'images',     label:'Images'     },
+    { id:'networks',   label:'Networks'   },
+    { id:'volumes',    label:'Volumes'    },
+    { id:'stats',      label:'Stats'      },
+  ],
+  aws: [
+    { id:'account', label:'Account' },
+    { id:'ec2',     label:'EC2'     },
+    { id:'s3',      label:'S3'      },
+    { id:'eks',     label:'EKS'     },
+    { id:'rds',     label:'RDS'     },
+  ],
+  gcp: [
+    { id:'account', label:'Account' },
+    { id:'compute', label:'Compute' },
+    { id:'gke',     label:'GKE'     },
+    { id:'storage', label:'Storage' },
+    { id:'iam',     label:'IAM'     },
+  ],
+  azure: [
+    { id:'account', label:'Account' },
+    { id:'vms',     label:'VMs'     },
+    { id:'aks',     label:'AKS'     },
+    { id:'storage', label:'Storage' },
+    { id:'groups',  label:'Groups'  },
+  ],
+  terraform: [
+    { id:'state',   label:'State'   },
+    { id:'plan',    label:'Plan'    },
+    { id:'outputs', label:'Outputs' },
+  ],
+  // local type = same tabs as SSH (runs commands directly on this machine)
+  local: [
+    { id:'overview',   label:'Overview'   },
+    { id:'kubernetes', label:'Kubernetes' },
+    { id:'logs',       label:'Logs'       },
+    { id:'network',    label:'Network'    },
+    { id:'storage',    label:'Storage'    },
+  ],
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let currentTarget  = null;
+let currentTab     = null;
+let refreshTimer   = null;
+let currentView    = 'dashboard';
+const chatHistory  = {};   // target.id → HTML string (preserved on target switch)
+
+// ─── View switching ───────────────────────────────────────────────────────────
+function showView(view) {
+  currentView = view;
+  document.getElementById('view-dashboard').style.display = view === 'dashboard' ? 'flex' : 'none';
+  document.getElementById('view-chat').style.display      = view === 'chat'      ? 'flex' : 'none';
+  document.getElementById('nav-dashboard').classList.toggle('active', view === 'dashboard');
+  document.getElementById('nav-chat').classList.toggle('active', view === 'chat');
+  document.getElementById('refreshBtn').style.display = view === 'dashboard' ? '' : 'none';
+  // Topbar info updates
+  if (view === 'chat') {
+    document.getElementById('topSub').textContent = currentTarget
+      ? `Chatting with AI about: ${currentTarget.name}`
+      : 'Select a server to start chatting';
+    const box = document.getElementById('chatMessages');
+    box.scrollTop = box.scrollHeight;
+    document.getElementById('chatInput').focus();
+  } else if (currentTarget) {
+    const ttype = currentTarget.type || 'ssh';
+    const addr = currentTarget.config?.host || currentTarget.config?.context || currentTarget.config?.profile || currentTarget.config?.project || ttype;
+    document.getElementById('topSub').textContent = addr;
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+async function init() {
+  await loadTargets();
+}
+
+// ─── Targets ─────────────────────────────────────────────────────────────────
+async function loadTargets() {
+  try {
+    const res = await fetch('/api/targets');
+    const targets = await res.json();
+    renderServerList(targets);
+    if (targets.length > 0 && !currentTarget) selectTarget(targets[0]);
+  } catch(e) {
+    document.getElementById('serverList').innerHTML = '<div class="empty">Backend not reachable</div>';
+  }
+}
+
+function renderServerList(targets) {
+  const el = document.getElementById('serverList');
+  if (targets.length === 0) {
+    el.innerHTML = '<div class="empty">No servers yet</div>';
+    return;
+  }
+  el.innerHTML = targets.map(t => {
+    const dotClass = t.status === 'online' ? 'green' : t.status === 'offline' ? 'red' : 'grey';
+    const isActive = currentTarget && currentTarget.id === t.id ? 'active' : '';
+    const ip = t.config?.host || t.config?.context || t.config?.profile || t.config?.project || t.type;
+    const isLocal = t.type === 'local';
+    return `<div class="srv ${isActive}" onclick="selectTarget(${JSON.stringify(t).replace(/"/g,'&quot;')})">
+      <div class="dot ${dotClass}"></div>
+      <div class="srv-info">
+        <div class="srv-name">${t.name}${isLocal ? ' <span style="font-size:9px;color:#56d364;font-weight:700">THIS SERVER</span>' : ''}</div>
+        <div style="display:flex;align-items:center;gap:5px;margin-top:2px">
+          <span class="type-badge badge-${t.type}">${isLocal ? 'local' : t.type}</span>
+          <span class="srv-ip" style="margin:0">${ip !== t.type ? ip : ''}</span>
+        </div>
+      </div>
+      <button class="srv-del" onclick="event.stopPropagation();removeTarget('${t.id}')" title="Remove">&#x2715;</button>
+    </div>`;
+  }).join('');
+}
+
+async function removeTarget(tid) {
+  if (!confirm('Remove this connection?')) return;
+  await fetch(`/api/targets/${tid}`, { method: 'DELETE' });
+  if (currentTarget && currentTarget.id === tid) {
+    currentTarget = null;
+    document.getElementById('tabs').style.display = 'none';
+    document.getElementById('aiPanel').style.display = 'none';
+    document.getElementById('content').innerHTML = `<div class="welcome"><h2>DevOps AI Dashboard</h2><p>Add a server using the sidebar to get started.</p><button class="btn primary" onclick="openAddModal()">+ Add Server</button></div>`;
+    document.getElementById('topName').textContent = 'Select a server';
+    document.getElementById('topDot').className = 'dot grey';
+    document.getElementById('refreshBtn').disabled = true;
+  }
+  await loadTargets();
+}
+
+async function selectTarget(target) {
+  currentTarget = target;
+  const ttype   = target.type || 'ssh';
+  const tabs    = TABS_CONFIG[ttype] || TABS_CONFIG['ssh'];
+  currentTab    = tabs[0].id;
+
+  // Render tabs for this target type
+  const tabsEl = document.getElementById('tabs');
+  tabsEl.innerHTML = tabs.map((t, i) =>
+    `<div class="tab ${i===0?'active':''}" onclick="switchTab('${t.id}',this)">${t.label}</div>`
+  ).join('');
+
+  // Update topbar
+  document.getElementById('topName').innerHTML = `${escHtml(target.name)} <span class="type-badge badge-${ttype}" style="font-size:10px;vertical-align:middle">${ttype}</span>`;
+  document.getElementById('topSub').textContent  = target.config?.host || target.config?.context || target.config?.profile || target.config?.project || ttype;
+  document.getElementById('topDot').className = 'dot grey';
+  document.getElementById('refreshBtn').disabled = false;
+  tabsEl.style.display = 'flex';
+  document.getElementById('aiPanel').style.display = 'flex';
+  document.getElementById('aiMessages').innerHTML = `
+    <div class="ai-msg-bot">
+      <div class="ai-label">AI</div>
+      <div class="bubble">Connected to <strong>${escHtml(target.name)}</strong>. Ask me anything.</div>
+    </div>`;
+
+  // Restore or init chat history for this target
+  const chatBox = document.getElementById('chatMessages');
+  if (chatHistory[target.id]) {
+    chatBox.innerHTML = chatHistory[target.id];
+  } else {
+    chatBox.innerHTML = `<div class="chat-row bot"><div class="chat-lbl">AI</div><div class="bubble">Connected to <strong>${escHtml(target.name)}</strong>. Ask me anything about this server.</div></div>`;
+    chatHistory[target.id] = chatBox.innerHTML;
+  }
+
+  await loadTargets();
+  await loadTab(currentTab);
+
+  // Test connection in background
+  fetch(`/api/targets/${target.id}/test`)
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('topDot').className = `dot ${d.status === 'online' ? 'green' : 'red'}`;
+      const addr = target.config?.host || target.config?.context || target.config?.profile || target.config?.project || ttype;
+      document.getElementById('topSub').textContent = `${addr} · ${d.status}`;
+    }).catch(() => {});
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  loadTab(tab);
+}
+
+function refreshTab() { loadTab(currentTab); }
+
+async function loadTab(tab) {
+  if (!currentTarget) return;
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="loading"><div class="spinner"></div> Loading...</div>`;
+
+  try {
+    const res  = await fetch(`/api/tab/${currentTarget.id}/${tab}`);
+    const data = await res.json();
+    const ttype = currentTarget.type || 'ssh';
+
+    // SSH + local tabs with dedicated renderers
+    if (ttype === 'ssh' || ttype === 'local') {
+      if      (tab === 'overview')   renderOverview(data, content);
+      else if (tab === 'kubernetes') renderKubernetes(data, content);
+      else if (tab === 'logs')       renderLogs(data, content);
+      else if (tab === 'network')    renderNetwork(data, content);
+      else if (tab === 'storage')    renderStorage(data, content);
+      else renderRaw(data, content, tab);
+    } else if (ttype === 'kubernetes') {
+      if      (tab === 'pods')        renderPodsOnly(data, content);
+      else if (tab === 'nodes')       renderNodesTab(data, content);
+      else if (tab === 'deployments') renderDeploymentsTab(data, content);
+      else if (tab === 'services')    renderServicesTab(data, content);
+      else if (tab === 'network')     renderK8sNetwork(data, content);
+      else renderRaw(data, content, tab);
+    } else {
+      renderRaw(data, content, tab);
+    }
+  } catch(e) {
+    content.innerHTML = `<div class="empty">Failed to load: ${e.message}</div>`;
+  }
+}
+
+// ─── Overview ─────────────────────────────────────────────────────────────────
+function renderOverview(data, el) {
+  // Parse uptime
+  const uptime = data.uptime || '';
+  const uptimeMatch = uptime.match(/up\s+([^,]+)/);
+  const uptimeStr = uptimeMatch ? uptimeMatch[1].trim() : '—';
+  const loadMatch = uptime.match(/load average[s]?:\s*([\d.]+)/);
+  const load = loadMatch ? loadMatch[1] : '—';
+
+  // Parse memory (free -m)
+  const mem = data.memory || '';
+  const memMatch = mem.match(/Mem:\s+(\d+)\s+(\d+)\s+(\d+)/);
+  const memTotal = memMatch ? Math.round(memMatch[1]/1024*10)/10 : '—';
+  const memUsed  = memMatch ? Math.round(memMatch[2]/1024*10)/10 : '—';
+  const memPct   = memMatch ? Math.round(memMatch[2]/memMatch[1]*100) : 0;
+
+  // Parse disk (df -h /)
+  const disk = data.disk || '';
+  const diskMatch = disk.match(/(\S+)\s+(\S+)\s+(\S+)\s+(\d+)%/);
+  const diskUsed  = diskMatch ? diskMatch[3] : '—';
+  const diskTotal = diskMatch ? diskMatch[2] : '—';
+  const diskPct   = diskMatch ? parseInt(diskMatch[4]) : 0;
+
+  // Parse CPU (top)
+  const cpu = data.cpu || '';
+  const cpuMatch = cpu.match(/(\d+[\.,]\d+)\s*(?:us|%us|id)/);
+  const cpuPct = cpuMatch ? parseFloat(cpuMatch[1].replace(',','.')) : '—';
+
+  // Parse OS
+  const os = (data.os || '').replace(/PRETTY_NAME=/,'').replace(/"/g,'').trim() || currentTarget.type;
+
+  // Failed services
+  const failedRaw = (data.failed_svc || '').trim();
+  const failed = failedRaw && failedRaw !== '[No output]' ? failedRaw.split('\n').filter(l=>l.trim()) : [];
+
+  // Color helpers
+  const pctColor = (p) => p > 80 ? 'red' : p > 60 ? 'yellow' : 'green';
+  const fillColor = (p) => p > 80 ? 'fill-red' : p > 60 ? 'fill-yellow' : 'fill-green';
+
+  el.innerHTML = `
+    <div class="metrics-row">
+      <div class="metric-card">
+        <div class="metric-label">CPU Usage</div>
+        <div class="metric-value ${pctColor(cpuPct)}">${cpuPct}%</div>
+        <div class="metric-sub">Load avg: ${load}</div>
+        <div class="metric-bar"><div class="metric-fill ${fillColor(cpuPct)}" style="width:${cpuPct}%"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Memory</div>
+        <div class="metric-value ${pctColor(memPct)}">${memUsed}G</div>
+        <div class="metric-sub">of ${memTotal}G used (${memPct}%)</div>
+        <div class="metric-bar"><div class="metric-fill ${fillColor(memPct)}" style="width:${memPct}%"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Disk</div>
+        <div class="metric-value ${pctColor(diskPct)}">${diskUsed}</div>
+        <div class="metric-sub">of ${diskTotal} used (${diskPct}%)</div>
+        <div class="metric-bar"><div class="metric-fill ${fillColor(diskPct)}" style="width:${diskPct}%"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Uptime</div>
+        <div class="metric-value blue" style="font-size:18px">${uptimeStr}</div>
+        <div class="metric-sub">${os}</div>
+      </div>
+    </div>
+
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-header">
+          ${failed.length > 0 ? `<span class="dot red"></span>` : `<span class="dot green"></span>`}
+          Failed Services (${failed.length})
+        </div>
+        <div class="card-body">
+          ${failed.length === 0
+            ? '<div style="color:#56d364;font-size:13px;">All services healthy ✓</div>'
+            : failed.map(s => `<div class="svc-row"><div class="dot red"></div><div style="flex:1;font-size:13px;">${s}</div></div>`).join('')
+          }
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Top Processes</div>
+        <div class="card-body no-pad">
+          <pre style="padding:10px 14px">${escHtml(data.top_procs || '—')}</pre>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ─── Kubernetes ───────────────────────────────────────────────────────────────
+function renderKubernetes(data, el) {
+  const pods = parsePodTable(data.pods || '');
+  el.innerHTML = `
+    <div class="cards-row" style="grid-template-columns:1fr">
+      <div class="card">
+        <div class="card-header">Nodes</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.nodes||'—')}</pre></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">Pods</div>
+      <div class="card-body no-pad">
+        ${pods}
+      </div>
+    </div>
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-header">Deployments</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.deployments||'—')}</pre></div>
+      </div>
+      <div class="card">
+        <div class="card-header">Recent Events</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.events||'—')}</pre></div>
+      </div>
+    </div>`;
+}
+
+function parsePodTable(raw) {
+  if (!raw || raw.includes('ERROR') || raw.includes('not found')) {
+    return `<div class="empty">kubectl not available or no pods found</div>`;
+  }
+  const lines = raw.trim().split('\n');
+  if (lines.length < 2) return `<pre style="padding:10px 14px">${escHtml(raw)}</pre>`;
+  return `<table>
+    <thead><tr><th>Namespace</th><th>Name</th><th>Ready</th><th>Status</th><th>Restarts</th><th>Age</th></tr></thead>
+    <tbody>
+    ${lines.slice(1).map(line => {
+      const cols = line.trim().split(/\s+/);
+      if (cols.length < 5) return '';
+      const ns = cols[0], name = cols[1], ready = cols[2], status = cols[3] || '';
+      const restarts = cols[4] || '0';
+      const badgeClass = status === 'Running' ? 'badge-run' : status.includes('Error') || status.includes('Crash') ? 'badge-err' : 'badge-pend';
+      const restartNum = parseInt(restarts);
+      const restartColor = restartNum > 10 ? 'color:#e3b341' : restartNum > 0 ? 'color:#8b949e' : 'color:#56d364';
+      return `<tr class="clickable-row" onclick="openResource('pod','${escHtml(name)}','${escHtml(ns)}')" title="Click for details">
+        <td style="color:#8b949e">${escHtml(ns)}</td>
+        <td style="font-weight:500">${escHtml(name)}</td>
+        <td style="color:#8b949e">${escHtml(ready)}</td>
+        <td><span class="badge ${badgeClass}">${escHtml(status)}</span></td>
+        <td style="${restartColor}">${escHtml(restarts)}</td>
+        <td style="color:#8b949e">${escHtml(cols[cols.length-1])}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
+}
+
+// ─── Logs ─────────────────────────────────────────────────────────────────────
+function renderLogs(data, el) {
+  const coloured = colorizeLog(data.logs || '—');
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        System Logs
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn" onclick="loadLogsUnit('')">All</button>
+          <button class="btn" onclick="loadLogsUnit('kubelet')">kubelet</button>
+          <button class="btn" onclick="loadLogsUnit('containerd')">containerd</button>
+          <button class="btn" onclick="loadLogsUnit('ssh')">SSH</button>
+        </div>
+      </div>
+      <div class="card-body no-pad">
+        <pre id="logContent" style="padding:10px 14px;max-height:60vh;overflow-y:auto">${coloured}</pre>
+      </div>
+    </div>`;
+}
+
+async function loadLogsUnit(unit) {
+  if (!currentTarget) return;
+  document.getElementById('logContent').innerHTML = '<div class="loading"><div class="spinner"></div> Loading...</div>';
+  const url = unit
+    ? `/api/tab/${currentTarget.id}/logs?unit=${unit}`
+    : `/api/tab/${currentTarget.id}/logs`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  document.getElementById('logContent').innerHTML = colorizeLog(escHtml(data.logs || '—'));
+}
+
+function colorizeLog(text) {
+  return escHtml(text)
+    .replace(/\bERROR\b|\bFailed\b|\bfailed\b|\bError\b/g, '<span class="err">$&</span>')
+    .replace(/\bWARN\b|\bWarning\b|\bwarning\b/g, '<span class="warn">$&</span>')
+    .replace(/\bOK\b|\bStarted\b|\bRunning\b|\bSucceeded\b/g, '<span class="ok">$&</span>');
+}
+
+// ─── Network ──────────────────────────────────────────────────────────────────
+function renderNetwork(data, el) {
+  el.innerHTML = `
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-header">Open Ports</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.ports||'—')}</pre></div>
+      </div>
+      <div class="card">
+        <div class="card-header">Interfaces</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.interfaces||'—')}</pre></div>
+      </div>
+    </div>
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-header">Routes</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.routes||'—')}</pre></div>
+      </div>
+      <div class="card">
+        <div class="card-header">DNS</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.dns||'—')}</pre></div>
+      </div>
+    </div>`;
+}
+
+// ─── Storage ──────────────────────────────────────────────────────────────────
+function renderStorage(data, el) {
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">Filesystems</div>
+      <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.filesystems||'—')}</pre></div>
+    </div>
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-header">Top Directories by Size</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.top_dirs||'—')}</pre></div>
+      </div>
+      <div class="card">
+        <div class="card-header">Inode Usage</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.inodes||'—')}</pre></div>
+      </div>
+    </div>`;
+}
+
+// ─── AI Chat (shared core) ────────────────────────────────────────────────────
+async function _doChat(inputId, sendId, boxId, msgClass) {
+  const input = document.getElementById(inputId);
+  const msg = input.value.trim();
+  if (!msg || !currentTarget) return;
+
+  input.value = '';
+  document.getElementById(sendId).disabled = true;
+  const box = document.getElementById(boxId);
+
+  const isPanel = msgClass === 'ai';
+  const userHtml = isPanel
+    ? `<div class="ai-msg-user"><div class="ai-label right">You</div><div class="bubble">${escHtml(msg)}</div></div>`
+    : `<div class="chat-row user"><div class="chat-lbl right">You</div><div class="bubble">${escHtml(msg)}</div></div>`;
+
+  box.innerHTML += userHtml;
+
+  const thinkId = 'think-' + Date.now();
+  const thinkHtml = isPanel
+    ? `<div id="${thinkId}" class="ai-msg-bot"><div class="ai-label">AI</div><div class="bubble"><div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`
+    : `<div id="${thinkId}" class="chat-row bot"><div class="chat-lbl">AI</div><div class="bubble"><div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
+  box.innerHTML += thinkHtml;
+  box.scrollTop = box.scrollHeight;
+
+  try {
+    const res  = await fetch(`/api/chat/${currentTarget.id}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message: msg})
+    });
+    const data = await res.json();
+    document.getElementById(thinkId)?.remove();
+
+    let cmdHtml = '';
+    if (data.steps && data.steps.length > 0) {
+      const cmdClass = isPanel ? 'ai-cmd' : 'chat-cmd';
+      cmdHtml = data.steps.map(s => `<div class="${cmdClass}">$ ${escHtml(s.command)}</div>`).join('');
+    }
+
+    if (isPanel) {
+      box.innerHTML += `<div class="ai-msg-bot"><div class="ai-label">AI</div>${cmdHtml}<div class="bubble">${formatReply(data.reply || data.error || '—')}</div></div>`;
+    } else {
+      box.innerHTML += `<div class="chat-row bot"><div class="chat-lbl">AI</div>${cmdHtml}<div class="bubble">${formatReply(data.reply || data.error || '—')}</div></div>`;
+      // persist for this target
+      chatHistory[currentTarget.id] = box.innerHTML;
+    }
+  } catch(e) {
+    document.getElementById(thinkId)?.remove();
+    const errHtml = isPanel
+      ? `<div class="ai-msg-bot"><div class="ai-label">AI</div><div class="bubble" style="color:#ff7b72">Error: ${e.message}</div></div>`
+      : `<div class="chat-row bot"><div class="chat-lbl">AI</div><div class="bubble" style="color:#ff7b72">Error: ${e.message}</div></div>`;
+    box.innerHTML += errHtml;
+  }
+
+  box.scrollTop = box.scrollHeight;
+  document.getElementById(sendId).disabled = false;
+  input.focus();
+}
+
+// Dashboard AI panel
+function sendPanelChat() { _doChat('aiInput', 'aiSend', 'aiMessages', 'ai'); }
+// Full-page AI chat
+function sendChat()      { _doChat('chatInput', 'chatSend', 'chatMessages', 'chat'); }
+
+function formatReply(text) {
+  return escHtml(text)
+    .replace(/## (.+)/g, '<strong style="color:#79c0ff">$1</strong><br>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code style="background:#0d1117;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:11px;color:#e3b341">$1</code>')
+    .replace(/\n- /g, '<br>• ')
+    .replace(/\n/g, '<br>');
+}
+
+// ─── Add Server Modal ─────────────────────────────────────────────────────────
+function openAddModal() {
+  // Show type picker, hide details
+  document.getElementById('step-type').style.display = 'block';
+  document.getElementById('step-details').style.display = 'none';
+  document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
+  // Clear all fields
+  ['f-name','f-host','f-user','f-password','f-key','f-context',
+   'f-kubeconfig','f-dockerhost','f-profile','f-region','f-project',
+   'f-subscription','f-workspace'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const port = document.getElementById('f-port'); if (port) port.value = '22';
+  clearModalStatus();
+  document.getElementById('connectBtn').disabled = false;
+  document.getElementById('connectBtn').textContent = 'Connect';
+  document.getElementById('addModal').classList.add('show');
+}
+
+function pickType(type) {
+  const labels = { ssh:'Linux Server (SSH)', kubernetes:'Kubernetes', docker:'Docker', aws:'AWS', gcp:'GCP', azure:'Azure', terraform:'Terraform' };
+  document.getElementById('f-type').value = type;
+  document.getElementById('type-label').textContent = labels[type] || type;
+  document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('tc-' + type)?.classList.add('selected');
+  // Show/hide fields
+  ['ssh-fields','k8s-fields','docker-fields','aws-fields','gcp-fields','azure-fields','tf-fields']
+    .forEach(id => document.getElementById(id).style.display = 'none');
+  const map = { ssh:'ssh-fields', kubernetes:'k8s-fields', docker:'docker-fields', aws:'aws-fields', gcp:'gcp-fields', azure:'azure-fields', terraform:'tf-fields' };
+  if (map[type]) document.getElementById(map[type]).style.display = 'block';
+  // Switch to details step
+  document.getElementById('step-type').style.display = 'none';
+  document.getElementById('step-details').style.display = 'block';
+  document.getElementById('f-name').focus();
+}
+
+function backToTypes() {
+  document.getElementById('step-type').style.display = 'block';
+  document.getElementById('step-details').style.display = 'none';
+  clearModalStatus();
+}
+
+function closeAddModal() { document.getElementById('addModal').classList.remove('show'); clearModalStatus(); }
+function clearModalStatus() { const s = document.getElementById('modalStatus'); s.className='modal-status'; s.textContent=''; }
+
+
+function updateAuthFields() {
+  const auth = document.getElementById('f-auth').value;
+  document.getElementById('auth-password').style.display = auth === 'password' ? 'block' : 'none';
+  document.getElementById('auth-key').style.display      = auth === 'key'      ? 'block' : 'none';
+}
+
+async function connectServer() {
+  const btn  = document.getElementById('connectBtn');
+  const type = document.getElementById('f-type').value;
+  const name = document.getElementById('f-name').value.trim();
+
+  if (!name) { showModalStatus('err', 'Name is required'); return; }
+
+  let config = {};
+  if (type === 'ssh') {
+    const host = document.getElementById('f-host').value.trim();
+    if (!host) { showModalStatus('err', 'Host is required'); return; }
+    config = {
+      host,
+      port:     document.getElementById('f-port').value || '22',
+      user:     document.getElementById('f-user').value.trim(),
+      password: document.getElementById('f-password').value,
+      key_path: document.getElementById('f-key').value.trim(),
+    };
+  } else if (type === 'kubernetes') {
+    config = { context: document.getElementById('f-context').value.trim(), kubeconfig: document.getElementById('f-kubeconfig').value.trim() };
+  } else if (type === 'docker') {
+    config = { host: document.getElementById('f-dockerhost').value.trim() };
+  } else if (type === 'aws') {
+    config = { profile: document.getElementById('f-profile').value.trim(), region: document.getElementById('f-region').value.trim() };
+  } else if (type === 'gcp') {
+    config = { project: document.getElementById('f-project').value.trim() };
+  } else if (type === 'azure') {
+    config = { subscription: document.getElementById('f-subscription').value.trim() };
+  } else if (type === 'terraform') {
+    config = { workspace: document.getElementById('f-workspace').value.trim() };
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Connecting...';
+  showModalStatus('info', 'Testing connection...');
+
+  let savedTarget = null;
+  try {
+    // 1. Save target
+    const addRes = await fetch('/api/targets', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, type, config})
+    });
+    savedTarget = await addRes.json();
+
+    // 2. Test connection
+    const testRes = await fetch(`/api/targets/${savedTarget.id}/test`);
+    const test    = await testRes.json();
+
+    if (test.status === 'online') {
+      showModalStatus('ok', `Connected! ${test.message?.split('\n')[0] || ''}`);
+      await loadTargets();
+      setTimeout(() => {
+        closeAddModal();
+        selectTarget(savedTarget);
+      }, 1200);
+    } else {
+      // Connection failed — remove the saved target so it doesn't appear in the list
+      await fetch(`/api/targets/${savedTarget.id}`, { method:'DELETE' });
+      showModalStatus('err', `Connection failed: ${test.message}`);
+      btn.disabled = false;
+      btn.textContent = 'Connect';
+    }
+  } catch(e) {
+    if (savedTarget) await fetch(`/api/targets/${savedTarget.id}`, { method:'DELETE' }).catch(()=>{});
+    showModalStatus('err', `Error: ${e.message}`);
+    btn.disabled = false;
+    btn.textContent = 'Connect';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Connect';
+}
+
+function showModalStatus(type, msg) {
+  const s = document.getElementById('modalStatus');
+  s.className = 'modal-status' + (type ? ' ' + type : '');
+  s.textContent = msg;
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ─── Generic raw renderer (Docker, AWS, GCP, Azure, Terraform, K8s tabs) ─────
+function renderRaw(data, el, tab) {
+  if (data.error) { el.innerHTML = `<div class="empty">${escHtml(data.error)}</div>`; return; }
+  const keys = Object.keys(data);
+  if (keys.length === 0) { el.innerHTML = `<div class="empty">No data</div>`; return; }
+  el.innerHTML = keys.map(key => `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">${escHtml(key.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}</div>
+      <div class="card-body no-pad">
+        <pre style="padding:12px 16px;max-height:50vh;overflow-y:auto">${colorizeLog(escHtml(data[key]||'—'))}</pre>
+      </div>
+    </div>`).join('');
+}
+
+// ─── Pods-only renderer (for standalone Kubernetes target) ───────────────────
+function renderPodsOnly(data, el) {
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-header">Pods — All Namespaces <span style="font-size:11px;color:#484f58;font-weight:400">· click any row for details &amp; AI analysis</span></div>
+      <div class="card-body no-pad">${parsePodTable(data.pods || '')}</div>
+    </div>`;
+}
+
+// ─── K8s standalone tab renderers ─────────────────────────────────────────────
+
+function renderNodesTab(data, el) {
+  const raw = data.output || '';
+  const lines = raw.trim().split('\n');
+  let tableHtml = `<pre style="padding:10px 14px">${escHtml(raw)}</pre>`;
+  if (lines.length >= 2) {
+    tableHtml = `<table>
+      <thead><tr><th>Name</th><th>Status</th><th>Roles</th><th>Age</th><th>Version</th></tr></thead>
+      <tbody>${lines.slice(1).map(line => {
+        const c = line.trim().split(/\s+/);
+        if (c.length < 4) return '';
+        const ok = c[1] === 'Ready';
+        return `<tr class="clickable-row" onclick="openResource('node','${escHtml(c[0])}','')" title="Click for details">
+          <td style="font-weight:500">${escHtml(c[0])}</td>
+          <td><span class="badge ${ok?'badge-run':'badge-err'}">${escHtml(c[1])}</span></td>
+          <td style="color:#8b949e">${escHtml(c[2])}</td>
+          <td style="color:#8b949e">${escHtml(c[3])}</td>
+          <td style="color:#8b949e">${escHtml(c[4]||'')}</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  }
+  el.innerHTML = `<div class="card"><div class="card-header">Nodes <span style="font-size:11px;color:#484f58;font-weight:400">· click any row for details</span></div><div class="card-body no-pad">${tableHtml}</div></div>`;
+}
+
+function renderDeploymentsTab(data, el) {
+  const raw = data.deployments || '';
+  const lines = raw.trim().split('\n');
+  let tableHtml = `<pre style="padding:10px 14px">${escHtml(raw)}</pre>`;
+  if (lines.length >= 2) {
+    tableHtml = `<table>
+      <thead><tr><th>Namespace</th><th>Name</th><th>Ready</th><th>Up-to-date</th><th>Available</th><th>Age</th></tr></thead>
+      <tbody>${lines.slice(1).map(line => {
+        const c = line.trim().split(/\s+/);
+        if (c.length < 5) return '';
+        const ready = c[2] || '0/0', parts = ready.split('/');
+        const ok = parts.length === 2 && parts[0] === parts[1];
+        return `<tr class="clickable-row" onclick="openResource('deployment','${escHtml(c[1])}','${escHtml(c[0])}')" title="Click for details">
+          <td style="color:#8b949e">${escHtml(c[0])}</td>
+          <td style="font-weight:500">${escHtml(c[1])}</td>
+          <td><span class="badge ${ok?'badge-run':'badge-pend'}">${escHtml(ready)}</span></td>
+          <td style="color:#8b949e">${escHtml(c[3])}</td>
+          <td style="color:#8b949e">${escHtml(c[4])}</td>
+          <td style="color:#8b949e">${escHtml(c[c.length-1])}</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  }
+  el.innerHTML = `<div class="card" style="margin-bottom:16px"><div class="card-header">Deployments <span style="font-size:11px;color:#484f58;font-weight:400">· click any row for details</span></div><div class="card-body no-pad">${tableHtml}</div></div>
+  <div class="card"><div class="card-header">ReplicaSets</div><div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.replicasets||'—')}</pre></div></div>`;
+}
+
+function renderServicesTab(data, el) {
+  const raw = data.services || '';
+  const lines = raw.trim().split('\n');
+  let tableHtml = `<pre style="padding:10px 14px">${escHtml(raw)}</pre>`;
+  if (lines.length >= 2) {
+    tableHtml = `<table>
+      <thead><tr><th>Namespace</th><th>Name</th><th>Type</th><th>Cluster-IP</th><th>Ports</th><th>Age</th></tr></thead>
+      <tbody>${lines.slice(1).map(line => {
+        const c = line.trim().split(/\s+/);
+        if (c.length < 5) return '';
+        return `<tr class="clickable-row" onclick="openResource('service','${escHtml(c[1])}','${escHtml(c[0])}')" title="Click for details">
+          <td style="color:#8b949e">${escHtml(c[0])}</td>
+          <td style="font-weight:500">${escHtml(c[1])}</td>
+          <td><span class="badge badge-pend" style="font-size:10px">${escHtml(c[2])}</span></td>
+          <td style="color:#8b949e">${escHtml(c[3])}</td>
+          <td style="color:#79c0ff">${escHtml(c[4])}</td>
+          <td style="color:#8b949e">${escHtml(c[c.length-1])}</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  }
+  el.innerHTML = `<div class="card" style="margin-bottom:16px"><div class="card-header">Services <span style="font-size:11px;color:#484f58;font-weight:400">· click any row for details</span></div><div class="card-body no-pad">${tableHtml}</div></div>
+  <div class="card"><div class="card-header">Ingresses</div><div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.ingresses||'—')}</pre></div></div>`;
+}
+
+function renderK8sNetwork(data, el) {
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">Services</div>
+      <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.services||'—')}</pre></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">Ingresses</div>
+      <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.ingresses||'—')}</pre></div>
+    </div>
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-header">Network Policies</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.netpolicies||'—')}</pre></div>
+      </div>
+      <div class="card">
+        <div class="card-header">Endpoints (top 40)</div>
+        <div class="card-body no-pad"><pre style="padding:10px 14px">${escHtml(data.endpoints||'—')}</pre></div>
+      </div>
+    </div>`;
+}
+
+// ─── K8s Resource Detail ───────────────────────────────────────────────────────
+
+let _rData = {};
+let _rKind = '', _rName = '', _rNs = '';
+
+async function openResource(kind, name, ns) {
+  if (!currentTarget) return;
+  _rKind = kind; _rName = name; _rNs = ns;
+
+  document.getElementById('rKindBadge').textContent = kind;
+  document.getElementById('rKindBadge').className = `type-badge badge-kubernetes`;
+  document.getElementById('rName').textContent  = name;
+  document.getElementById('rNs').textContent    = ns ? `· ${ns}` : '';
+
+  // Only show logs tabs for pods
+  ['rTab-logs','rTab-previous'].forEach(id => {
+    document.getElementById(id).style.display = kind === 'pod' ? '' : 'none';
+  });
+
+  // Reset to describe tab
+  document.querySelectorAll('#resourceModal .tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('rTab-describe').classList.add('active');
+
+  document.getElementById('resourceModal').classList.add('show');
+  document.getElementById('rContent').innerHTML = '<div class="loading"><div class="spinner"></div> Loading...</div>';
+
+  const params = new URLSearchParams({ kind, name, ns: ns || '' });
+  try {
+    const res = await fetch(`/api/resource/${currentTarget.id}?${params}`);
+    _rData = await res.json();
+    showRContent('describe');
+  } catch(e) {
+    document.getElementById('rContent').innerHTML = `<div class="empty">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function closeResource() {
+  document.getElementById('resourceModal').classList.remove('show');
+}
+
+function loadResourceTab(tab, el) {
+  document.querySelectorAll('#resourceModal .tab').forEach(t => t.classList.remove('active'));
+  const tabBtn = document.getElementById('rTab-' + tab);
+  if (tabBtn) tabBtn.classList.add('active');
+  showRContent(tab);
+}
+
+async function showRContent(tab) {
+  const el = document.getElementById('rContent');
+  if (tab === 'describe') {
+    el.innerHTML = `<pre style="padding:12px 16px;font-size:12px;line-height:1.7">${colorizeLog(escHtml(_rData.describe || '—'))}</pre>`;
+  } else if (tab === 'logs') {
+    el.innerHTML = `<pre style="padding:12px 16px;font-size:12px;line-height:1.6">${colorizeLog(escHtml(_rData.logs || '—'))}</pre>`;
+  } else if (tab === 'previous') {
+    el.innerHTML = `<pre style="padding:12px 16px;font-size:12px;line-height:1.6">${colorizeLog(escHtml(_rData.previous || '—'))}</pre>`;
+  } else if (tab === 'ai') {
+    el.innerHTML = '<div class="loading"><div class="spinner"></div> AI is analyzing...</div>';
+    const describe_snippet = (_rData.describe || '').slice(0, 3000);
+    const logs_snippet     = (_rData.logs || '').slice(-1000);
+    const prompt = `Analyze this Kubernetes ${_rKind} "${_rName}"${_rNs ? ' in namespace ' + _rNs : ''}.\n\nDescribe output:\n${describe_snippet}\n\n${_rKind === 'pod' && logs_snippet ? 'Recent logs:\n' + logs_snippet : ''}\n\nProvide:\n1. **Health Status** — is this healthy or not?\n2. **Issues Found** — any warnings, errors, or misconfigurations?\n3. **Recommendations** — concrete steps to fix or optimize\n4. **Resource Usage** — CPU/memory concerns if visible`;
+    try {
+      const res  = await fetch(`/api/chat/${currentTarget.id}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ message: prompt })
+      });
+      const data = await res.json();
+      el.innerHTML = `<div style="padding:16px;font-size:13px;line-height:1.8">${formatReply(data.reply || data.error || '—')}</div>`;
+    } catch(e) {
+      el.innerHTML = `<div class="empty">AI error: ${escHtml(e.message)}</div>`;
+    }
+  }
+}
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
