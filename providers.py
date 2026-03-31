@@ -20,6 +20,7 @@ Examples:
 """
 import os
 import json
+import time
 import litellm
 
 litellm.telemetry = False
@@ -70,8 +71,11 @@ def chat(messages, use_tools=True):
     if use_tools:
         kwargs["tools"] = TOOLS
 
+    t0 = time.time()
     response = litellm.completion(**kwargs)
+    elapsed = time.time() - t0
     choice = response.choices[0]
+    print(f"  [AI] {model} | tools={'yes' if use_tools else 'no'} | {elapsed:.1f}s | tokens={response.usage.total_tokens if response.usage else '?'}")
 
     # Check if AI made a tool call (native tool calling)
     if choice.message.tool_calls:
