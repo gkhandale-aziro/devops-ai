@@ -8,6 +8,7 @@ import re
 import json
 import socket
 import platform
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify, send_from_directory
 from targets import load_targets, add_target, remove_target, get_target, update_status, has_local_target
 from executors import execute_on_target
@@ -43,10 +44,14 @@ def _session(target_id):
 
 
 def _run_many(target, cmds):
-    """Run multiple commands on a target, return dict of results."""
+    """Run multiple commands on a target in parallel, return dict of results."""
+    if len(cmds) <= 1:
+        return {k: execute_on_target(target, v) for k, v in cmds.items()}
     results = {}
-    for key, cmd in cmds.items():
-        results[key] = execute_on_target(target, cmd)
+    with ThreadPoolExecutor(max_workers=min(len(cmds), 8)) as pool:
+        futures = {pool.submit(execute_on_target, target, cmd): key for key, cmd in cmds.items()}
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
     return results
 
 
@@ -203,12 +208,16 @@ def api_resource(tid):
         return jsonify({"error": "invalid namespace"}), 400
 
     ns_flag = f" -n {ns}" if ns else ""
-    describe = execute_on_target(target, f"kubectl describe {kind} {name}{ns_flag} 2>&1")
-    result = {"describe": describe}
 
     if kind == "pod":
-        result["logs"]     = execute_on_target(target, f"kubectl logs {name}{ns_flag} --tail=150 2>&1")
-        result["previous"] = execute_on_target(target, f"kubectl logs {name}{ns_flag} --previous --tail=50 2>&1 || echo '[no previous container]'")
+        cmds = {
+            "describe": f"kubectl describe {kind} {name}{ns_flag} 2>&1",
+            "logs":     f"kubectl logs {name}{ns_flag} --tail=150 2>&1",
+            "previous": f"kubectl logs {name}{ns_flag} --previous --tail=50 2>&1 || echo '[no previous container]'",
+        }
+        result = _run_many(target, cmds)
+    else:
+        result = {"describe": execute_on_target(target, f"kubectl describe {kind} {name}{ns_flag} 2>&1")}
 
     return jsonify(result)
 
