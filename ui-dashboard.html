@@ -560,7 +560,6 @@ let currentTarget  = null;
 let currentTab     = null;
 let refreshTimer   = null;
 let currentView    = 'dashboard';
-const chatHistory  = {};   // target.id → HTML string (preserved on target switch)
 let chatSessions   = [];  // general chat sessions
 let currentSession = null; // active chat session
 const sessionHistory = {}; // session.id → HTML string
@@ -1038,7 +1037,6 @@ async function _doChat(inputId, sendId, boxId, msgClass) {
     }
 
     if (!started) textEl.innerHTML = formatReply(rawText || '—');
-    if (!isPanel) chatHistory[currentTarget.id] = box.innerHTML;
 
   } catch(e) {
     textEl.innerHTML = `<span style="color:#ff7b72">Error: ${escHtml(e.message)}</span>`;
