@@ -9,10 +9,10 @@ import json
 import socket
 import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from targets import load_targets, add_target, remove_target, get_target, update_status, has_local_target
 from executors import execute_on_target
-from providers import chat, TOOL_MODEL, ANSWER_MODEL
+from providers import chat, chat_stream, TOOL_MODEL, ANSWER_MODEL
 from prompts import SYSTEM
 
 app = Flask(__name__, static_folder=".")
@@ -267,6 +267,105 @@ def api_analyze():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/analyze/stream", methods=["POST"])
+def api_analyze_stream():
+    """Stream AI analysis via SSE — tokens appear word-by-word."""
+    prompt = request.json.get("prompt", "").strip()
+    if not prompt:
+        return jsonify({"error": "empty prompt"}), 400
+    messages = [
+        {"role": "system", "content": "You are a Kubernetes and DevOps expert. Analyze the provided data and give clear, actionable recommendations. Use markdown formatting."},
+        {"role": "user", "content": prompt},
+    ]
+    def generate():
+        try:
+            for chunk in chat_stream(messages, use_tools=False):
+                yield f"data: {json.dumps({'t': chunk})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield "data: [DONE]\n\n"
+    return Response(generate(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/chat/<tid>/stream", methods=["POST"])
+def api_chat_stream(tid):
+    """Streaming chat — sends step events during tool loop, then streams final answer."""
+    target = get_target(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
+
+    user_msg = request.json.get("message", "").strip()
+    if not user_msg:
+        return jsonify({"error": "empty message"}), 400
+
+    messages = _session(tid)
+    messages.append({"role": "user", "content": user_msg})
+    messages = _trim(messages)
+    _sessions[tid] = messages
+
+    def generate():
+        commands_run = 0
+        ran_commands = set()
+
+        for step in range(MAX_STEPS):
+            try:
+                reply, command, tool_call_id = chat(messages, use_tools=True)
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            if command:
+                if re.search(r'<[^>]+>', command):
+                    messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
+                    messages.append({"role": "tool", "content": "[Placeholder in command — replace <...> with real value]", "tool_call_id": tool_call_id})
+                    continue
+
+                if command in ran_commands:
+                    messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
+                    messages.append({"role": "tool", "content": "[Already ran. Use output already provided.]", "tool_call_id": tool_call_id})
+                    continue
+
+                yield f"data: {json.dumps({'cmd': command})}\n\n"
+                output = execute_on_target(target, command)
+                commands_run += 1
+                ran_commands.add(command)
+
+                messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
+                messages.append({"role": "tool", "content": output, "tool_call_id": tool_call_id})
+                messages[:] = _trim(messages)
+                _sessions[tid] = messages
+
+            else:
+                # Stream the final answer
+                if ANSWER_MODEL != TOOL_MODEL and commands_run > 0:
+                    try:
+                        for chunk in chat_stream(messages, use_tools=False):
+                            yield f"data: {json.dumps({'t': chunk})}\n\n"
+                    except Exception:
+                        yield f"data: {json.dumps({'t': reply})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'t': reply})}\n\n"
+                messages.append({"role": "assistant", "content": reply})
+                _sessions[tid] = messages
+                yield "data: [DONE]\n\n"
+                return
+
+        # MAX_STEPS — stream summary
+        try:
+            full = ""
+            for chunk in chat_stream(messages, use_tools=False):
+                full += chunk
+                yield f"data: {json.dumps({'t': chunk})}\n\n"
+            messages.append({"role": "assistant", "content": full})
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        _sessions[tid] = messages
+        yield "data: [DONE]\n\n"
+
+    return Response(generate(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.route("/api/chat/<tid>", methods=["POST"])
 def api_chat(tid):
     target = get_target(tid)
@@ -338,4 +437,4 @@ if __name__ == "__main__":
     print(f"  Tool model:   {TOOL_MODEL}")
     print(f"  Answer model: {ANSWER_MODEL}")
     print(f"  URL: http://localhost:5000\n")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)

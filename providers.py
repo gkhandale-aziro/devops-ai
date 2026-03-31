@@ -87,3 +87,18 @@ def chat(messages, use_tools=True):
 
     # AI answered directly — no tool call
     return choice.message.content or "", None, None
+
+
+def chat_stream(messages, use_tools=False):
+    """Stream AI response token by token. Yields text chunks."""
+    model = TOOL_MODEL if use_tools else ANSWER_MODEL
+    kwargs = {"model": model, "messages": messages, "stream": True}
+
+    t0 = time.time()
+    response = litellm.completion(**kwargs)
+    for chunk in response:
+        delta = chunk.choices[0].delta
+        if delta and delta.content:
+            yield delta.content
+    elapsed = time.time() - t0
+    print(f"  [AI] {model} | stream | {elapsed:.1f}s")

@@ -932,48 +932,75 @@ async function _doChat(inputId, sendId, boxId, msgClass) {
   input.value = '';
   document.getElementById(sendId).disabled = true;
   const box = document.getElementById(boxId);
-
   const isPanel = msgClass === 'ai';
+
+  // User bubble
   const userHtml = isPanel
     ? `<div class="ai-msg-user"><div class="ai-label right">You</div><div class="bubble">${escHtml(msg)}</div></div>`
     : `<div class="chat-row user"><div class="chat-lbl right">You</div><div class="bubble">${escHtml(msg)}</div></div>`;
-
   box.innerHTML += userHtml;
 
-  const thinkId = 'think-' + Date.now();
-  const thinkHtml = isPanel
-    ? `<div id="${thinkId}" class="ai-msg-bot"><div class="ai-label">AI</div><div class="bubble"><div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`
-    : `<div id="${thinkId}" class="chat-row bot"><div class="chat-lbl">AI</div><div class="bubble"><div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
-  box.innerHTML += thinkHtml;
+  // Bot container — we'll fill it as tokens stream in
+  const botId = 'bot-' + Date.now();
+  const cmdBoxId = 'cmds-' + Date.now();
+  const textId = 'txt-' + Date.now();
+  const botHtml = isPanel
+    ? `<div id="${botId}" class="ai-msg-bot"><div class="ai-label">AI</div><div id="${cmdBoxId}"></div><div id="${textId}" class="bubble"><div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`
+    : `<div id="${botId}" class="chat-row bot"><div class="chat-lbl">AI</div><div id="${cmdBoxId}"></div><div id="${textId}" class="bubble"><div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
+  box.innerHTML += botHtml;
   box.scrollTop = box.scrollHeight;
 
+  const cmdClass = isPanel ? 'ai-cmd' : 'chat-cmd';
+  const cmdBox = document.getElementById(cmdBoxId);
+  const textEl = document.getElementById(textId);
+  let rawText = '';
+  let started = false;
+
   try {
-    const res  = await fetch(`/api/chat/${currentTarget.id}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
+    const res = await fetch(`/api/chat/${currentTarget.id}/stream`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({message: msg})
     });
-    const data = await res.json();
-    document.getElementById(thinkId)?.remove();
 
-    let cmdHtml = '';
-    if (data.steps && data.steps.length > 0) {
-      const cmdClass = isPanel ? 'ai-cmd' : 'chat-cmd';
-      cmdHtml = data.steps.map(s => `<div class="${cmdClass}">$ ${escHtml(s.command)}</div>`).join('');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6);
+        if (raw === '[DONE]') break;
+        try {
+          const evt = JSON.parse(raw);
+          if (evt.cmd) {
+            cmdBox.innerHTML += `<div class="${cmdClass}">$ ${escHtml(evt.cmd)}</div>`;
+          }
+          if (evt.t) {
+            if (!started) { textEl.innerHTML = ''; started = true; }
+            rawText += evt.t;
+            textEl.innerHTML = formatReply(rawText);
+          }
+          if (evt.error) {
+            textEl.innerHTML = `<span style="color:#ff7b72">${escHtml(evt.error)}</span>`;
+          }
+          box.scrollTop = box.scrollHeight;
+        } catch(pe) {}
+      }
     }
 
-    if (isPanel) {
-      box.innerHTML += `<div class="ai-msg-bot"><div class="ai-label">AI</div>${cmdHtml}<div class="bubble">${formatReply(data.reply || data.error || '—')}</div></div>`;
-    } else {
-      box.innerHTML += `<div class="chat-row bot"><div class="chat-lbl">AI</div>${cmdHtml}<div class="bubble">${formatReply(data.reply || data.error || '—')}</div></div>`;
-      // persist for this target
-      chatHistory[currentTarget.id] = box.innerHTML;
-    }
+    if (!started) textEl.innerHTML = formatReply(rawText || '—');
+    if (!isPanel) chatHistory[currentTarget.id] = box.innerHTML;
+
   } catch(e) {
-    document.getElementById(thinkId)?.remove();
-    const errHtml = isPanel
-      ? `<div class="ai-msg-bot"><div class="ai-label">AI</div><div class="bubble" style="color:#ff7b72">Error: ${e.message}</div></div>`
-      : `<div class="chat-row bot"><div class="chat-lbl">AI</div><div class="bubble" style="color:#ff7b72">Error: ${e.message}</div></div>`;
-    box.innerHTML += errHtml;
+    textEl.innerHTML = `<span style="color:#ff7b72">Error: ${escHtml(e.message)}</span>`;
   }
 
   box.scrollTop = box.scrollHeight;
@@ -1312,17 +1339,36 @@ async function showRContent(tab) {
   } else if (tab === 'previous') {
     el.innerHTML = `<pre style="padding:12px 16px;font-size:12px;line-height:1.6">${colorizeLog(escHtml(_rData.previous || '—'))}</pre>`;
   } else if (tab === 'ai') {
-    el.innerHTML = '<div class="loading"><div class="spinner"></div> AI is analyzing...</div>';
+    el.innerHTML = '<div style="padding:16px;font-size:13px;line-height:1.8"><div class="thinking-dots"><span></span><span></span><span></span></div></div>';
     const describe_snippet = (_rData.describe || '').slice(0, 3000);
     const logs_snippet     = (_rData.logs || '').slice(-1000);
     const prompt = `Analyze this Kubernetes ${_rKind} "${_rName}"${_rNs ? ' in namespace ' + _rNs : ''}.\n\nDescribe output:\n${describe_snippet}\n\n${_rKind === 'pod' && logs_snippet ? 'Recent logs:\n' + logs_snippet : ''}\n\nProvide:\n1. **Health Status** — is this healthy or not?\n2. **Issues Found** — any warnings, errors, or misconfigurations?\n3. **Recommendations** — concrete steps to fix or optimize\n4. **Resource Usage** — CPU/memory concerns if visible`;
     try {
-      const res  = await fetch('/api/analyze', {
+      const res = await fetch('/api/analyze/stream', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ prompt })
       });
-      const data = await res.json();
-      el.innerHTML = `<div style="padding:16px;font-size:13px;line-height:1.8">${formatReply(data.reply || data.error || '—')}</div>`;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '', rawText = '', started = false;
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6);
+          if (raw === '[DONE]') break;
+          try {
+            const evt = JSON.parse(raw);
+            if (evt.t) { rawText += evt.t; started = true; el.innerHTML = `<div style="padding:16px;font-size:13px;line-height:1.8">${formatReply(rawText)}</div>`; }
+            if (evt.error) { el.innerHTML = `<div class="empty">AI error: ${escHtml(evt.error)}</div>`; }
+          } catch(pe) {}
+        }
+      }
+      if (!started) el.innerHTML = `<div style="padding:16px;font-size:13px;line-height:1.8">${formatReply(rawText || '—')}</div>`;
     } catch(e) {
       el.innerHTML = `<div class="empty">AI error: ${escHtml(e.message)}</div>`;
     }
