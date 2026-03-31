@@ -250,6 +250,23 @@ def api_tab(tid, tab):
 # AI Chat
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.route("/api/analyze", methods=["POST"])
+def api_analyze():
+    """Direct AI analysis — no tool loop, just answer from provided data."""
+    prompt = request.json.get("prompt", "").strip()
+    if not prompt:
+        return jsonify({"error": "empty prompt"}), 400
+    messages = [
+        {"role": "system", "content": "You are a Kubernetes and DevOps expert. Analyze the provided data and give clear, actionable recommendations. Use markdown formatting."},
+        {"role": "user", "content": prompt},
+    ]
+    try:
+        reply, _, _ = chat(messages, use_tools=False)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/chat/<tid>", methods=["POST"])
 def api_chat(tid):
     target = get_target(tid)

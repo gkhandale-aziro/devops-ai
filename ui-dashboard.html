@@ -1317,9 +1317,9 @@ async function showRContent(tab) {
     const logs_snippet     = (_rData.logs || '').slice(-1000);
     const prompt = `Analyze this Kubernetes ${_rKind} "${_rName}"${_rNs ? ' in namespace ' + _rNs : ''}.\n\nDescribe output:\n${describe_snippet}\n\n${_rKind === 'pod' && logs_snippet ? 'Recent logs:\n' + logs_snippet : ''}\n\nProvide:\n1. **Health Status** — is this healthy or not?\n2. **Issues Found** — any warnings, errors, or misconfigurations?\n3. **Recommendations** — concrete steps to fix or optimize\n4. **Resource Usage** — CPU/memory concerns if visible`;
     try {
-      const res  = await fetch(`/api/chat/${currentTarget.id}`, {
+      const res  = await fetch('/api/analyze', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ message: prompt })
+        body: JSON.stringify({ prompt })
       });
       const data = await res.json();
       el.innerHTML = `<div style="padding:16px;font-size:13px;line-height:1.8">${formatReply(data.reply || data.error || '—')}</div>`;
