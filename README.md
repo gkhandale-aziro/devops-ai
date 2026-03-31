@@ -74,75 +74,72 @@ Open [http://localhost:5000](http://localhost:5000) and add your first server.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Browser (ui-dashboard.html)                   │
-│                                                                       │
-│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────────┐  │
-│  │   Dashboard      │  │   AI Chat        │  │  Resource Modal    │  │
-│  │  - Overview      │  │  - Session list  │  │  - Describe        │  │
-│  │  - Kubernetes    │  │  - Saved history │  │  - Logs            │  │
-│  │  - Logs          │  │  - Streaming     │  │  - AI Analysis     │  │
-│  │  - Network       │  │    responses     │  │                    │  │
-│  │  - Storage       │  └──────────────────┘  └────────────────────┘  │
-│  └─────────────────┘                                                  │
-└──────────────────────────────┬──────────────────────────────────────┘
-                                │  HTTP / SSE (streaming)
-                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Flask API  (app.py)                           │
-│                                                                       │
-│  /api/targets        /api/tab         /api/resource                  │
-│  /api/sessions       /api/chat        /api/analyze                   │
-└────┬──────────────────────┬──────────────────────┬───────────────────┘
-     │                      │                      │
-     ▼                      ▼                      ▼
-┌──────────┐        ┌──────────────┐       ┌─────────────────────────┐
-│targets.py│        │ executors.py │       │      providers.py        │
-│          │        │              │       │                          │
-│ CRUD for │        │ SSH          │       │  LiteLLM                 │
-│ targets  │        │ kubectl      │       │                          │
-│          │        │ docker       │       │  TOOL_MODEL              │
-│targets   │        │ aws cli      │       │  ├─ Ollama               │
-│ .json    │        │ gcloud       │       │  ├─ OpenAI               │
-│          │        │ az cli       │       │  ├─ Claude               │
-│chat_     │        │ terraform    │       │  ├─ Gemini               │
-│sessions  │        │ local shell  │       │  ├─ Groq                 │
-│ .json    │        └──────┬───────┘       │  └─ Bedrock / Azure / .. │
-└──────────┘               │               │                          │
-                            │               │  ANSWER_MODEL (optional) │
-                            ▼               │  └─ smarter model for    │
-                  ┌─────────────────┐       │     final answers        │
-                  │  Target infra   │       └─────────────────────────┘
-                  │                 │
-                  │ ┌─────────────┐ │
-                  │ │ Linux / Win │ │
-                  │ │ Kubernetes  │ │
-                  │ │ Docker      │ │
-                  │ │ AWS         │ │
-                  │ │ GCP         │ │
-                  │ │ Azure       │ │
-                  │ │ Terraform   │ │
-                  │ └─────────────┘ │
-                  └─────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         Browser  (ui-dashboard.html)                     │
+│                                                                           │
+│  ┌──────────────────┐   ┌───────────────────┐   ┌─────────────────────┐ │
+│  │   Dashboard       │   │   AI Chat          │   │   Resource Modal    │ │
+│  │  · Overview       │   │  · Session list    │   │  · Describe         │ │
+│  │  · Kubernetes     │   │  · Saved history   │   │  · Logs             │ │
+│  │  · Logs           │   │  · Streaming       │   │  · AI Analysis      │ │
+│  │  · Network        │   │    responses       │   │                     │ │
+│  │  · Storage        │   └───────────────────┘   └─────────────────────┘ │
+│  └──────────────────┘                                                     │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                      │  HTTP / SSE (streaming)
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           Flask API  (app.py)                             │
+│                                                                           │
+│   /api/targets    /api/tab    /api/resource    /api/sessions              │
+│   /api/chat       /api/analyze                /api/sessions/<id>/chat    │
+└──────────┬───────────────────────┬────────────────────────┬──────────────┘
+           │                       │                        │
+           ▼                       ▼                        ▼
+┌────────────────┐      ┌─────────────────────┐   ┌─────────────────────┐
+│  targets.py    │      │    executors.py      │   │    providers.py     │
+│                │      │                      │   │                     │
+│  Connection    │      │  SSH  (paramiko)     │   │  LiteLLM            │
+│  CRUD          │      │  kubectl             │   │                     │
+│                │      │  docker              │   │  TOOL_MODEL         │
+│  targets.json  │      │  aws cli             │   │  ├─ Ollama          │
+│  chat_sessions │      │  gcloud              │   │  ├─ OpenAI          │
+│    .json       │      │  az cli              │   │  ├─ Claude          │
+│                │      │  terraform           │   │  ├─ Gemini          │
+│                │      │  local shell         │   │  ├─ Groq            │
+└────────────────┘      └──────────┬──────────┘   │  └─ Bedrock / more  │
+                                    │               │                     │
+                                    ▼               │  ANSWER_MODEL       │
+                         ┌──────────────────┐       │  (optional)         │
+                         │  Your Infra      │       └─────────────────────┘
+                         │                  │
+                         │  · Linux / Win   │
+                         │  · Kubernetes    │
+                         │  · Docker        │
+                         │  · AWS / GCP     │
+                         │  · Azure         │
+                         │  · Terraform     │
+                         └──────────────────┘
 ```
 
 ### Data Flow
 
 ```
-User types message
+User message
       │
       ▼
-Is it a general question?
-  ├── YES → /api/sessions/<id>/chat/stream → LiteLLM (no tools) → SSE stream to browser
-  └── NO  → /api/chat/<target>/stream
-                │
-                ▼
-           Agentic loop (max 5 steps)
-                │
-                ├── TOOL_MODEL decides what command to run
-                ├── executors.py runs it on the target
-                ├── Output fed back to model
-                └── ANSWER_MODEL writes final answer → SSE stream to browser
+General question? (hi, what is X, explain Y)
+  ├─ YES ─→ /api/sessions/<id>/chat/stream
+  │              └─→ LiteLLM (no tools) ─→ stream tokens to browser
+  │
+  └─ NO  ─→ /api/chat/<target>/stream
+                 │
+                 └─→ Agentic loop (max 5 steps)
+                          │
+                          ├─ TOOL_MODEL picks a command to run
+                          ├─ executors.py runs it on the target
+                          ├─ Output fed back to model
+                          └─ ANSWER_MODEL writes final answer ─→ stream to browser
 ```
 
 ## CLI Mode
