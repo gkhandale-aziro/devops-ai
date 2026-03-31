@@ -21,6 +21,28 @@ _sessions  = {}   # target_id → messages
 MAX_HISTORY = 20
 MAX_STEPS   = 5
 
+# Messages that should skip tool calling and just get a direct AI reply
+_GENERAL_PATTERNS = re.compile(
+    r'^(hi|hello|hey|thanks|thank you|ok|okay|got it|yes|no|bye|good morning|good evening|'
+    r'what is|what are|explain|how does|why is|tell me about|can you|should i|'
+    r'what do you think|help me understand|difference between)\b',
+    re.IGNORECASE
+)
+
+def _needs_tools(msg):
+    """Return True if the message likely needs real server data (commands)."""
+    if len(msg.split()) <= 3 and _GENERAL_PATTERNS.match(msg):
+        return False
+    infra_keywords = ['pod','node','deploy','service','disk','memory','cpu','process',
+                      'log','error','crash','restart','status','check','show','list',
+                      'kubectl','docker','helm','port','network','storage','uptime']
+    msg_lower = msg.lower()
+    if any(kw in msg_lower for kw in infra_keywords):
+        return True
+    if _GENERAL_PATTERNS.match(msg):
+        return False
+    return True
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -303,9 +325,25 @@ def api_chat_stream(tid):
     messages = _trim(messages)
     _sessions[tid] = messages
 
+    use_tools = _needs_tools(user_msg)
+
     def generate():
         commands_run = 0
         ran_commands = set()
+
+        if not use_tools:
+            # Simple message — stream direct answer, no tool loop
+            try:
+                full = ""
+                for chunk in chat_stream(messages, use_tools=False):
+                    full += chunk
+                    yield f"data: {json.dumps({'t': chunk})}\n\n"
+                messages.append({"role": "assistant", "content": full})
+                _sessions[tid] = messages
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
         for step in range(MAX_STEPS):
             try:
