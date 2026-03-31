@@ -111,7 +111,14 @@ tr.clickable-row:hover td { background:#1f2d3d; }
 .ai-msg-bot  .bubble { background:#1c2128; border:1px solid #30363d; border-radius:4px 12px 12px 12px; padding:8px 12px; font-size:13px; line-height:1.5; }
 .ai-label { font-size:10px; color:#484f58; margin-bottom:3px; }
 .ai-label.right { text-align:right; }
-.ai-cmd { background:#0d1117; border:1px solid #30363d; border-radius:5px; padding:5px 10px; font-family:monospace; font-size:11px; color:#79c0ff; margin:4px 0; }
+.ai-cmd { display:none; }
+.ai-steps { background:#0d1117; border:1px solid #21262d; border-radius:8px; padding:6px 10px; margin-bottom:6px; font-size:11px; color:#8b949e; cursor:pointer; }
+.ai-steps:hover { background:#161b22; }
+.ai-steps .step-label { display:flex; align-items:center; gap:6px; }
+.ai-steps .step-label svg { flex-shrink:0; }
+.ai-steps .step-cmds { display:none; margin-top:6px; padding-top:6px; border-top:1px solid #21262d; }
+.ai-steps.open .step-cmds { display:block; }
+.ai-steps .step-cmd { font-family:'Cascadia Code','Consolas',monospace; color:#79c0ff; padding:2px 0; font-size:11px; }
 .ai-input-area { padding:12px; border-top:1px solid #21262d; }
 .ai-input-row { display:flex; gap:6px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:6px 10px; }
 .ai-input-row:focus-within { border-color:#79c0ff; }
@@ -185,7 +192,14 @@ tr.clickable-row:hover td { background:#1f2d3d; }
 .chat-row.bot  .bubble { background:#161b22; border:1px solid #30363d; border-radius:4px 16px 16px 16px; padding:12px 16px; font-size:13px; line-height:1.7; }
 .chat-lbl { font-size:10px; color:#484f58; }
 .chat-lbl.right { text-align:right; }
-.chat-cmd { background:#0d1117; border:1px solid #30363d; border-left:2px solid #326CE5; border-radius:0 5px 5px 0; padding:6px 12px; font-family:'Cascadia Code','Consolas',monospace; font-size:11px; color:#79c0ff; margin:3px 0; }
+.chat-cmd { display:none; }
+.chat-steps { background:#0d1117; border:1px solid #21262d; border-radius:8px; padding:8px 12px; margin-bottom:8px; font-size:12px; color:#8b949e; max-width:80%; cursor:pointer; }
+.chat-steps:hover { background:#161b22; }
+.chat-steps .step-label { display:flex; align-items:center; gap:6px; }
+.chat-steps .step-label svg { flex-shrink:0; }
+.chat-steps .step-cmds { display:none; margin-top:6px; padding-top:6px; border-top:1px solid #21262d; }
+.chat-steps.open .step-cmds { display:block; }
+.chat-steps .step-cmd { font-family:'Cascadia Code','Consolas',monospace; color:#79c0ff; padding:2px 0; font-size:11px; }
 .chat-input-bar { padding:16px 24px; border-top:1px solid #21262d; background:#161b22; flex-shrink:0; }
 .chat-input-row { display:flex; gap:8px; background:#0d1117; border:1px solid #30363d; border-radius:10px; padding:10px 16px; max-width:760px; margin:0 auto; transition:border-color .15s; }
 .chat-input-row:focus-within { border-color:#79c0ff; }
@@ -950,11 +964,18 @@ async function _doChat(inputId, sendId, boxId, msgClass) {
   box.innerHTML += botHtml;
   box.scrollTop = box.scrollHeight;
 
-  const cmdClass = isPanel ? 'ai-cmd' : 'chat-cmd';
+  const stepsClass = isPanel ? 'ai-steps' : 'chat-steps';
   const cmdBox = document.getElementById(cmdBoxId);
   const textEl = document.getElementById(textId);
   let rawText = '';
   let started = false;
+  let cmds = [];
+
+  function renderSteps() {
+    if (cmds.length === 0) { cmdBox.innerHTML = ''; return; }
+    const cmdsHtml = cmds.map(c => `<div class="step-cmd">$ ${escHtml(c)}</div>`).join('');
+    cmdBox.innerHTML = `<div class="${stepsClass}" onclick="this.classList.toggle('open')"><div class="step-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>Ran ${cmds.length} command${cmds.length > 1 ? 's' : ''} <span style="margin-left:auto;font-size:10px;opacity:.5">click to expand</span></div><div class="step-cmds">${cmdsHtml}</div></div>`;
+  }
 
   try {
     const res = await fetch(`/api/chat/${currentTarget.id}/stream`, {
@@ -972,7 +993,7 @@ async function _doChat(inputId, sendId, boxId, msgClass) {
       buffer += decoder.decode(value, {stream: true});
 
       const lines = buffer.split('\n');
-      buffer = lines.pop(); // keep incomplete line
+      buffer = lines.pop();
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
@@ -981,7 +1002,8 @@ async function _doChat(inputId, sendId, boxId, msgClass) {
         try {
           const evt = JSON.parse(raw);
           if (evt.cmd) {
-            cmdBox.innerHTML += `<div class="${cmdClass}">$ ${escHtml(evt.cmd)}</div>`;
+            cmds.push(evt.cmd);
+            renderSteps();
           }
           if (evt.t) {
             if (!started) { textEl.innerHTML = ''; started = true; }
@@ -1015,10 +1037,12 @@ function sendChat()      { _doChat('chatInput', 'chatSend', 'chatMessages', 'cha
 
 function formatReply(text) {
   return escHtml(text)
-    .replace(/## (.+)/g, '<strong style="color:#79c0ff">$1</strong><br>')
+    .replace(/### (.+)/g, '<div style="color:#79c0ff;font-weight:600;font-size:13px;margin:10px 0 4px">$1</div>')
+    .replace(/## (.+)/g, '<div style="color:#79c0ff;font-weight:700;font-size:14px;margin:12px 0 6px">$1</div>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code style="background:#0d1117;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:11px;color:#e3b341">$1</code>')
-    .replace(/\n- /g, '<br>• ')
+    .replace(/`([^`]+)`/g, '<code style="background:#0d1117;padding:1px 5px;border-radius:3px;font-family:monospace;font-size:11px;color:#e3b341">$1</code>')
+    .replace(/\n(\d+)\. /g, '<br><span style="color:#8b949e;font-weight:600;margin-right:4px">$1.</span> ')
+    .replace(/\n- /g, '<br><span style="color:#8b949e;margin-right:4px">•</span> ')
     .replace(/\n/g, '<br>');
 }
 
