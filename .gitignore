@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 targets.json
 chat_sessions.json
+architecture.png
 .env
 *.egg-info/
 dist/
