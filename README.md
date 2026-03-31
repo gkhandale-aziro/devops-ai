@@ -6,7 +6,7 @@ AI-powered DevOps dashboard by Aziro that connects to your infrastructure and pr
 
 | Type | Connection | What you get |
 |------|-----------|-------------|
-| **Linux Server** | SSH (password or key) | CPU, memory, disk, network, logs, services |
+| **Server (SSH)** | SSH (password or key) | CPU, memory, disk, network, logs, services — Linux, Windows, Mac |
 | **Kubernetes** | kubectl context | Pods, nodes, deployments, services, network — click any resource for describe + AI analysis |
 | **Docker** | Local or remote daemon | Containers, images, networks, volumes, stats |
 | **AWS** | CLI profile + region | EC2, S3, EKS, RDS, account info |
