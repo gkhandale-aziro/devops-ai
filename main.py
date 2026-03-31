@@ -1,5 +1,5 @@
 """
-main.py — entry point for the DevOps AI assistant
+main.py — entry point for Aziro Ops CLI
 Uses native tool calling — same approach as kubectl-ai.
 Run with: python3 main.py
 """
@@ -57,9 +57,9 @@ messages = [{"role": "system", "content": build_system_prompt()}]
 
 # Startup banner
 if TOOL_MODEL == ANSWER_MODEL:
-    print(f"DevOps AI Assistant (model: {TOOL_MODEL}, sandbox: {SANDBOX_MODE})")
+    print(f"Aziro Ops (model: {TOOL_MODEL}, sandbox: {SANDBOX_MODE})")
 else:
-    print(f"DevOps AI Assistant")
+    print(f"Aziro Ops")
     print(f"  Tool model:   {TOOL_MODEL}   ← runs commands")
     print(f"  Answer model: {ANSWER_MODEL}  ← writes final answer")
     print(f"  Sandbox: {SANDBOX_MODE}")

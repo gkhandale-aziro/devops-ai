@@ -1,5 +1,5 @@
 """
-prompts.py — system prompt for the DevOps AI assistant
+prompts.py — system prompt for Aziro Ops
 """
 from tools import run_command
 

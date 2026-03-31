@@ -1,5 +1,5 @@
 """
-app.py — Flask backend for DevOps AI Dashboard.
+app.py — Flask backend for Aziro Ops.
 Run locally: python3 app.py
 Open browser: http://localhost:5000
 """
@@ -317,7 +317,7 @@ def api_chat(tid):
 
 
 if __name__ == "__main__":
-    print(f"DevOps AI Dashboard")
+    print(f"Aziro Ops")
     print(f"  Tool model:   {TOOL_MODEL}")
     print(f"  Answer model: {ANSWER_MODEL}")
     print(f"  URL: http://localhost:5000\n")

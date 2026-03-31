@@ -1,6 +1,6 @@
-# DevOps AI Dashboard
+# Aziro Ops
 
-AI-powered DevOps dashboard that connects to your infrastructure and provides real-time monitoring, command execution, and AI-driven recommendations.
+AI-powered DevOps dashboard by Aziro that connects to your infrastructure and provides real-time monitoring, command execution, and AI-driven recommendations.
 
 ## Supported Targets
 

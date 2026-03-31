@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DevOps AI Dashboard</title>
+<title>Aziro Ops</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',system-ui,sans-serif; height:100vh; display:flex; overflow:hidden; }
@@ -203,7 +203,7 @@ tr.clickable-row:hover td { background:#1f2d3d; }
 <div class="sidebar">
   <div class="logo">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="#79c0ff"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-    <span>DevOps</span> AI
+    <span>Aziro</span> Ops
   </div>
   <div class="sec-label">Servers</div>
   <div class="server-list" id="serverList">
@@ -246,7 +246,7 @@ tr.clickable-row:hover td { background:#1f2d3d; }
     <div class="dashboard-body">
       <div class="content" id="content">
         <div class="welcome">
-          <h2>DevOps AI Dashboard</h2>
+          <h2>Aziro Ops</h2>
           <p>Add a server using the sidebar to get started.</p>
           <button class="btn primary" onclick="openAddModal()">+ Add Server</button>
         </div>
@@ -599,7 +599,7 @@ async function removeTarget(tid) {
     currentTarget = null;
     document.getElementById('tabs').style.display = 'none';
     document.getElementById('aiPanel').style.display = 'none';
-    document.getElementById('content').innerHTML = `<div class="welcome"><h2>DevOps AI Dashboard</h2><p>Add a server using the sidebar to get started.</p><button class="btn primary" onclick="openAddModal()">+ Add Server</button></div>`;
+    document.getElementById('content').innerHTML = `<div class="welcome"><h2>Aziro Ops</h2><p>Add a server using the sidebar to get started.</p><button class="btn primary" onclick="openAddModal()">+ Add Server</button></div>`;
     document.getElementById('topName').textContent = 'Select a server';
     document.getElementById('topDot').className = 'dot grey';
     document.getElementById('refreshBtn').disabled = true;
