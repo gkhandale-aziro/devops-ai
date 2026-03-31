@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 *.pyo
 targets.json
+chat_sessions.json
 .env
 *.egg-info/
 dist/

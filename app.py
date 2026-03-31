@@ -272,6 +272,89 @@ def api_tab(tid, tab):
 # AI Chat
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# General AI Chat — no target required, sessions saved like ChatGPT
+# ─────────────────────────────────────────────────────────────────────────────
+
+_CHAT_FILE = "chat_sessions.json"
+
+def _load_chat_sessions():
+    if os.path.exists(_CHAT_FILE):
+        with open(_CHAT_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def _save_chat_sessions(sessions):
+    with open(_CHAT_FILE, "w", encoding="utf-8") as f:
+        json.dump(sessions, f, indent=2)
+
+_general_messages = {}  # session_id → messages list
+
+@app.route("/api/sessions", methods=["GET"])
+def api_sessions_list():
+    return jsonify(_load_chat_sessions())
+
+@app.route("/api/sessions", methods=["POST"])
+def api_sessions_create():
+    import uuid
+    sid = str(uuid.uuid4())[:8]
+    title = request.json.get("title", "New Chat")
+    sessions = _load_chat_sessions()
+    session = {"id": sid, "title": title, "created": __import__("datetime").datetime.now().isoformat()}
+    sessions.insert(0, session)
+    _save_chat_sessions(sessions)
+    _general_messages[sid] = [{"role": "system", "content": "You are Aziro Ops — a helpful AI assistant for DevOps teams. Answer questions clearly and concisely. Use markdown formatting. You can discuss any topic: DevOps, Kubernetes, Docker, cloud, coding, general knowledge, etc."}]
+    return jsonify(session)
+
+@app.route("/api/sessions/<sid>", methods=["DELETE"])
+def api_sessions_delete(sid):
+    sessions = [s for s in _load_chat_sessions() if s["id"] != sid]
+    _save_chat_sessions(sessions)
+    _general_messages.pop(sid, None)
+    return jsonify({"ok": True})
+
+@app.route("/api/sessions/<sid>/messages", methods=["GET"])
+def api_sessions_messages(sid):
+    msgs = _general_messages.get(sid, [])
+    # Return only user/assistant messages (not system)
+    return jsonify([m for m in msgs if m["role"] != "system"])
+
+@app.route("/api/sessions/<sid>/chat/stream", methods=["POST"])
+def api_sessions_chat_stream(sid):
+    """General AI chat — no tools, just conversation, streamed."""
+    user_msg = request.json.get("message", "").strip()
+    if not user_msg:
+        return jsonify({"error": "empty message"}), 400
+
+    if sid not in _general_messages:
+        _general_messages[sid] = [{"role": "system", "content": "You are Aziro Ops — a helpful AI assistant for DevOps teams. Answer questions clearly and concisely. Use markdown formatting. You can discuss any topic: DevOps, Kubernetes, Docker, cloud, coding, general knowledge, etc."}]
+
+    msgs = _general_messages[sid]
+    msgs.append({"role": "user", "content": user_msg})
+    msgs[:] = _trim(msgs)
+
+    # Auto-update session title from first message
+    sessions = _load_chat_sessions()
+    for s in sessions:
+        if s["id"] == sid and s["title"] == "New Chat":
+            s["title"] = user_msg[:50] + ("..." if len(user_msg) > 50 else "")
+            _save_chat_sessions(sessions)
+            break
+
+    def generate():
+        try:
+            full = ""
+            for chunk in chat_stream(msgs, use_tools=False):
+                full += chunk
+                yield f"data: {json.dumps({'t': chunk})}\n\n"
+            msgs.append({"role": "assistant", "content": full})
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return Response(generate(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
     """Direct AI analysis — no tool loop, just answer from provided data."""
