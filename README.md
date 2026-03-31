@@ -74,14 +74,75 @@ Open [http://localhost:5000](http://localhost:5000) and add your first server.
 ## Architecture
 
 ```
-Browser (ui-dashboard.html)
-    |
-Flask API (app.py)
-    |
-    ├── targets.py      — Connection CRUD (persisted to targets.json)
-    ├── executors.py     — SSH, kubectl, docker, cloud CLI execution
-    ├── providers.py     — LiteLLM two-model AI integration
-    └── prompts.py       — AI system prompt
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Browser (ui-dashboard.html)                   │
+│                                                                       │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────────┐  │
+│  │   Dashboard      │  │   AI Chat        │  │  Resource Modal    │  │
+│  │  - Overview      │  │  - Session list  │  │  - Describe        │  │
+│  │  - Kubernetes    │  │  - Saved history │  │  - Logs            │  │
+│  │  - Logs          │  │  - Streaming     │  │  - AI Analysis     │  │
+│  │  - Network       │  │    responses     │  │                    │  │
+│  │  - Storage       │  └──────────────────┘  └────────────────────┘  │
+│  └─────────────────┘                                                  │
+└──────────────────────────────┬──────────────────────────────────────┘
+                                │  HTTP / SSE (streaming)
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Flask API  (app.py)                           │
+│                                                                       │
+│  /api/targets        /api/tab         /api/resource                  │
+│  /api/sessions       /api/chat        /api/analyze                   │
+└────┬──────────────────────┬──────────────────────┬───────────────────┘
+     │                      │                      │
+     ▼                      ▼                      ▼
+┌──────────┐        ┌──────────────┐       ┌─────────────────────────┐
+│targets.py│        │ executors.py │       │      providers.py        │
+│          │        │              │       │                          │
+│ CRUD for │        │ SSH          │       │  LiteLLM                 │
+│ targets  │        │ kubectl      │       │                          │
+│          │        │ docker       │       │  TOOL_MODEL              │
+│targets   │        │ aws cli      │       │  ├─ Ollama               │
+│ .json    │        │ gcloud       │       │  ├─ OpenAI               │
+│          │        │ az cli       │       │  ├─ Claude               │
+│chat_     │        │ terraform    │       │  ├─ Gemini               │
+│sessions  │        │ local shell  │       │  ├─ Groq                 │
+│ .json    │        └──────┬───────┘       │  └─ Bedrock / Azure / .. │
+└──────────┘               │               │                          │
+                            │               │  ANSWER_MODEL (optional) │
+                            ▼               │  └─ smarter model for    │
+                  ┌─────────────────┐       │     final answers        │
+                  │  Target infra   │       └─────────────────────────┘
+                  │                 │
+                  │ ┌─────────────┐ │
+                  │ │ Linux / Win │ │
+                  │ │ Kubernetes  │ │
+                  │ │ Docker      │ │
+                  │ │ AWS         │ │
+                  │ │ GCP         │ │
+                  │ │ Azure       │ │
+                  │ │ Terraform   │ │
+                  │ └─────────────┘ │
+                  └─────────────────┘
+```
+
+### Data Flow
+
+```
+User types message
+      │
+      ▼
+Is it a general question?
+  ├── YES → /api/sessions/<id>/chat/stream → LiteLLM (no tools) → SSE stream to browser
+  └── NO  → /api/chat/<target>/stream
+                │
+                ▼
+           Agentic loop (max 5 steps)
+                │
+                ├── TOOL_MODEL decides what command to run
+                ├── executors.py runs it on the target
+                ├── Output fed back to model
+                └── ANSWER_MODEL writes final answer → SSE stream to browser
 ```
 
 ## CLI Mode
