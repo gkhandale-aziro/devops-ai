@@ -6,6 +6,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tools.base import run_command, MAX_OUTPUT_CHARS
 
+# Use the same Python interpreter that's running the tests — works on any system
+# Double-quote the path so it works on Windows (spaces in path) and Unix alike
+PYTHON = f'"{sys.executable}"'
+
 
 class TestRunCommand:
     def test_simple_command(self):
@@ -26,7 +30,7 @@ class TestRunCommand:
 
     def test_output_truncated(self):
         # Generate output larger than MAX_OUTPUT_CHARS
-        out = run_command(f"python -c \"print('x' * {MAX_OUTPUT_CHARS + 500})\"")
+        out = run_command(f"{PYTHON} -c \"print('x' * {MAX_OUTPUT_CHARS + 500})\"")
         assert "truncated" in out
         assert len(out) <= MAX_OUTPUT_CHARS + 100  # allow for truncation message
 

@@ -30,7 +30,7 @@ def check_provider():
     ollama_models = {m.split("/")[-1] for m in [TOOL_MODEL, ANSWER_MODEL] if "ollama" in m}
     if ollama_models:
         import subprocess
-        result = subprocess.run("ollama list", shell=True, capture_output=True, text=True)
+        result = subprocess.run("ollama list", shell=True, capture_output=True, text=True, executable=None)
         if result.returncode != 0:
             print("ERROR: Ollama is not running. Start it with: ollama serve")
             exit(1)
