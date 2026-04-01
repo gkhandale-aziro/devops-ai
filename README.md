@@ -196,42 +196,42 @@ devops-ai/
 
 ```
 User message (browser)
-      │
-      ▼
-agent/needs_tools.py:
-  ├─ greeting / general  →  providers/chat_stream() — SSE, no commands
-  │
-  └─ infra question      →  agent/conversation.py agentic loop:
-          │
-          ├─ providers/chat() [TOOL_MODEL] — LLM picks a command
-          ├─ tools/execute_on_target() — ssh / kubectl / docker / aws / gcp / azure / terraform
-          │     _run_many() — parallel execution, max 8 workers
-          ├─ output fed back to LLM, repeat (max 5 steps)
-          └─ providers/chat_stream() [ANSWER_MODEL]
-                → SSE stream tokens word-by-word to browser
-                → browser shows collapsible "Ran X commands" pill
-                → sessions/manager.py saves to chat_sessions.json
-```
-│   ├── filter.py           ← is_destructive() check
-│   └── tests/
-│
-├── sandbox/                ← Execution isolation
-│   ├── safe.py             ← Read-only command whitelist
-│   ├── docker_sandbox.py   ← Container isolation
-│   ├── executor.py         ← SANDBOX env dispatcher
-│   └── tests/
-│
-├── sessions/               ← Chat session persistence
-│   ├── manager.py          ← CRUD, capped at 100 sessions
-│   └── tests/
-│
-├── targets/                ← Connection management
-│   ├── manager.py          ← CRUD, targets.json
-│   └── tests/
-│
-└── prompts/                ← System prompt
-    ├── system_prompt.txt   ← Editable without touching code
-    └── builder.py          ← Injects live pod list
+        │
+        ▼
+agent/needs_tools.py
+        │
+        ├─ greeting / general question
+        │       │
+        │       └──▶  providers/chat_stream()
+        │                     │
+        │                     └──▶  SSE tokens → browser
+        │
+        └─ infra question (pod / disk / cpu / logs ...)
+                │
+                └──▶  agent/conversation.py  (max 5 steps)
+                            │
+                            ├─ Step: providers/chat() [TOOL_MODEL]
+                            │         LLM picks a command to run
+                            │
+                            ├─ Step: tools/execute_on_target()
+                            │         │
+                            │         ├─ ssh.py      → Server (SSH)
+                            │         ├─ kubectl.py  → Kubernetes
+                            │         ├─ docker.py   → Docker
+                            │         ├─ aws.py      → AWS
+                            │         ├─ gcp.py      → GCP
+                            │         ├─ azure.py    → Azure
+                            │         └─ terraform.py→ Terraform
+                            │
+                            │         _run_many() — parallel, max 8 workers
+                            │
+                            ├─ output fed back to LLM → repeat
+                            │
+                            └─ Final: providers/chat_stream() [ANSWER_MODEL]
+                                        │
+                                        └──▶  SSE tokens → browser
+                                              "Ran X commands" pill shown
+                                              sessions/manager.py saves history
 ```
 
 ## CLI Mode
