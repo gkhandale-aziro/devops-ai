@@ -1,52 +1,32 @@
 """
-app.py — Flask backend for Aziro Ops.
-Run locally: python3 app.py
-Open browser: http://localhost:5000
+app.py — Flask entry point for Aziro Ops.
+Routes only — all logic lives in agent/, tools/, sessions/, targets/.
+Run: python3 app.py
 """
-import os
 import re
+import os
 import json
 import socket
 import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify, send_from_directory, Response
-from targets import load_targets, add_target, remove_target, get_target, update_status, has_local_target
-from executors import execute_on_target
-from providers import chat, chat_stream, TOOL_MODEL, ANSWER_MODEL
-from prompts import SYSTEM
 
-app = Flask(__name__, static_folder=".")
+from targets     import load_targets, add_target, remove_target, get_target, update_status, has_local_target
+from tools       import execute_on_target
+from providers   import chat, chat_stream, TOOL_MODEL, ANSWER_MODEL
+from prompts     import SYSTEM
+from agent       import needs_tools, AgentSession
+from agent.conversation import run_agentic_loop, run_direct_stream
+from sessions    import load_sessions, create_session, delete_session, \
+                        get_session_messages, set_session_messages, update_session_title
 
-_sessions  = {}   # target_id → messages
+app      = Flask(__name__, static_folder=".")
+_session = AgentSession()
+
 MAX_HISTORY = 20
-MAX_STEPS   = 5
-
-# Messages that should skip tool calling and just get a direct AI reply
-_GENERAL_PATTERNS = re.compile(
-    r'^(hi|hello|hey|thanks|thank you|ok|okay|got it|yes|no|bye|good morning|good evening|'
-    r'what is|what are|explain|how does|why is|tell me about|can you|should i|'
-    r'what do you think|help me understand|difference between)\b',
-    re.IGNORECASE
-)
-
-def _needs_tools(msg):
-    """Return True if the message likely needs real server data (commands)."""
-    if len(msg.split()) <= 3 and _GENERAL_PATTERNS.match(msg):
-        return False
-    infra_keywords = ['pod','node','deploy','service','disk','memory','cpu','process',
-                      'log','error','crash','restart','status','check','show','list',
-                      'kubectl','docker','helm','port','network','storage','uptime']
-    msg_lower = msg.lower()
-    if any(kw in msg_lower for kw in infra_keywords):
-        return True
-    if _GENERAL_PATTERNS.match(msg):
-        return False
-    return True
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _trim(messages):
     system  = [m for m in messages if m["role"] == "system"]
@@ -54,19 +34,8 @@ def _trim(messages):
     return system + history[-MAX_HISTORY:]
 
 
-def _session(target_id):
-    if target_id not in _sessions:
-        target = get_target(target_id)
-        name   = target["name"] if target else "server"
-        ttype  = target.get("type", "ssh") if target else "ssh"
-        _sessions[target_id] = [
-            {"role": "system", "content": SYSTEM + f"\n\nYou are connected to: {name} (type: {ttype})"}
-        ]
-    return _sessions[target_id]
-
-
 def _run_many(target, cmds):
-    """Run multiple commands on a target in parallel, return dict of results."""
+    """Run multiple commands in parallel on a target."""
     if len(cmds) <= 1:
         return {k: execute_on_target(target, v) for k, v in cmds.items()}
     results = {}
@@ -77,18 +46,14 @@ def _run_many(target, cmds):
     return results
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Static files
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Static ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
     return send_from_directory(".", "ui-dashboard.html")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Targets — CRUD + connection test
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Targets ───────────────────────────────────────────────────────────────────
 
 @app.route("/api/targets", methods=["GET"])
 def api_list():
@@ -97,7 +62,7 @@ def api_list():
 
 @app.route("/api/targets", methods=["POST"])
 def api_add():
-    d = request.json
+    d      = request.json
     target = add_target(d["name"], d["type"], d.get("config", {}))
     return jsonify(target)
 
@@ -105,17 +70,15 @@ def api_add():
 @app.route("/api/targets/<tid>", methods=["DELETE"])
 def api_delete(tid):
     remove_target(tid)
-    _sessions.pop(tid, None)
+    _session.remove(tid)
     return jsonify({"ok": True})
 
 
 @app.route("/api/targets/<tid>/test", methods=["GET"])
 def api_test(tid):
-    """Test SSH connection and return basic info."""
     target = get_target(tid)
     if not target:
         return jsonify({"status": "error", "message": "Target not found"}), 404
-
     out = execute_on_target(target, "echo OK && uname -a && uptime")
     if "SSH ERROR" in out or "ERROR" in out:
         update_status(tid, "offline")
@@ -124,9 +87,7 @@ def api_test(tid):
     return jsonify({"status": "online", "message": out})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tab commands — what to run for each target type + tab combination
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Tab commands ──────────────────────────────────────────────────────────────
 
 TAB_COMMANDS = {
     "ssh": {
@@ -178,17 +139,10 @@ TAB_COMMANDS = {
         "outputs":     {"output": "terraform output 2>/dev/null"},
     },
 }
-
-# "local" type reuses all SSH tab commands (runs directly via subprocess)
 TAB_COMMANDS["local"] = TAB_COMMANDS["ssh"]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Auto-register this server on Linux
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _auto_register_localhost():
-    """If running on Linux/Mac, auto-register this machine as a local target."""
     if platform.system() == "Windows":
         return
     if has_local_target():
@@ -199,21 +153,14 @@ def _auto_register_localhost():
 _auto_register_localhost()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Kubernetes resource detail
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Kubernetes resource detail ────────────────────────────────────────────────
 
-_SAFE_KINDS = {
-    "pod", "node", "deployment", "service", "ingress", "replicaset",
-    "statefulset", "daemonset", "configmap", "namespace", "event",
-    "persistentvolumeclaim", "persistentvolume", "job", "cronjob",
-}
+_SAFE_KINDS   = {"pod","node","deployment","service","ingress","replicaset","statefulset","daemonset","configmap","namespace","event","persistentvolumeclaim","persistentvolume","job","cronjob"}
 _SAFE_NAME_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.\-]*$')
 
 
 @app.route("/api/resource/<tid>", methods=["GET"])
 def api_resource(tid):
-    """Fetch kubectl describe + logs for a specific K8s resource."""
     target = get_target(tid)
     if not target:
         return jsonify({"error": "not found"}), 404
@@ -222,15 +169,11 @@ def api_resource(tid):
     name = request.args.get("name", "").strip()
     ns   = request.args.get("ns",   "").strip()
 
-    if kind not in _SAFE_KINDS:
-        return jsonify({"error": "invalid kind"}), 400
-    if not name or not _SAFE_NAME_RE.match(name):
-        return jsonify({"error": "invalid name"}), 400
-    if ns and not _SAFE_NAME_RE.match(ns):
-        return jsonify({"error": "invalid namespace"}), 400
+    if kind not in _SAFE_KINDS:                    return jsonify({"error": "invalid kind"}), 400
+    if not name or not _SAFE_NAME_RE.match(name):  return jsonify({"error": "invalid name"}), 400
+    if ns and not _SAFE_NAME_RE.match(ns):         return jsonify({"error": "invalid namespace"}), 400
 
     ns_flag = f" -n {ns}" if ns else ""
-
     if kind == "pod":
         cmds = {
             "describe": f"kubectl describe {kind} {name}{ns_flag} 2>&1",
@@ -246,18 +189,15 @@ def api_resource(tid):
 
 @app.route("/api/tab/<tid>/<tab>")
 def api_tab(tid, tab):
-    """Generic tab endpoint — routes to right commands based on target type + tab."""
     target = get_target(tid)
     if not target:
         return jsonify({"error": "not found"}), 404
 
     ttype = target.get("type", "ssh")
     cmds  = TAB_COMMANDS.get(ttype, {}).get(tab)
-
     if not cmds:
         return jsonify({"error": f"No data for {ttype}/{tab}"}), 404
 
-    # Logs tab supports ?unit= and ?lines= filters
     if ttype == "ssh" and tab == "logs":
         unit  = request.args.get("unit", "")
         lines = request.args.get("lines", "100")
@@ -268,103 +208,62 @@ def api_tab(tid, tab):
     return jsonify(_run_many(target, cmds))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# AI Chat
-# ─────────────────────────────────────────────────────────────────────────────
+# ── AI Chat — target-specific (streaming) ────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────────────────────────
-# General AI Chat — no target required, sessions saved like ChatGPT
-# ─────────────────────────────────────────────────────────────────────────────
+@app.route("/api/chat/<tid>/stream", methods=["POST"])
+def api_chat_stream(tid):
+    target = get_target(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
 
-_CHAT_FILE = "chat_sessions.json"
-
-def _load_chat_sessions():
-    if os.path.exists(_CHAT_FILE):
-        with open(_CHAT_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-def _save_chat_sessions(sessions):
-    with open(_CHAT_FILE, "w", encoding="utf-8") as f:
-        json.dump(sessions, f, indent=2)
-
-_general_messages = {}  # session_id → messages list
-
-@app.route("/api/sessions", methods=["GET"])
-def api_sessions_list():
-    return jsonify(_load_chat_sessions())
-
-@app.route("/api/sessions", methods=["POST"])
-def api_sessions_create():
-    import uuid
-    sid = str(uuid.uuid4())[:8]
-    title = request.json.get("title", "New Chat")
-    sessions = _load_chat_sessions()
-    session = {"id": sid, "title": title, "created": __import__("datetime").datetime.now().isoformat()}
-    sessions.insert(0, session)
-    _save_chat_sessions(sessions)
-    _general_messages[sid] = [{"role": "system", "content": "You are Aziro Ops — a helpful AI assistant for DevOps teams. Answer questions clearly and concisely. Use markdown formatting. You can discuss any topic: DevOps, Kubernetes, Docker, cloud, coding, general knowledge, etc."}]
-    return jsonify(session)
-
-@app.route("/api/sessions/<sid>", methods=["DELETE"])
-def api_sessions_delete(sid):
-    sessions = [s for s in _load_chat_sessions() if s["id"] != sid]
-    _save_chat_sessions(sessions)
-    _general_messages.pop(sid, None)
-    return jsonify({"ok": True})
-
-@app.route("/api/sessions/<sid>/messages", methods=["GET"])
-def api_sessions_messages(sid):
-    msgs = _general_messages.get(sid, [])
-    # Return only user/assistant messages (not system)
-    return jsonify([m for m in msgs if m["role"] != "system"])
-
-@app.route("/api/sessions/<sid>/chat/stream", methods=["POST"])
-def api_sessions_chat_stream(sid):
-    """General AI chat — no tools, just conversation, streamed."""
     user_msg = request.json.get("message", "").strip()
     if not user_msg:
         return jsonify({"error": "empty message"}), 400
 
-    if sid not in _general_messages:
-        _general_messages[sid] = [{"role": "system", "content": "You are Aziro Ops — a helpful AI assistant for DevOps teams. Answer questions clearly and concisely. Use markdown formatting. You can discuss any topic: DevOps, Kubernetes, Docker, cloud, coding, general knowledge, etc."}]
-
-    msgs = _general_messages[sid]
-    msgs.append({"role": "user", "content": user_msg})
-    msgs[:] = _trim(msgs)
-
-    # Auto-update session title from first message
-    sessions = _load_chat_sessions()
-    for s in sessions:
-        if s["id"] == sid and s["title"] == "New Chat":
-            s["title"] = user_msg[:50] + ("..." if len(user_msg) > 50 else "")
-            _save_chat_sessions(sessions)
-            break
+    messages = _session.get(tid)
+    messages.append({"role": "user", "content": user_msg})
+    messages = _trim(messages)
+    _session.set(tid, messages)
 
     def generate():
-        try:
+        if not needs_tools(user_msg):
             full = ""
-            for chunk in chat_stream(msgs, use_tools=False):
+            for chunk in chat_stream(messages, use_tools=False):
                 full += chunk
                 yield f"data: {json.dumps({'t': chunk})}\n\n"
-            msgs.append({"role": "assistant", "content": full})
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        yield "data: [DONE]\n\n"
+            messages.append({"role": "assistant", "content": full})
+            _session.set(tid, messages)
+            yield "data: [DONE]\n\n"
+        else:
+            yield from run_agentic_loop(messages, target, _session, tid)
 
-    return Response(generate(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── AI Analysis ───────────────────────────────────────────────────────────────
+
+_ANALYSIS_SYSTEM = "You are a Kubernetes and DevOps expert. Analyze the provided data and give clear, actionable recommendations. Use markdown formatting."
+
+
+@app.route("/api/analyze/stream", methods=["POST"])
+def api_analyze_stream():
+    prompt = request.json.get("prompt", "").strip()
+    if not prompt:
+        return jsonify({"error": "empty prompt"}), 400
+    messages = [{"role": "system", "content": _ANALYSIS_SYSTEM}, {"role": "user", "content": prompt}]
+
+    return Response(run_direct_stream(messages), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
 
 
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
-    """Direct AI analysis — no tool loop, just answer from provided data."""
     prompt = request.json.get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
-    messages = [
-        {"role": "system", "content": "You are a Kubernetes and DevOps expert. Analyze the provided data and give clear, actionable recommendations. Use markdown formatting."},
-        {"role": "user", "content": prompt},
-    ]
+    messages = [{"role": "system", "content": _ANALYSIS_SYSTEM}, {"role": "user", "content": prompt}]
     try:
         reply, _, _ = chat(messages, use_tools=False)
         return jsonify({"reply": reply})
@@ -372,186 +271,57 @@ def api_analyze():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/analyze/stream", methods=["POST"])
-def api_analyze_stream():
-    """Stream AI analysis via SSE — tokens appear word-by-word."""
-    prompt = request.json.get("prompt", "").strip()
-    if not prompt:
-        return jsonify({"error": "empty prompt"}), 400
-    messages = [
-        {"role": "system", "content": "You are a Kubernetes and DevOps expert. Analyze the provided data and give clear, actionable recommendations. Use markdown formatting."},
-        {"role": "user", "content": prompt},
-    ]
-    def generate():
-        try:
-            for chunk in chat_stream(messages, use_tools=False):
-                yield f"data: {json.dumps({'t': chunk})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        yield "data: [DONE]\n\n"
-    return Response(generate(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+# ── General Chat Sessions ─────────────────────────────────────────────────────
+
+@app.route("/api/sessions", methods=["GET"])
+def api_sessions_list():
+    return jsonify(load_sessions())
 
 
-@app.route("/api/chat/<tid>/stream", methods=["POST"])
-def api_chat_stream(tid):
-    """Streaming chat — sends step events during tool loop, then streams final answer."""
-    target = get_target(tid)
-    if not target:
-        return jsonify({"error": "not found"}), 404
+@app.route("/api/sessions", methods=["POST"])
+def api_sessions_create():
+    title   = request.json.get("title", "New Chat")
+    session = create_session(title)
+    return jsonify(session)
 
+
+@app.route("/api/sessions/<sid>", methods=["DELETE"])
+def api_sessions_delete(sid):
+    delete_session(sid)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sessions/<sid>/messages", methods=["GET"])
+def api_sessions_messages(sid):
+    msgs = get_session_messages(sid)
+    return jsonify([m for m in msgs if m["role"] != "system"])
+
+
+@app.route("/api/sessions/<sid>/chat/stream", methods=["POST"])
+def api_sessions_chat_stream(sid):
     user_msg = request.json.get("message", "").strip()
     if not user_msg:
         return jsonify({"error": "empty message"}), 400
 
-    messages = _session(tid)
-    messages.append({"role": "user", "content": user_msg})
-    messages = _trim(messages)
-    _sessions[tid] = messages
-
-    use_tools = _needs_tools(user_msg)
+    msgs = get_session_messages(sid)
+    msgs.append({"role": "user", "content": user_msg})
+    msgs[:] = _trim(msgs)
+    update_session_title(sid, user_msg)
 
     def generate():
-        commands_run = 0
-        ran_commands = set()
-
-        if not use_tools:
-            # Simple message — stream direct answer, no tool loop
-            try:
-                full = ""
-                for chunk in chat_stream(messages, use_tools=False):
-                    full += chunk
-                    yield f"data: {json.dumps({'t': chunk})}\n\n"
-                messages.append({"role": "assistant", "content": full})
-                _sessions[tid] = messages
-            except Exception as e:
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
-            yield "data: [DONE]\n\n"
-            return
-
-        for step in range(MAX_STEPS):
-            try:
-                reply, command, tool_call_id = chat(messages, use_tools=True)
-            except Exception as e:
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
-
-            if command:
-                if re.search(r'<[^>]+>', command):
-                    messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                    messages.append({"role": "tool", "content": "[Placeholder in command — replace <...> with real value]", "tool_call_id": tool_call_id})
-                    continue
-
-                if command in ran_commands:
-                    messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                    messages.append({"role": "tool", "content": "[Already ran. Use output already provided.]", "tool_call_id": tool_call_id})
-                    continue
-
-                yield f"data: {json.dumps({'cmd': command})}\n\n"
-                output = execute_on_target(target, command)
-                commands_run += 1
-                ran_commands.add(command)
-
-                messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                messages.append({"role": "tool", "content": output, "tool_call_id": tool_call_id})
-                messages[:] = _trim(messages)
-                _sessions[tid] = messages
-
-            else:
-                # Stream the final answer
-                if ANSWER_MODEL != TOOL_MODEL and commands_run > 0:
-                    try:
-                        for chunk in chat_stream(messages, use_tools=False):
-                            yield f"data: {json.dumps({'t': chunk})}\n\n"
-                    except Exception:
-                        yield f"data: {json.dumps({'t': reply})}\n\n"
-                else:
-                    yield f"data: {json.dumps({'t': reply})}\n\n"
-                messages.append({"role": "assistant", "content": reply})
-                _sessions[tid] = messages
-                yield "data: [DONE]\n\n"
-                return
-
-        # MAX_STEPS — stream summary
-        try:
-            full = ""
-            for chunk in chat_stream(messages, use_tools=False):
-                full += chunk
-                yield f"data: {json.dumps({'t': chunk})}\n\n"
-            messages.append({"role": "assistant", "content": full})
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        _sessions[tid] = messages
+        full = ""
+        for chunk in chat_stream(msgs, use_tools=False):
+            full += chunk
+            yield f"data: {json.dumps({'t': chunk})}\n\n"
+        msgs.append({"role": "assistant", "content": full})
+        set_session_messages(sid, msgs)
         yield "data: [DONE]\n\n"
 
-    return Response(generate(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@app.route("/api/chat/<tid>", methods=["POST"])
-def api_chat(tid):
-    target = get_target(tid)
-    if not target:
-        return jsonify({"error": "not found"}), 404
-
-    user_msg = request.json.get("message", "").strip()
-    if not user_msg:
-        return jsonify({"error": "empty message"}), 400
-
-    messages = _session(tid)
-    messages.append({"role": "user", "content": user_msg})
-    messages = _trim(messages)
-    _sessions[tid] = messages
-
-    steps_log    = []
-    commands_run = 0
-    ran_commands = set()
-
-    for step in range(MAX_STEPS):
-        try:
-            reply, command, tool_call_id = chat(messages, use_tools=True)
-        except Exception as e:
-            return jsonify({"error": str(e), "steps": steps_log}), 500
-
-        if command:
-            if re.search(r'<[^>]+>', command):
-                messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                messages.append({"role": "tool", "content": f"[Placeholder in command — replace <...> with real value]", "tool_call_id": tool_call_id})
-                continue
-
-            if command in ran_commands:
-                messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                messages.append({"role": "tool", "content": "[Already ran. Use output already provided.]", "tool_call_id": tool_call_id})
-                continue
-
-            output = execute_on_target(target, command)
-            commands_run += 1
-            ran_commands.add(command)
-            steps_log.append({"command": command, "output": output})
-
-            messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-            messages.append({"role": "tool", "content": output, "tool_call_id": tool_call_id})
-            messages = _trim(messages)
-            _sessions[tid] = messages
-
-        else:
-            if ANSWER_MODEL != TOOL_MODEL and commands_run > 0:
-                try:
-                    reply, _, _ = chat(messages, use_tools=False)
-                except Exception:
-                    pass
-            messages.append({"role": "assistant", "content": reply})
-            _sessions[tid] = messages
-            return jsonify({"reply": reply, "steps": steps_log})
-
-    # MAX_STEPS hit
-    try:
-        summary, _, _ = chat(messages, use_tools=False)
-    except Exception as e:
-        summary = f"[Summary failed: {e}]"
-    messages.append({"role": "assistant", "content": summary})
-    _sessions[tid] = messages
-    return jsonify({"reply": summary, "steps": steps_log})
-
+# ── Run ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     print(f"Aziro Ops")

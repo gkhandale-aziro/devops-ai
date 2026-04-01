@@ -1,12 +1,12 @@
 """
-targets.py — manage saved targets (servers, clusters, cloud accounts).
+targets/manager.py — manage saved targets (servers, clusters, cloud accounts).
 Persisted to targets.json so they survive restarts.
 """
 import json
 import uuid
 import os
 
-TARGETS_FILE = os.path.join(os.path.dirname(__file__), "targets.json")
+TARGETS_FILE = os.path.join(os.path.dirname(__file__), "..", "targets.json")
 
 
 def load_targets():
@@ -26,9 +26,9 @@ def add_target(name, target_type, config):
     target = {
         "id":     str(uuid.uuid4()),
         "name":   name,
-        "type":   target_type,   # ssh | kubernetes | docker | terraform | aws | gcp | azure
+        "type":   target_type,
         "config": config,
-        "status": "unknown"
+        "status": "unknown",
     }
     targets.append(target)
     save_targets(targets)
@@ -36,8 +36,7 @@ def add_target(name, target_type, config):
 
 
 def remove_target(target_id):
-    targets = load_targets()
-    targets = [t for t in targets if t["id"] != target_id]
+    targets = [t for t in load_targets() if t["id"] != target_id]
     save_targets(targets)
 
 
@@ -49,7 +48,6 @@ def get_target(target_id):
 
 
 def update_status(target_id, status):
-    """Update online/offline status of a target."""
     targets = load_targets()
     for t in targets:
         if t["id"] == target_id:
@@ -58,5 +56,4 @@ def update_status(target_id, status):
 
 
 def has_local_target():
-    """Return True if a 'local' type target already exists."""
     return any(t.get("type") == "local" for t in load_targets())

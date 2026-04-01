@@ -1,44 +1,33 @@
 """
-main.py — entry point for Aziro Ops CLI
-Uses native tool calling — same approach as kubectl-ai.
-Run with: python3 main.py
+main.py — CLI entry point for Aziro Ops.
+Run: python3 main.py
 """
 import json
 import re
 import datetime
-from sandbox import execute, SANDBOX_MODE
-from tools import is_destructive
-from prompts import build_system_prompt
+from sandbox  import execute, SANDBOX_MODE
+from tools    import is_destructive
+from prompts  import build_system_prompt
 from providers import chat, TOOL_MODEL, ANSWER_MODEL
 
-# Session logging
-LOG_FILE = f"session_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+LOG_FILE    = f"session_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+MAX_HISTORY = 20
+MAX_STEPS   = 5
+
 
 def log(text):
-    with open(LOG_FILE, 'a') as f:
+    with open(LOG_FILE, "a") as f:
         f.write(text + "\n")
-
-# Keep last 20 messages to avoid context limit
-MAX_HISTORY = 20
-# Max tool call steps per user question before forcing a final answer
-MAX_STEPS = 5
 
 
 def trim_messages(messages):
-    system = [m for m in messages if m["role"] == "system"]
+    system  = [m for m in messages if m["role"] == "system"]
     history = [m for m in messages if m["role"] != "system"]
-    if len(history) > MAX_HISTORY:
-        history = history[-MAX_HISTORY:]
-    return system + history
+    return system + history[-MAX_HISTORY:]
 
 
 def check_provider():
-    """Verify all configured Ollama models are available before starting."""
-    ollama_models = set()
-    for model in [TOOL_MODEL, ANSWER_MODEL]:
-        if "ollama" in model:
-            ollama_models.add(model.split("/")[-1])
-
+    ollama_models = {m.split("/")[-1] for m in [TOOL_MODEL, ANSWER_MODEL] if "ollama" in m}
     if ollama_models:
         import subprocess
         result = subprocess.run("ollama list", shell=True, capture_output=True, text=True)
@@ -55,7 +44,6 @@ check_provider()
 
 messages = [{"role": "system", "content": build_system_prompt()}]
 
-# Startup banner
 if TOOL_MODEL == ANSWER_MODEL:
     print(f"Aziro Ops (model: {TOOL_MODEL}, sandbox: {SANDBOX_MODE})")
 else:
@@ -78,8 +66,8 @@ while True:
     messages = trim_messages(messages)
 
     gave_final_answer = False
-    commands_run = 0       # track how many commands were actually executed
-    ran_commands = set()   # track which commands ran — block duplicates
+    commands_run      = 0
+    ran_commands      = set()
 
     for step in range(MAX_STEPS):
         try:
@@ -90,24 +78,21 @@ while True:
             break
 
         if command:
-            # Block duplicate commands — model already has the output, running again wastes steps
             if command in ran_commands:
                 messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                messages.append({"role": "tool", "content": "[Already ran this command. Use the output already provided above.]", "tool_call_id": tool_call_id})
+                messages.append({"role": "tool", "content": "[Already ran this command.]", "tool_call_id": tool_call_id})
                 messages = trim_messages(messages)
                 continue
 
-            # Reject commands that still have placeholders like <pod-name> or <url>
             if re.search(r'<[^>]+>', command):
                 messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                messages.append({"role": "tool", "content": f"[ERROR] Command contains a placeholder: {command}\nReplace <...> with the actual value before running.", "tool_call_id": tool_call_id})
+                messages.append({"role": "tool", "content": f"[ERROR] Command contains a placeholder: {command}", "tool_call_id": tool_call_id})
                 messages = trim_messages(messages)
                 continue
 
-            # AI made a tool call — run the command
             if is_destructive(command):
-                confirm = input(f"\n[WARNING: This will make changes]\n[Command: {command}]\nAre you sure? (y/n): ").strip().lower()
-                if confirm != 'y':
+                confirm = input(f"\n[WARNING] {command}\nAre you sure? (y/n): ").strip().lower()
+                if confirm != "y":
                     print("[Skipped]\n")
                     log(f"[Skipped] {command}")
                     messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
@@ -123,22 +108,17 @@ while True:
             print(f"[Output]\n{output}")
             log(f"[Output]\n{output}")
 
-            # Feed result back — same as kubectl-ai's FunctionCallResult
             messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
             messages.append({"role": "tool", "content": output, "tool_call_id": tool_call_id})
             messages = trim_messages(messages)
 
         else:
-            # TOOL_MODEL gave a final answer.
-            # Only switch to ANSWER_MODEL if commands were actually run — it needs real data to summarize.
-            # If no commands ran, TOOL_MODEL answered from knowledge — use that directly.
             if ANSWER_MODEL != TOOL_MODEL and commands_run > 0:
                 print(f"\n[Switching to {ANSWER_MODEL} for final answer...]")
                 try:
                     reply, _, _ = chat(messages, use_tools=False)
                 except Exception as e:
                     log(f"[ERROR] Answer model failed: {e}")
-                    # fall back to the reply from TOOL_MODEL
 
             messages.append({"role": "assistant", "content": reply})
             print(f"\nAI: {reply}\n")
@@ -147,14 +127,11 @@ while True:
             break
 
     if not gave_final_answer:
-        # MAX_STEPS reached — ask ANSWER_MODEL to summarize whatever data was collected
-        print(f"\n[Collected {MAX_STEPS} rounds of data — asking {ANSWER_MODEL} to summarize...]\n")
-        log(f"[MAX_STEPS reached — requesting summary]")
+        print(f"\n[Collected {MAX_STEPS} rounds — summarizing...]\n")
         try:
             summary, _, _ = chat(messages, use_tools=False)
         except Exception as e:
             summary = f"[Could not generate summary: {e}]"
-            log(f"[ERROR] Summary failed: {e}")
         messages.append({"role": "assistant", "content": summary})
         print(f"AI: {summary}\n")
         log(f"AI: {summary}")
