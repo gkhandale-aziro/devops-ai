@@ -73,8 +73,6 @@ Open [http://localhost:5000](http://localhost:5000) and add your first server.
 
 ## Architecture
 
-![Aziro Ops Architecture](architecture.png)
-
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                         Browser  (ui-dashboard.html)                     │
