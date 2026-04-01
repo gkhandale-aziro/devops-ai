@@ -73,74 +73,123 @@ Open [http://localhost:5000](http://localhost:5000) and add your first server.
 
 ## Architecture
 
+### Package Structure
+
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         Browser  (ui-dashboard.html)                     │
-│                                                                           │
-│  ┌──────────────────┐   ┌───────────────────┐   ┌─────────────────────┐ │
-│  │   Dashboard       │   │   AI Chat          │   │   Resource Modal    │ │
-│  │  · Overview       │   │  · Session list    │   │  · Describe         │ │
-│  │  · Kubernetes     │   │  · Saved history   │   │  · Logs             │ │
-│  │  · Logs           │   │  · Streaming       │   │  · AI Analysis      │ │
-│  │  · Network        │   │    responses       │   │                     │ │
-│  │  · Storage        │   └───────────────────┘   └─────────────────────┘ │
-│  └──────────────────┘                                                     │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                      │  HTTP / SSE (fetch + ReadableStream)
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                        app.py  (Flask routes only)                        │
-│                                                                           │
-│   /api/targets    /api/tab    /api/resource    /api/sessions              │
-│   /api/chat/<tid>/stream      /api/analyze/stream                        │
-│   /api/sessions/<id>/chat/stream                                         │
-└───────┬────────────────┬──────────────────┬──────────────────────────────┘
-        │                │                  │
-        ▼                ▼                  ▼
-┌─────────────┐  ┌───────────────┐  ┌──────────────────────────────────────┐
-│  targets/   │  │   sessions/   │  │             agent/                   │
-│             │  │               │  │                                      │
-│  manager.py │  │  manager.py   │  │  needs_tools.py  — greeting vs infra │
-│  CRUD for   │  │  ChatGPT-style│  │  manager.py      — per-target state  │
-│  targets    │  │  sessions     │  │  conversation.py — agentic loop      │
-│  .json      │  │  capped @100  │  │                                      │
-└─────────────┘  └───────────────┘  │  1. needs_tools() decides path       │
-                                     │  2. greeting → direct stream         │
-                                     │  3. infra → tool loop (max 5 steps)  │
-                                     └──────────────┬───────────────────────┘
+devops-ai/
+├── app.py                  ← Flask routes only (thin entry point)
+├── main.py                 ← CLI entry point
+├── ui-dashboard.html       ← Full frontend (single-page app)
+│
+├── agent/                  ← Agentic loop (like kubectl-ai's pkg/agent)
+│   ├── conversation.py     ← SSE streaming + tool loop (max 5 steps)
+│   ├── manager.py          ← Per-target message history
+│   ├── needs_tools.py      ← Greeting vs infra heuristic
+│   └── tests/
+│
+├── providers/              ← LiteLLM wrapper (like kubectl-ai's gollm/)
+│   ├── client.py           ← chat(), chat_stream(), TOOL_MODEL / ANSWER_MODEL
+│   └── tests/
+│
+├── tools/                  ← One file per target type (like kubectl-ai's pkg/tools)
+│   ├── executor.py         ← Routes command to correct tool by target type
+│   ├── base.py             ← run_command(), 30s timeout, 3000 char truncation
+│   ├── filter.py           ← is_destructive() — blocks dangerous commands
+│   ├── ssh.py              ← paramiko, password + key auth, 1 retry
+│   ├── kubectl.py          ← kubectl + context injection
+│   ├── docker.py           ← docker + DOCKER_HOST
+│   ├── aws.py              ← aws cli + profile/region
+│   ├── gcp.py              ← gcloud + project
+│   ├── azure.py            ← az cli + subscription
+│   ├── terraform.py        ← terraform + workspace
+│   ├── local.py            ← direct subprocess (no SSH)
+│   └── tests/
+│
+├── sandbox/                ← Execution isolation (like kubectl-ai's pkg/sandbox)
+│   ├── safe.py             ← Read-only command whitelist
+│   ├── docker_sandbox.py   ← Container isolation
+│   ├── executor.py         ← Dispatcher — SANDBOX=safe|docker|local
+│   └── tests/
+│
+├── sessions/               ← Chat session persistence (like kubectl-ai's pkg/sessions)
+│   ├── manager.py          ← CRUD, capped at 100 sessions, chat_sessions.json
+│   └── tests/
+│
+├── targets/                ← Connection management
+│   ├── manager.py          ← CRUD, targets.json
+│   └── tests/
+│
+└── prompts/                ← System prompt
+    ├── system_prompt.txt   ← Editable without touching code
+    └── builder.py          ← Injects live pod list at startup
+```
+
+### Component Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Browser  (ui-dashboard.html)                      │
+│                                                                      │
+│  Dashboard · K8s View · Docker · Cloud · AI Chat · Resource Modal   │
+└──────────────────────────────┬──────────────────────────────────────┘
+                                │  HTTP / SSE (fetch + ReadableStream)
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   app.py  (Flask routes only)                        │
+│  /api/targets  /api/tab  /api/resource  /api/chat/<tid>/stream      │
+│  /api/analyze/stream  /api/sessions  /api/sessions/<id>/chat/stream │
+└────────┬──────────────┬──────────────┬──────────────────────────────┘
+         │              │              │
+         ▼              ▼              ▼
+  ┌────────────┐  ┌──────────────┐  ┌─────────────────────────────────┐
+  │ targets/   │  │  sessions/   │  │           agent/                │
+  │ manager.py │  │  manager.py  │  │                                 │
+  │            │  │              │  │  needs_tools.py                 │
+  │ targets    │  │  saved chat  │  │   ├─ greeting → direct stream   │
+  │ .json      │  │  sessions    │  │   └─ infra   → tool loop        │
+  └────────────┘  │  capped @100 │  │                                 │
+                  │  .json       │  │  conversation.py (max 5 steps)  │
+                  └──────────────┘  │   ├─ LLM picks command          │
+                                     │   ├─ execute on target          │
+                                     │   ├─ feed result back           │
+                                     │   └─ stream final answer        │
+                                     │                                 │
+                                     │  manager.py                     │
+                                     │   └─ per-target msg history     │
+                                     └──────────────┬──────────────────┘
                                                     │
-                              ┌─────────────────────┼──────────────────────┐
-                              ▼                     ▼                      ▼
-                     ┌─────────────────┐  ┌──────────────┐   ┌────────────────┐
-                     │   providers/    │  │    tools/    │   │   sandbox/     │
-                     │                 │  │              │   │                │
-                     │  client.py      │  │  executor.py │   │  safe.py       │
-                     │  chat()         │  │  ssh.py      │   │  (whitelist)   │
-                     │  chat_stream()  │  │  kubectl.py  │   │  docker_sand-  │
-                     │                 │  │  docker.py   │   │  box.py        │
-                     │  TOOL_MODEL     │  │  aws.py      │   │  executor.py   │
-                     │  ANSWER_MODEL   │  │  gcp.py      │   │  (SANDBOX env) │
-                     │                 │  │  azure.py    │   └────────────────┘
-                     │  100+ via       │  │  terraform.py│
-                     │  LiteLLM        │  │  local.py    │   ┌────────────────┐
-                     │                 │  │  base.py     │   │   prompts/     │
-                     │  Ollama         │  │  filter.py   │   │                │
-                     │  OpenAI         │  │              │   │  system_prompt │
-                     │  Claude         │  │  _run_many() │   │    .txt        │
-                     │  Gemini         │  │  parallel    │   │  builder.py    │
-                     │  Groq           │  │  max 8 tasks │   └────────────────┘
-                     │  Bedrock + more │  └──────┬───────┘
-                     └─────────────────┘         │
-                                                  ▼
-                                       ┌─────────────────────┐
-                                       │    Your Infra        │
-                                       │                      │
-                                       │  Server (SSH)        │
-                                       │  Kubernetes          │
-                                       │  Docker              │
-                                       │  AWS / GCP / Azure   │
-                                       │  Terraform           │
-                                       └─────────────────────┘
+                             ┌──────────────────────┼──────────────────┐
+                             ▼                      ▼                  ▼
+                    ┌─────────────────┐  ┌───────────────┐  ┌──────────────┐
+                    │   providers/    │  │    tools/     │  │  sandbox/    │
+                    │   client.py     │  │               │  │              │
+                    │                 │  │ executor.py   │  │ safe.py      │
+                    │  chat()         │  │  ├─ ssh.py    │  │ (whitelist)  │
+                    │  chat_stream()  │  │  ├─ kubectl   │  │              │
+                    │                 │  │  ├─ docker    │  │ docker_sand  │
+                    │  TOOL_MODEL     │  │  ├─ aws       │  │ box.py       │
+                    │  ANSWER_MODEL   │  │  ├─ gcp       │  │              │
+                    │                 │  │  ├─ azure     │  │ executor.py  │
+                    │  LiteLLM        │  │  ├─ terraform │  │ SANDBOX env  │
+                    │  100+ providers │  │  └─ local     │  └──────────────┘
+                    │                 │  │               │
+                    │  Ollama         │  │ base.py       │  ┌──────────────┐
+                    │  OpenAI         │  │ filter.py     │  │  prompts/    │
+                    │  Claude         │  │               │  │              │
+                    │  Gemini         │  │ _run_many()   │  │ system_      │
+                    │  Groq           │  │ parallel      │  │ prompt.txt   │
+                    │  Bedrock + more │  │ max 8 workers │  │ builder.py   │
+                    └─────────────────┘  └──────┬────────┘  └──────────────┘
+                                                 │
+                                                 ▼
+                                    ┌────────────────────────┐
+                                    │      Your Infra         │
+                                    │  Server (SSH)           │
+                                    │  Kubernetes             │
+                                    │  Docker                 │
+                                    │  AWS / GCP / Azure      │
+                                    │  Terraform              │
+                                    └────────────────────────┘
 ```
 
 ### Data Flow
@@ -149,48 +198,20 @@ Open [http://localhost:5000](http://localhost:5000) and add your first server.
 User message (browser)
       │
       ▼
-agent/needs_tools.py decides:
-  ├─ greeting / general question
-  │      └─→ providers/chat_stream() — direct SSE stream, no commands
+agent/needs_tools.py:
+  ├─ greeting / general  →  providers/chat_stream() — SSE, no commands
   │
-  └─ infra question (pod, disk, deploy, status, logs ...)
-         └─→ agent/conversation.py agentic loop (max 5 steps):
-                  │
-                  ├─ providers/chat() with TOOL_MODEL
-                  │       LLM picks a command to run
-                  ├─ tools/execute_on_target()
-                  │       routes to ssh / kubectl / docker / aws / gcp / azure / terraform
-                  │       _run_many() runs tab commands in parallel (max 8 workers)
-                  ├─ output fed back to LLM
-                  └─ providers/chat_stream() with ANSWER_MODEL
-                          streams final answer word-by-word via SSE
-                          → browser renders with collapsible "Ran X commands" pill
-                          → sessions/manager.py saves to chat_sessions.json
+  └─ infra question      →  agent/conversation.py agentic loop:
+          │
+          ├─ providers/chat() [TOOL_MODEL] — LLM picks a command
+          ├─ tools/execute_on_target() — ssh / kubectl / docker / aws / gcp / azure / terraform
+          │     _run_many() — parallel execution, max 8 workers
+          ├─ output fed back to LLM, repeat (max 5 steps)
+          └─ providers/chat_stream() [ANSWER_MODEL]
+                → SSE stream tokens word-by-word to browser
+                → browser shows collapsible "Ran X commands" pill
+                → sessions/manager.py saves to chat_sessions.json
 ```
-
-### Package Structure
-
-```
-devops-ai/
-├── app.py                  ← Flask routes only
-├── main.py                 ← CLI entry point
-├── ui-dashboard.html       ← Full frontend (single-page app)
-│
-├── agent/                  ← Agentic loop
-│   ├── conversation.py     ← SSE streaming + tool loop
-│   ├── manager.py          ← Per-target message history
-│   ├── needs_tools.py      ← Greeting vs infra heuristic
-│   └── tests/
-│
-├── providers/              ← LiteLLM wrapper
-│   ├── client.py           ← chat(), chat_stream(), two-model setup
-│   └── tests/
-│
-├── tools/                  ← One file per target type
-│   ├── executor.py         ← Routes by target type
-│   ├── ssh.py / kubectl.py / docker.py
-│   ├── aws.py / gcp.py / azure.py / terraform.py / local.py
-│   ├── base.py             ← run_command(), timeout, truncation
 │   ├── filter.py           ← is_destructive() check
 │   └── tests/
 │
