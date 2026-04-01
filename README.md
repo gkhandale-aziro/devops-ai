@@ -81,17 +81,17 @@ devops-ai/
 ├── main.py                 ← CLI entry point
 ├── ui-dashboard.html       ← Full frontend (single-page app)
 │
-├── agent/                  ← Agentic loop (like kubectl-ai's pkg/agent)
+├── agent/                  ← Agentic loop
 │   ├── conversation.py     ← SSE streaming + tool loop (max 5 steps)
 │   ├── manager.py          ← Per-target message history
 │   ├── needs_tools.py      ← Greeting vs infra heuristic
 │   └── tests/
 │
-├── providers/              ← LiteLLM wrapper (like kubectl-ai's gollm/)
+├── providers/              ← LiteLLM wrapper
 │   ├── client.py           ← chat(), chat_stream(), TOOL_MODEL / ANSWER_MODEL
 │   └── tests/
 │
-├── tools/                  ← One file per target type (like kubectl-ai's pkg/tools)
+├── tools/                  ← One file per target type
 │   ├── executor.py         ← Routes command to correct tool by target type
 │   ├── base.py             ← run_command(), 30s timeout, 3000 char truncation
 │   ├── filter.py           ← is_destructive() — blocks dangerous commands
@@ -105,13 +105,13 @@ devops-ai/
 │   ├── local.py            ← direct subprocess (no SSH)
 │   └── tests/
 │
-├── sandbox/                ← Execution isolation (like kubectl-ai's pkg/sandbox)
+├── sandbox/                ← Execution isolation
 │   ├── safe.py             ← Read-only command whitelist
 │   ├── docker_sandbox.py   ← Container isolation
 │   ├── executor.py         ← Dispatcher — SANDBOX=safe|docker|local
 │   └── tests/
 │
-├── sessions/               ← Chat session persistence (like kubectl-ai's pkg/sessions)
+├── sessions/               ← Chat session persistence
 │   ├── manager.py          ← CRUD, capped at 100 sessions, chat_sessions.json
 │   └── tests/
 │
