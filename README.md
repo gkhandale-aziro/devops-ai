@@ -88,60 +88,131 @@ Open [http://localhost:5000](http://localhost:5000) and add your first server.
 │  │  · Storage        │   └───────────────────┘   └─────────────────────┘ │
 │  └──────────────────┘                                                     │
 └────────────────────────────────────┬─────────────────────────────────────┘
-                                      │  HTTP / SSE (streaming)
+                                      │  HTTP / SSE (fetch + ReadableStream)
                                       ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                           Flask API  (app.py)                             │
+│                        app.py  (Flask routes only)                        │
 │                                                                           │
 │   /api/targets    /api/tab    /api/resource    /api/sessions              │
-│   /api/chat       /api/analyze                /api/sessions/<id>/chat    │
-└──────────┬───────────────────────┬────────────────────────┬──────────────┘
-           │                       │                        │
-           ▼                       ▼                        ▼
-┌────────────────┐      ┌─────────────────────┐   ┌─────────────────────┐
-│  targets.py    │      │    executors.py      │   │    providers.py     │
-│                │      │                      │   │                     │
-│  Connection    │      │  SSH  (paramiko)     │   │  LiteLLM            │
-│  CRUD          │      │  kubectl             │   │                     │
-│                │      │  docker              │   │  TOOL_MODEL         │
-│  targets.json  │      │  aws cli             │   │  ├─ Ollama          │
-│  chat_sessions │      │  gcloud              │   │  ├─ OpenAI          │
-│    .json       │      │  az cli              │   │  ├─ Claude          │
-│                │      │  terraform           │   │  ├─ Gemini          │
-│                │      │  local shell         │   │  ├─ Groq            │
-└────────────────┘      └──────────┬──────────┘   │  └─ Bedrock / more  │
-                                    │               │                     │
-                                    ▼               │  ANSWER_MODEL       │
-                         ┌──────────────────┐       │  (optional)         │
-                         │  Your Infra      │       └─────────────────────┘
-                         │                  │
-                         │  · Linux / Win   │
-                         │  · Kubernetes    │
-                         │  · Docker        │
-                         │  · AWS / GCP     │
-                         │  · Azure         │
-                         │  · Terraform     │
-                         └──────────────────┘
+│   /api/chat/<tid>/stream      /api/analyze/stream                        │
+│   /api/sessions/<id>/chat/stream                                         │
+└───────┬────────────────┬──────────────────┬──────────────────────────────┘
+        │                │                  │
+        ▼                ▼                  ▼
+┌─────────────┐  ┌───────────────┐  ┌──────────────────────────────────────┐
+│  targets/   │  │   sessions/   │  │             agent/                   │
+│             │  │               │  │                                      │
+│  manager.py │  │  manager.py   │  │  needs_tools.py  — greeting vs infra │
+│  CRUD for   │  │  ChatGPT-style│  │  manager.py      — per-target state  │
+│  targets    │  │  sessions     │  │  conversation.py — agentic loop      │
+│  .json      │  │  capped @100  │  │                                      │
+└─────────────┘  └───────────────┘  │  1. needs_tools() decides path       │
+                                     │  2. greeting → direct stream         │
+                                     │  3. infra → tool loop (max 5 steps)  │
+                                     └──────────────┬───────────────────────┘
+                                                    │
+                              ┌─────────────────────┼──────────────────────┐
+                              ▼                     ▼                      ▼
+                     ┌─────────────────┐  ┌──────────────┐   ┌────────────────┐
+                     │   providers/    │  │    tools/    │   │   sandbox/     │
+                     │                 │  │              │   │                │
+                     │  client.py      │  │  executor.py │   │  safe.py       │
+                     │  chat()         │  │  ssh.py      │   │  (whitelist)   │
+                     │  chat_stream()  │  │  kubectl.py  │   │  docker_sand-  │
+                     │                 │  │  docker.py   │   │  box.py        │
+                     │  TOOL_MODEL     │  │  aws.py      │   │  executor.py   │
+                     │  ANSWER_MODEL   │  │  gcp.py      │   │  (SANDBOX env) │
+                     │                 │  │  azure.py    │   └────────────────┘
+                     │  100+ via       │  │  terraform.py│
+                     │  LiteLLM        │  │  local.py    │   ┌────────────────┐
+                     │                 │  │  base.py     │   │   prompts/     │
+                     │  Ollama         │  │  filter.py   │   │                │
+                     │  OpenAI         │  │              │   │  system_prompt │
+                     │  Claude         │  │  _run_many() │   │    .txt        │
+                     │  Gemini         │  │  parallel    │   │  builder.py    │
+                     │  Groq           │  │  max 8 tasks │   └────────────────┘
+                     │  Bedrock + more │  └──────┬───────┘
+                     └─────────────────┘         │
+                                                  ▼
+                                       ┌─────────────────────┐
+                                       │    Your Infra        │
+                                       │                      │
+                                       │  Server (SSH)        │
+                                       │  Kubernetes          │
+                                       │  Docker              │
+                                       │  AWS / GCP / Azure   │
+                                       │  Terraform           │
+                                       └─────────────────────┘
 ```
 
 ### Data Flow
 
 ```
-User message
+User message (browser)
       │
       ▼
-General question? (hi, what is X, explain Y)
-  ├─ YES ─→ /api/sessions/<id>/chat/stream
-  │              └─→ LiteLLM (no tools) ─→ stream tokens to browser
+agent/needs_tools.py decides:
+  ├─ greeting / general question
+  │      └─→ providers/chat_stream() — direct SSE stream, no commands
   │
-  └─ NO  ─→ /api/chat/<target>/stream
-                 │
-                 └─→ Agentic loop (max 5 steps)
-                          │
-                          ├─ TOOL_MODEL picks a command to run
-                          ├─ executors.py runs it on the target
-                          ├─ Output fed back to model
-                          └─ ANSWER_MODEL writes final answer ─→ stream to browser
+  └─ infra question (pod, disk, deploy, status, logs ...)
+         └─→ agent/conversation.py agentic loop (max 5 steps):
+                  │
+                  ├─ providers/chat() with TOOL_MODEL
+                  │       LLM picks a command to run
+                  ├─ tools/execute_on_target()
+                  │       routes to ssh / kubectl / docker / aws / gcp / azure / terraform
+                  │       _run_many() runs tab commands in parallel (max 8 workers)
+                  ├─ output fed back to LLM
+                  └─ providers/chat_stream() with ANSWER_MODEL
+                          streams final answer word-by-word via SSE
+                          → browser renders with collapsible "Ran X commands" pill
+                          → sessions/manager.py saves to chat_sessions.json
+```
+
+### Package Structure
+
+```
+devops-ai/
+├── app.py                  ← Flask routes only
+├── main.py                 ← CLI entry point
+├── ui-dashboard.html       ← Full frontend (single-page app)
+│
+├── agent/                  ← Agentic loop
+│   ├── conversation.py     ← SSE streaming + tool loop
+│   ├── manager.py          ← Per-target message history
+│   ├── needs_tools.py      ← Greeting vs infra heuristic
+│   └── tests/
+│
+├── providers/              ← LiteLLM wrapper
+│   ├── client.py           ← chat(), chat_stream(), two-model setup
+│   └── tests/
+│
+├── tools/                  ← One file per target type
+│   ├── executor.py         ← Routes by target type
+│   ├── ssh.py / kubectl.py / docker.py
+│   ├── aws.py / gcp.py / azure.py / terraform.py / local.py
+│   ├── base.py             ← run_command(), timeout, truncation
+│   ├── filter.py           ← is_destructive() check
+│   └── tests/
+│
+├── sandbox/                ← Execution isolation
+│   ├── safe.py             ← Read-only command whitelist
+│   ├── docker_sandbox.py   ← Container isolation
+│   ├── executor.py         ← SANDBOX env dispatcher
+│   └── tests/
+│
+├── sessions/               ← Chat session persistence
+│   ├── manager.py          ← CRUD, capped at 100 sessions
+│   └── tests/
+│
+├── targets/                ← Connection management
+│   ├── manager.py          ← CRUD, targets.json
+│   └── tests/
+│
+└── prompts/                ← System prompt
+    ├── system_prompt.txt   ← Editable without touching code
+    └── builder.py          ← Injects live pod list
 ```
 
 ## CLI Mode
