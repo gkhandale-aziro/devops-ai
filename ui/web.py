@@ -13,8 +13,9 @@ import socket
 import platform
 import queue as _queue
 import threading
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, request, jsonify, send_from_directory, Response, render_template
+from flask import Flask, request, jsonify, send_from_directory, Response
 
 from providers import LLMClient
 from tools     import ToolExecutor
@@ -36,7 +37,8 @@ _agent    = Agent(_llm, _tools)
 _session  = AgentSession()
 _store    = EventStore()
 
-app = Flask(__name__, static_folder="..", template_folder="../templates")
+_DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
+app = Flask(__name__, static_folder=_DIST, static_url_path="")
 
 MAX_HISTORY = 20
 
@@ -63,28 +65,16 @@ def _run_many(target, cmds):
 
 # ── static ────────────────────────────────────────────────────────────────────
 
-@app.route("/")
-def index():
-    targets = _targets.load()
-    stats   = _store.get_stats()
-    return render_template("dashboard.html", targets=targets, stats=stats,
-                           tool_model=_llm.tool_model,
-                           answer_model=_llm.answer_model)
-
-
-@app.route("/alerts")
-def alerts_page():
-    targets = _targets.load()
-    return render_template("alerts.html", targets=targets)
-
-
-@app.route("/history")
-def history_page():
-    level  = request.args.get("level")
-    obj    = request.args.get("object")
-    events = _store.get_events(limit=100, level=level, object_name=obj)
-    return render_template("history.html", events=events,
-                           level=level or "", object_filter=obj or "")
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path: str):
+    """Serve React SPA for all non-API routes."""
+    # Let Flask serve static assets (JS/CSS chunks) directly
+    full = os.path.join(_DIST, path)
+    if path and os.path.isfile(full):
+        return send_from_directory(_DIST, path)
+    # All other routes → index.html (React Router handles client-side routing)
+    return send_from_directory(_DIST, "index.html")
 
 
 # ── targets ───────────────────────────────────────────────────────────────────

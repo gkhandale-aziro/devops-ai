@@ -1,0 +1,186 @@
+// ── Target ────────────────────────────────────────────────────────────────────
+
+export type TargetType =
+  | "ssh" | "kubernetes" | "docker"
+  | "aws" | "gcp" | "azure" | "terraform" | "local";
+
+export type TargetStatus = "online" | "offline" | "unknown";
+
+export interface Target {
+  id:     string;
+  name:   string;
+  type:   TargetType;
+  status: TargetStatus;
+  config: Record<string, string>;
+}
+
+// ── Triage levels ─────────────────────────────────────────────────────────────
+
+export type TriageLevel = "L1" | "L2" | "L3";
+
+/**
+ * L1 — Detect:   unknown/minor warning, logged only
+ * L2 — Diagnose: known issue (CrashLoop, OOMKill, etc.), AI investigates
+ * L3 — Resolve:  critical (NodeNotReady, ImagePullBackOff), AI proposes fix
+ */
+export const LEVEL_LABELS: Record<TriageLevel, string> = {
+  L1: "Detect",
+  L2: "Diagnose",
+  L3: "Resolve",
+};
+
+export const LEVEL_COLORS: Record<TriageLevel, { border: string; bg: string; text: string }> = {
+  L1: { border: "#06b6d4", bg: "#0c2233", text: "#22d3ee" },
+  L2: { border: "#f59e0b", bg: "#2a1a00", text: "#fbbf24" },
+  L3: { border: "#f43f5e", bg: "#2a0011", text: "#fb7185" },
+};
+
+// ── Monitor alert (SSE) ───────────────────────────────────────────────────────
+
+export interface MonitorAlert {
+  type:      "monitor_alert";
+  level:     TriageLevel;
+  reason:    string;
+  object:    string;
+  namespace: string;
+  message:   string;
+  source:    string;
+}
+
+export type SSEEvent = MonitorAlert | { type: "keepalive" };
+
+// ── Stored event (DB) ─────────────────────────────────────────────────────────
+
+export interface Snapshot {
+  id:        number;
+  event_id:  number;
+  timestamp: string;
+  kind:      "describe" | "logs" | "logs_previous" | "events";
+  content:   string;
+}
+
+export interface Analysis {
+  id:          number;
+  event_id:    number;
+  timestamp:   string;
+  diagnosis:   string;
+  remediation: string;
+}
+
+export interface StoredEvent {
+  id:              number;
+  timestamp:       string;
+  source:          string;
+  level:           TriageLevel;
+  reason:          string;
+  object:          string;
+  namespace:       string;
+  message:         string;
+  last_diagnosis?: string;
+  snapshots?:      Snapshot[];
+  analyses?:       Analysis[];
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+
+export interface TopFailing {
+  object:      string;
+  namespace:   string;
+  count:       number;
+  last_seen:   string;
+  worst_level: TriageLevel;
+}
+
+export interface Stats {
+  counts:      Partial<Record<TriageLevel, number>>;
+  top_failing: TopFailing[];
+  recent:      StoredEvent[];
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role:    "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface ChatSession {
+  id:        string;
+  title:     string;
+  created:   string;
+  updated:   string;
+}
+
+// ── Tab commands ──────────────────────────────────────────────────────────────
+
+export type TabId =
+  | "overview" | "kubernetes" | "logs" | "network" | "storage"  // ssh/local
+  | "nodes" | "pods" | "deployments" | "services" | "events"    // kubernetes
+  | "containers" | "images" | "networks" | "volumes" | "stats"  // docker
+  | "account" | "ec2" | "s3" | "eks" | "rds"                   // aws
+  | "compute" | "gke" | "iam"                                   // gcp
+  | "vms" | "aks" | "groups"                                    // azure
+  | "state" | "plan" | "outputs";                               // terraform
+
+export interface Tab {
+  id:    TabId;
+  label: string;
+}
+
+export const TABS_BY_TYPE: Record<TargetType, Tab[]> = {
+  ssh: [
+    { id: "overview",   label: "Overview"   },
+    { id: "kubernetes", label: "Kubernetes" },
+    { id: "logs",       label: "Logs"       },
+    { id: "network",    label: "Network"    },
+    { id: "storage",    label: "Storage"    },
+  ],
+  local: [
+    { id: "overview",   label: "Overview"   },
+    { id: "kubernetes", label: "Kubernetes" },
+    { id: "logs",       label: "Logs"       },
+    { id: "network",    label: "Network"    },
+    { id: "storage",    label: "Storage"    },
+  ],
+  kubernetes: [
+    { id: "nodes",       label: "Nodes"       },
+    { id: "pods",        label: "Pods"        },
+    { id: "deployments", label: "Deployments" },
+    { id: "services",    label: "Services"    },
+    { id: "network",     label: "Network"     },
+    { id: "events",      label: "Events"      },
+  ],
+  docker: [
+    { id: "containers", label: "Containers" },
+    { id: "images",     label: "Images"     },
+    { id: "networks",   label: "Networks"   },
+    { id: "volumes",    label: "Volumes"    },
+    { id: "stats",      label: "Stats"      },
+  ],
+  aws: [
+    { id: "account", label: "Account" },
+    { id: "ec2",     label: "EC2"     },
+    { id: "s3",      label: "S3"      },
+    { id: "eks",     label: "EKS"     },
+    { id: "rds",     label: "RDS"     },
+  ],
+  gcp: [
+    { id: "account", label: "Account" },
+    { id: "compute", label: "Compute" },
+    { id: "gke",     label: "GKE"     },
+    { id: "storage", label: "Storage" },
+    { id: "iam",     label: "IAM"     },
+  ],
+  azure: [
+    { id: "account", label: "Account" },
+    { id: "vms",     label: "VMs"     },
+    { id: "aks",     label: "AKS"     },
+    { id: "storage", label: "Storage" },
+    { id: "groups",  label: "Groups"  },
+  ],
+  terraform: [
+    { id: "state",   label: "State"   },
+    { id: "plan",    label: "Plan"    },
+    { id: "outputs", label: "Outputs" },
+  ],
+};
