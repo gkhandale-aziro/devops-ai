@@ -27,6 +27,14 @@ export function useTargetChat(targetId: string | null) {
       const cmds: string[] = [];
 
       for await (const evt of readSSE(res)) {
+        if (typeof evt.error === "string") {
+          setMessages((prev: ChatMsg[]) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: "assistant", content: `⚠ ${evt.error}` };
+            return next;
+          });
+          return;
+        }
         if (typeof evt.t === "string") {
           full += evt.t;
           setMessages((prev: ChatMsg[]) => {

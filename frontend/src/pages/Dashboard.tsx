@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useCallback, type ReactNode, type MouseEvent } from "react";
 import type { Target } from "../types";
 import { TABS_BY_TYPE }  from "../types";
 import { api, readSSE }  from "../api/client";
@@ -116,8 +116,13 @@ function TabContent({ tabId, data, loading, target }: TabContentProps) {
     return <OverviewTab data={data} />;
   }
 
+  // Nodes — cluster-scoped, separate parser
+  if (ttype === "kubernetes" && tabId === "nodes") {
+    return <NodeTable raw={data.output ?? ""} target={target} />;
+  }
+
   // Pods — clickable table
-  if (tabId === "pods" || (ttype === "kubernetes" && tabId === "nodes")) {
+  if (tabId === "pods") {
     return <PodTable raw={data.pods ?? data.output ?? ""} target={target} />;
   }
 
@@ -200,6 +205,76 @@ function OverviewTab({ data }: { data: Record<string, string> }) {
           <Pre>{data.top_procs ?? "—"}</Pre>
         </Card>
       </div>
+    </div>
+  );
+}
+
+// ── Node table ────────────────────────────────────────────────────────────────
+// kubectl get nodes -o wide → NAME STATUS ROLES AGE VERSION INTERNAL-IP ...
+// Nodes are cluster-scoped (no namespace), so openResource("node", name, "")
+
+function NodeTable({ raw, target }: { raw: string; target: Target }) {
+  const [resource, setResource] = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
+  const [loading, setLoading]   = useState(false);
+
+  if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
+    return <div style={{ padding: 20, color: "#64748b", fontSize: 13 }}>kubectl not available or no nodes found.</div>;
+  }
+
+  const allLines = raw.trim().split("\n");
+  if (allLines.length < 2) return <Pre>{raw}</Pre>;
+
+  const openNode = async (name: string) => {
+    setLoading(true);
+    try {
+      const d = await api.resource(target.id, "node", name, "");
+      setResource({ kind: "node", name, ns: "", data: d });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statusColor = (s: string) => s === "Ready" ? "#22c55e" : "#ef4444";
+
+  return (
+    <div style={{ overflowY: "auto", flex: 1 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ background: "#0d1117", position: "sticky", top: 0 }}>
+            {["Name", "Status", "Roles", "Age", "Version", "Internal IP"].map(h => (
+              <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", borderBottom: "1px solid #2d3148" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {allLines.slice(1).map((line, i) => {
+            const c = line.trim().split(/\s+/);
+            if (c.length < 4) return null;
+            const [name, status, roles, age, version, internalIp] = c;
+            const sc = statusColor(status);
+            return (
+              <tr key={i} onClick={() => openNode(name)}
+                style={{ borderBottom: "1px solid #1e2130", cursor: "pointer", transition: "background .1s" }}
+                onMouseEnter={(ev: MouseEvent<HTMLTableRowElement>) => (ev.currentTarget.style.background = "#1a1d27")}
+                onMouseLeave={(ev: MouseEvent<HTMLTableRowElement>) => (ev.currentTarget.style.background = "transparent")}
+              >
+                <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 500 }}>{name}</td>
+                <td style={{ padding: "8px 12px" }}>
+                  <span style={{ background: sc + "22", color: sc, border: `1px solid ${sc}44`, borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{status}</span>
+                </td>
+                <td style={{ padding: "8px 12px", fontSize: 12, color: "#94a3b8" }}>{roles}</td>
+                <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{age}</td>
+                <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{version ?? "—"}</td>
+                <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{internalIp ?? "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {(resource || loading) && (
+        <ResourceModal resource={resource} loading={loading} targetId={target.id} onClose={() => setResource(null)} />
+      )}
     </div>
   );
 }

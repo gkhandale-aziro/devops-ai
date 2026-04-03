@@ -274,16 +274,20 @@ def api_chat_stream(tid):
     _session.set(tid, messages)
 
     def generate():
-        if not needs_tools(user_msg):
-            full = ""
-            for chunk in _llm.chat_stream(messages, use_tools=False):
-                full += chunk
-                yield f"data: {json.dumps({'t': chunk})}\n\n"
-            messages.append({"role": "assistant", "content": full})
-            _session.set(tid, messages)
+        try:
+            if not needs_tools(user_msg):
+                full = ""
+                for chunk in _llm.chat_stream(messages, use_tools=False):
+                    full += chunk
+                    yield f"data: {json.dumps({'t': chunk})}\n\n"
+                messages.append({"role": "assistant", "content": full})
+                _session.set(tid, messages)
+                yield "data: [DONE]\n\n"
+            else:
+                yield from _agent.run(messages, target, _session, tid)
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
             yield "data: [DONE]\n\n"
-        else:
-            yield from _agent.run(messages, target, _session, tid)
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
