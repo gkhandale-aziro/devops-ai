@@ -16,23 +16,23 @@ export interface Target {
 
 // ── Triage levels ─────────────────────────────────────────────────────────────
 
-export type TriageLevel = "L1" | "L2" | "L3";
+export type TriageLevel = "SEV1" | "SEV2" | "SEV3";
 
 /**
- * L1 — Detect:   unknown/minor warning, logged only
- * L2 — Diagnose: known issue (CrashLoop, OOMKill, etc.), AI investigates
- * L3 — Resolve:  critical (NodeNotReady, ImagePullBackOff), AI proposes fix
+ * SEV1 — Critical: node down, disk pressure, ImagePullBackOff — immediate action
+ * SEV2 — Warning:  CrashLoop, OOMKilled, backoff — needs investigation
+ * SEV3 — Info:     minor / unknown warning — logged for visibility
  */
 export const LEVEL_LABELS: Record<TriageLevel, string> = {
-  L1: "Detect",
-  L2: "Diagnose",
-  L3: "Resolve",
+  SEV1: "Critical",
+  SEV2: "Warning",
+  SEV3: "Info",
 };
 
 export const LEVEL_COLORS: Record<TriageLevel, { border: string; bg: string; text: string }> = {
-  L1: { border: "#06b6d4", bg: "#0c2233", text: "#22d3ee" },
-  L2: { border: "#f59e0b", bg: "#2a1a00", text: "#fbbf24" },
-  L3: { border: "#f43f5e", bg: "#2a0011", text: "#fb7185" },
+  SEV1: { border: "#f43f5e", bg: "#2a0011", text: "#fb7185" },
+  SEV2: { border: "#f59e0b", bg: "#2a1a00", text: "#fbbf24" },
+  SEV3: { border: "#06b6d4", bg: "#0c2233", text: "#22d3ee" },
 };
 
 // ── Monitor alert (SSE) ───────────────────────────────────────────────────────

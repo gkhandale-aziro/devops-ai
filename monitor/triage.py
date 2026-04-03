@@ -65,7 +65,7 @@ class Triage:
         key    = (obj, reason)
         level  = self._classify(reason)
 
-        if level == "L1":
+        if level == "SEV3":
             self._l1(event)
             return
 
@@ -76,7 +76,7 @@ class Triage:
             self._seen[key] = now
 
         threading.Thread(
-            target=self._l2 if level == "L2" else self._l3,
+            target=self._l2 if level == "SEV2" else self._l3,
             args=(event,),
             daemon=True,
         ).start()
@@ -88,16 +88,16 @@ class Triage:
     # ── classification ────────────────────────────────────────────────────────
 
     def _classify(self, reason):
-        if reason in _L3_REASONS: return "L3"
-        if reason in _L2_REASONS: return "L2"
-        return "L1"
+        if reason in _L3_REASONS: return "SEV1"
+        if reason in _L2_REASONS: return "SEV2"
+        return "SEV3"
 
     # ── L1 ───────────────────────────────────────────────────────────────────
 
     def _l1(self, event):
         self._out_q.put({
             "type":             "monitor_alert",
-            "level":            "L1",
+            "level":            "SEV3",
             "summary":          self._summary(event),
             "event":            event,
             "auto_investigate": False,
@@ -110,7 +110,7 @@ class Triage:
         ns  = event.get("namespace", "default")
 
         # 1. persist event → get id
-        event_id = self._store.save_event(event, "L2") if self._store else None
+        event_id = self._store.save_event(event, "SEV2") if self._store else None
 
         # 2. capture snapshots NOW (before pod restarts and logs are gone)
         snaps = self._capture_snapshots(obj, ns, event_id)
@@ -121,7 +121,7 @@ class Triage:
         # 4. notify terminal
         self._out_q.put({
             "type":             "monitor_alert",
-            "level":            "L2",
+            "level":            "SEV2",
             "summary":          self._summary(event),
             "event":            event,
             "auto_investigate": True,
@@ -133,7 +133,7 @@ class Triage:
                 "type":     "query",
                 "is_auto":  True,
                 "event_id": event_id,
-                "text":     self._build_query("L2", event, snaps, history),
+                "text":     self._build_query("SEV2", event, snaps, history),
             })
 
     # ── L3 ───────────────────────────────────────────────────────────────────
@@ -142,13 +142,13 @@ class Triage:
         obj = event["object"]
         ns  = event.get("namespace", "default")
 
-        event_id = self._store.save_event(event, "L3") if self._store else None
+        event_id = self._store.save_event(event, "SEV1") if self._store else None
         snaps    = self._capture_snapshots(obj, ns, event_id)
         history  = self._history_context(obj, exclude_id=event_id)
 
         self._out_q.put({
             "type":             "monitor_alert",
-            "level":            "L3",
+            "level":            "SEV1",
             "summary":          f"CRITICAL — {self._summary(event)}",
             "event":            event,
             "auto_investigate": True,
@@ -159,7 +159,7 @@ class Triage:
                 "type":     "query",
                 "is_auto":  True,
                 "event_id": event_id,
-                "text":     self._build_query("L3", event, snaps, history),
+                "text":     self._build_query("SEV1", event, snaps, history),
             })
 
     # ── snapshot capture ─────────────────────────────────────────────────────
@@ -224,14 +224,14 @@ class Triage:
 
         parts = []
 
-        if level == "L2":
+        if level == "SEV2":
             parts.append(
-                f"[L2 AUTO-DIAGNOSE] {event['reason']} on {obj} (namespace: {ns})\n"
+                f"[SEV2 WARNING] {event['reason']} on {obj} (namespace: {ns})\n"
                 f"Event message: {msg}"
             )
         else:
             parts.append(
-                f"[L3 AUTO-RESOLVE] CRITICAL: {event['reason']} on {obj} (namespace: {ns})\n"
+                f"[SEV1 CRITICAL] CRITICAL: {event['reason']} on {obj} (namespace: {ns})\n"
                 f"Event message: {msg}"
             )
 
@@ -251,7 +251,7 @@ class Triage:
         if history:
             parts.append(history)
 
-        if level == "L2":
+        if level == "SEV2":
             parts.append(
                 "\nUsing the snapshots and history above, identify the root cause. "
                 "If history shows a recurring pattern, highlight it."

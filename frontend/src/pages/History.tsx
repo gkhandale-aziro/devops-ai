@@ -1,22 +1,22 @@
-import { useState, useEffect, type ReactNode } from "react";
-import type { StoredEvent, TriageLevel, Snapshot, Analysis } from "../types";
+import { useState, useEffect, useCallback, type ReactNode, type ChangeEvent } from "react";
+import type { StoredEvent, TriageLevel, Snapshot, Analysis } from "../types"; // Analysis used below
 import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
-import { api }       from "../api/client";
-import { LevelBadge } from "../components/LevelBadge";
+import { api, readSSE } from "../api/client";
+import { LevelBadge }   from "../components/LevelBadge";
 
-const LEVELS: TriageLevel[] = ["L1", "L2", "L3"];
+const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 
 export function History() {
   const [events,  setEvents]  = useState<StoredEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [level,   setLevel]   = useState<TriageLevel | "">("");
   const [objFilter, setObjFilter] = useState("");
-  const [detail,  setDetail]  = useState<StoredEvent | null>(null);
+  const [detail,        setDetail]        = useState<StoredEvent | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [aiText,        setAiText]        = useState("");
+  const [aiLoading,     setAiLoading]     = useState(false);
 
-  useEffect(() => {
-    load();
-  }, [level, objFilter]);
+  useEffect(() => { load(); }, [level, objFilter]);
 
   async function load() {
     setLoading(true);
@@ -33,12 +33,33 @@ export function History() {
   async function openDetail(id: number) {
     setDetailLoading(true);
     setDetail(null);
+    setAiText("");
     try {
-      setDetail(await api.events.get(id));
+      const ev = await api.events.get(id);
+      setDetail(ev);
+      // auto-run AI explanation
+      runAI(ev);
     } finally {
       setDetailLoading(false);
     }
   }
+
+  const runAI = useCallback(async (ev: StoredEvent) => {
+    setAiLoading(true);
+    setAiText("");
+    const snaps  = (ev.snapshots ?? []).map(s => `\n── ${s.kind} ──\n${s.content?.slice(0, 1500)}`).join("\n");
+    const prompt = `You are a Kubernetes SRE. Explain this incident clearly and suggest remediation.\n\nSeverity: ${ev.level}\nReason: ${ev.reason}\nObject: ${ev.object}${ev.namespace ? " / " + ev.namespace : ""}\nTime: ${ev.timestamp}\nMessage: ${ev.message ?? "—"}\n${snaps}`;
+    try {
+      const res = await api.analyzeStream(prompt);
+      for await (const chunk of readSSE(res)) {
+        if (typeof chunk.t === "string") setAiText((prev: string) => prev + chunk.t);
+      }
+    } catch {
+      setAiText("AI explanation failed. Check your AI model config.");
+    } finally {
+      setAiLoading(false);
+    }
+  }, []);
 
   return (
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -49,7 +70,7 @@ export function History() {
           <Label>Level</Label>
           <select
             value={level}
-            onChange={e => setLevel(e.target.value as TriageLevel | "")}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setLevel(e.target.value as TriageLevel | "")}
             style={{ width: "100%", background: "#0f1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 13 }}
           >
             <option value="">All levels</option>
@@ -189,18 +210,21 @@ export function History() {
                 );
               })}
 
-              {/* AI analyses */}
+              {/* AI explanation — auto-runs on open */}
+              <Section label={aiLoading ? "AI Explanation  ●  Thinking…" : "AI Explanation"}>
+                <div style={{ background: "#12141f", border: `1px solid ${aiLoading ? "#7c8cf8" : "#2d3148"}`, borderRadius: 6, padding: 12, fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", minHeight: 60, color: aiText ? "#e2e8f0" : "#64748b" }}>
+                  {aiText || (aiLoading ? "Analyzing…" : "—")}
+                </div>
+                <button onClick={() => runAI(detail)} disabled={aiLoading} style={{ marginTop: 6, background: "none", border: "none", color: "#7c8cf8", fontSize: 11, cursor: aiLoading ? "default" : "pointer", padding: 0, opacity: aiLoading ? 0.5 : 1 }}>
+                  ↺ Re-run explanation
+                </button>
+              </Section>
+
+              {/* Saved analyses from auto-monitor (if any) */}
               {(detail.analyses ?? []).slice(-1).map((a: Analysis) => (
                 <div key={a.id}>
-                  {a.diagnosis && (
-                    <Section label="AI Diagnosis">
-                      <div style={{ background: "#12141f", border: "1px solid #2d3148", borderRadius: 6, padding: 12, fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
-                        {a.diagnosis}
-                      </div>
-                    </Section>
-                  )}
                   {a.remediation && (
-                    <Section label="Proposed Remediation">
+                    <Section label="Proposed Remediation (from monitor)">
                       <div style={{ background: "#12141f", border: "1px solid #f59e0b", borderRadius: 6, padding: 12, fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "#fbbf24" }}>
                         {a.remediation}
                       </div>

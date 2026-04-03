@@ -121,9 +121,9 @@ class TerminalUI:
                 self._print_alert(event)
 
     def _print_alert(self, event):
-        level   = event.get("level", "L1")
+        level   = event.get("level", "SEV3")
         summary = event.get("summary", "")
-        color   = _RED if level == "L3" else _YELLOW if level == "L2" else _CYAN
+        color   = _RED if level == "SEV1" else _YELLOW if level == "SEV2" else _CYAN
         self._safe_print(f"\n{color}{_BOLD}  [{level}]{_RESET} {summary}")
         if event.get("auto_investigate"):
             self._safe_print(f"  {_DIM}Investigating...{_RESET}")

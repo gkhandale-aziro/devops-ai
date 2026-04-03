@@ -10,7 +10,7 @@ Usage
   # connect to a saved target by name or id
   python3 main.py --target my-server
 
-  # start with event monitoring enabled (L1/L2/L3 auto-triage)
+  # start with event monitoring enabled (SEV1/SEV2/SEV3 auto-triage)
   python3 main.py --monitor
 
   # both
@@ -48,7 +48,7 @@ def _parse_args():
     p.add_argument("--target",  "-t", default=None,
                    help="Target name or ID from saved targets. Default: local sandbox.")
     p.add_argument("--monitor", "-m", action="store_true",
-                   help="Enable continuous event monitoring with L1/L2/L3 auto-triage.")
+                   help="Enable continuous event monitoring with SEV1/SEV2/SEV3 auto-triage.")
     p.add_argument("--model",         default=None,
                    help="Override AI model (e.g. ollama/llama3.1:8b, gemini-2.5-pro).")
     return p.parse_args()
@@ -163,7 +163,7 @@ def main():
         watcher = EventWatcher(executor_fn)
         watcher.on_event(triage.handle)
         watcher.watch()
-        print(f"  Monitoring: ON  (L1/L2/L3 auto-triage enabled)")
+        print(f"  Monitoring: ON  (SEV1/SEV2/SEV3 auto-triage enabled)")
 
     # ── 5. Print startup info ─────────────────────────────────────────────────
     target_label = target.get("name", "local sandbox")

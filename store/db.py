@@ -24,7 +24,7 @@ class EventStore:
     Usage
     -----
         store = EventStore()
-        eid   = store.save_event(event, "L2")
+        eid   = store.save_event(event, "SEV2")
         store.save_snapshot(eid, "logs", kubectl_output)
         store.save_analysis(eid, diagnosis="OOMKilled — memory limit too low")
     """

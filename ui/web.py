@@ -361,9 +361,9 @@ def _broadcast_alert(event):
 def _web_classify(raw_event):
     from monitor.triage import _L2_REASONS, _L3_REASONS
     r = raw_event.get("reason", "")
-    if r in _L3_REASONS: return "L3"
-    if r in _L2_REASONS: return "L2"
-    return "L1"
+    if r in _L3_REASONS: return "SEV1"
+    if r in _L2_REASONS: return "SEV2"
+    return "SEV3"
 
 
 def _web_triage_handle(raw_event):

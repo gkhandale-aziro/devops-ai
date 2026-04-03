@@ -13,7 +13,7 @@ interface Props {
 
 type AlertEntry = MonitorAlert & { ts: string; id: number };
 
-const LEVELS: TriageLevel[] = ["L1", "L2", "L3"];
+const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 
 export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
   const [alerts,      setAlerts]      = useState<AlertEntry[]>([]);
@@ -22,7 +22,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
   const [starting,    setStarting]    = useState(false);
 
   // count per level without implicit any
-  const counts: Record<TriageLevel, number> = { L1: 0, L2: 0, L3: 0 };
+  const counts: Record<TriageLevel, number> = { SEV1: 0, SEV2: 0, SEV3: 0 };
   for (const a of alerts) counts[a.level]++;
 
   const onEvent = useCallback((e: SSEEvent) => {
