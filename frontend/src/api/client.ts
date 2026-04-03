@@ -27,6 +27,10 @@ export const api = {
       req<{ status: string; message: string }>(`/api/targets/${id}/test`),
   },
 
+  // ── Server info ───────────────────────────────────────────────────────────
+
+  info: () => req<{ tool_model: string; answer_model: string }>("/api/info"),
+
   // ── Tab data ───────────────────────────────────────────────────────────────
 
   tab: (targetId: string, tab: string, params?: Record<string, string>) => {

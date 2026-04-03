@@ -9,6 +9,7 @@ interface Props {
   onRemove:      (id: string) => void;
   onAddClick:    () => void;
   monitorActive: boolean;
+  aiModel:       string;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -17,7 +18,7 @@ const TYPE_COLORS: Record<string, string> = {
   azure: "#0078D4", terraform: "#7B42BC",
 };
 
-export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive }: Props) {
+export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel }: Props) {
   const loc = useLocation();
 
   const navItem = (to: string, label: string, icon: ReactNode): ReactNode => {
@@ -113,6 +114,15 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         )}
       </div>
+
+      {aiModel && (
+        <div style={{ padding: "6px 12px 10px", borderTop: "1px solid #2d3148" }}>
+          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 3 }}>AI Model</div>
+          <div style={{ fontSize: 10, color: "#7c8cf8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={aiModel}>
+            {aiModel.replace("gemini/", "").replace("ollama/", "")}
+          </div>
+        </div>
+      )}
 
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
     </div>

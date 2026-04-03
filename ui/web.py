@@ -63,6 +63,16 @@ def _run_many(target, cmds):
     return results
 
 
+# ── server info ──────────────────────────────────────────────────────────────
+
+@app.route("/api/info", methods=["GET"])
+def api_info():
+    return jsonify({
+        "tool_model":   _llm.tool_model,
+        "answer_model": _llm.answer_model,
+    })
+
+
 # ── static ────────────────────────────────────────────────────────────────────
 
 @app.route("/", defaults={"path": ""})

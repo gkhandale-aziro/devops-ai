@@ -13,11 +13,12 @@ export default function App() {
   const [activeTarget,  setActiveTarget]  = useState<Target | null>(null);
   const [monitorActive, setMonitorActive] = useState(false);
   const [showAdd,       setShowAdd]       = useState(false);
+  const [aiModel,       setAiModel]       = useState("");
 
   useEffect(() => {
     loadTargets();
-    // check if monitor was already running (page refresh)
     api.monitor.status().then(s => setMonitorActive(s.active)).catch(() => {});
+    api.info().then(i => setAiModel(i.answer_model)).catch(() => {});
   }, []);
 
   async function loadTargets() {
@@ -58,6 +59,7 @@ export default function App() {
           onRemove={handleRemove}
           onAddClick={() => setShowAdd(true)}
           monitorActive={monitorActive}
+          aiModel={aiModel}
         />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
