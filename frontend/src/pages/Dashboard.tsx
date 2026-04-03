@@ -325,7 +325,7 @@ function PodTable({ raw, target }: { raw: string; target: Target }) {
 
 // ── Resource detail modal ─────────────────────────────────────────────────────
 
-function ResourceModal({ resource, loading, targetId, onClose }: {
+function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
   resource: { kind: string; name: string; ns: string; data: Record<string, string> } | null;
   loading:  boolean;
   targetId: string;
