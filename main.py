@@ -1,137 +1,189 @@
 """
 main.py — CLI entry point for Aziro Ops.
-Run: python3 main.py
+Mirrors cmd/main.go in kubectl-ai.
+
+Usage
+-----
+  # basic interactive CLI
+  python3 main.py
+
+  # connect to a saved target by name or id
+  python3 main.py --target my-server
+
+  # start with event monitoring enabled (L1/L2/L3 auto-triage)
+  python3 main.py --monitor
+
+  # both
+  python3 main.py --target prod-k8s --monitor
+
+  # override model
+  AI_MODEL=gemini-2.5-pro python3 main.py --monitor
 """
-import json
-import re
-import datetime
-from sandbox  import execute, SANDBOX_MODE
-from tools    import is_destructive
-from prompts  import build_system_prompt
-from providers import chat, TOOL_MODEL, ANSWER_MODEL
+import argparse
+import queue
+import threading
+import sys
 
-LOG_FILE    = f"session_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-MAX_HISTORY = 20
-MAX_STEPS   = 5
-
-
-def log(text):
-    with open(LOG_FILE, "a") as f:
-        f.write(text + "\n")
-
-
-def trim_messages(messages):
-    system  = [m for m in messages if m["role"] == "system"]
-    history = [m for m in messages if m["role"] != "system"]
-    return system + history[-MAX_HISTORY:]
+from providers      import LLMClient
+from tools          import ToolExecutor
+from sandbox        import Sandbox
+from targets        import TargetManager
+from sessions       import SessionManager
+from agent          import Agent, AgentSession
+from ui.terminal    import TerminalUI
+from monitor        import EventWatcher, Triage
+from store          import EventStore
+from prompts        import build_system_prompt
 
 
-def check_provider():
-    ollama_models = {m.split("/")[-1] for m in [TOOL_MODEL, ANSWER_MODEL] if "ollama" in m}
-    if ollama_models:
-        import subprocess
-        result = subprocess.run("ollama list", shell=True, capture_output=True, text=True, executable=None)
-        if result.returncode != 0:
-            print("ERROR: Ollama is not running. Start it with: ollama serve")
-            exit(1)
-        for model_name in ollama_models:
-            if model_name not in result.stdout:
-                print(f"ERROR: Model '{model_name}' not found. Run: ollama pull {model_name}")
-                exit(1)
+# ── CLI session uses a fixed target_id (no real target needed for local use) ──
+_CLI_TARGET_ID = "__cli__"
 
 
-check_provider()
+def _parse_args():
+    p = argparse.ArgumentParser(
+        prog="aziro",
+        description="Aziro Ops — AI-powered DevOps CLI",
+    )
+    p.add_argument("--target",  "-t", default=None,
+                   help="Target name or ID from saved targets. Default: local sandbox.")
+    p.add_argument("--monitor", "-m", action="store_true",
+                   help="Enable continuous event monitoring with L1/L2/L3 auto-triage.")
+    p.add_argument("--model",         default=None,
+                   help="Override AI model (e.g. ollama/llama3.1:8b, gemini-2.5-pro).")
+    return p.parse_args()
 
-messages = [{"role": "system", "content": build_system_prompt()}]
 
-if TOOL_MODEL == ANSWER_MODEL:
-    print(f"Aziro Ops (model: {TOOL_MODEL}, sandbox: {SANDBOX_MODE})")
-else:
-    print(f"Aziro Ops")
-    print(f"  Tool model:   {TOOL_MODEL}   ← runs commands")
-    print(f"  Answer model: {ANSWER_MODEL}  ← writes final answer")
-    print(f"  Sandbox: {SANDBOX_MODE}")
-print(f"Session log: {LOG_FILE}\n")
+def _check_provider(llm):
+    """Verify the configured model is reachable before starting."""
+    for model in {llm.tool_model, llm.answer_model}:
+        if "ollama" in model:
+            import subprocess
+            result = subprocess.run(
+                "ollama list", shell=True, capture_output=True, text=True
+            )
+            if result.returncode != 0:
+                print("ERROR: Ollama is not running. Start it with: ollama serve")
+                sys.exit(1)
+            name = model.split("/")[-1]
+            if name not in result.stdout:
+                print(f"ERROR: Model '{name}' not found. Run: ollama pull {name}")
+                sys.exit(1)
 
-while True:
-    question = input("You: ").strip()
-    if not question:
-        continue
-    if question.lower() == "exit":
-        print("Goodbye!")
-        break
 
-    log(f"\nYou: {question}")
-    messages.append({"role": "user", "content": question})
-    messages = trim_messages(messages)
+def _resolve_target(args, targets: TargetManager):
+    """
+    Return (target_dict, target_id, executor_fn).
 
-    gave_final_answer = False
-    commands_run      = 0
-    ran_commands      = set()
+    If --target is given → look up in saved targets, use ToolExecutor.
+    Otherwise           → use local sandbox.
+    """
+    if args.target:
+        # search by name first, then by id
+        all_targets = targets.load()
+        match = next(
+            (t for t in all_targets
+             if t["name"] == args.target or t["id"] == args.target),
+            None,
+        )
+        if not match:
+            print(f"ERROR: Target '{args.target}' not found.")
+            print("Saved targets:", [t["name"] for t in all_targets] or ["none"])
+            sys.exit(1)
+        tools      = ToolExecutor()
+        target     = match
+        target_id  = match["id"]
+        executor   = lambda cmd: tools.execute(target, cmd)
+        return target, target_id, executor
 
-    for step in range(MAX_STEPS):
-        try:
-            reply, command, tool_call_id = chat(messages, use_tools=True)
-        except Exception as e:
-            print(f"\n[ERROR] AI provider failed: {e}\n")
-            log(f"[ERROR] {e}")
-            break
+    # default: local sandbox
+    sandbox    = Sandbox()
+    target_id  = _CLI_TARGET_ID
+    target     = {"type": "local", "config": {}}
+    executor   = sandbox.execute
+    return target, target_id, executor
 
-        if command:
-            if command in ran_commands:
-                messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                messages.append({"role": "tool", "content": "[Already ran this command.]", "tool_call_id": tool_call_id})
-                messages = trim_messages(messages)
-                continue
 
-            if re.search(r'<[^>]+>', command):
-                messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                messages.append({"role": "tool", "content": f"[ERROR] Command contains a placeholder: {command}", "tool_call_id": tool_call_id})
-                messages = trim_messages(messages)
-                continue
+def _build_cli_session(target, target_id):
+    """
+    Build a minimal AgentSession seeded with the system prompt.
+    Mirrors Agent.Init() system prompt setup in pkg/agent/conversation.go:289.
+    """
+    session = AgentSession()
+    # override get() to use build_system_prompt() for the CLI target
+    system_prompt = build_system_prompt()
+    session.set(target_id, [{"role": "system", "content": system_prompt}])
+    return session
 
-            if is_destructive(command):
-                confirm = input(f"\n[WARNING] {command}\nAre you sure? (y/n): ").strip().lower()
-                if confirm != "y":
-                    print("[Skipped]\n")
-                    log(f"[Skipped] {command}")
-                    messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-                    messages.append({"role": "tool", "content": "[User declined to run this command]", "tool_call_id": tool_call_id})
-                    messages = trim_messages(messages)
-                    continue
 
-            commands_run += 1
-            ran_commands.add(command)
-            print(f"\n[Running: {command}]")
-            log(f"[Running] {command}")
-            output = execute(command)
-            print(f"[Output]\n{output}")
-            log(f"[Output]\n{output}")
+def main():
+    args = _parse_args()
 
-            messages.append({"role": "assistant", "content": reply or "", "tool_calls": [{"id": tool_call_id, "type": "function", "function": {"name": "run_command", "arguments": json.dumps({"command": command})}}]})
-            messages.append({"role": "tool", "content": output, "tool_call_id": tool_call_id})
-            messages = trim_messages(messages)
+    # ── 1. Create all instances (mirrors RunRootCommand in cmd/main.go) ──────
+    if args.model:
+        import os
+        os.environ["AI_MODEL"] = args.model
 
-        else:
-            if ANSWER_MODEL != TOOL_MODEL and commands_run > 0:
-                print(f"\n[Switching to {ANSWER_MODEL} for final answer...]")
-                try:
-                    reply, _, _ = chat(messages, use_tools=False)
-                except Exception as e:
-                    log(f"[ERROR] Answer model failed: {e}")
+    llm     = LLMClient()
+    targets = TargetManager()
 
-            messages.append({"role": "assistant", "content": reply})
-            print(f"\nAI: {reply}\n")
-            log(f"AI: {reply}")
-            gave_final_answer = True
-            break
+    _check_provider(llm)
 
-    if not gave_final_answer:
-        print(f"\n[Collected {MAX_STEPS} rounds — summarizing...]\n")
-        try:
-            summary, _, _ = chat(messages, use_tools=False)
-        except Exception as e:
-            summary = f"[Could not generate summary: {e}]"
-        messages.append({"role": "assistant", "content": summary})
-        print(f"AI: {summary}\n")
-        log(f"AI: {summary}")
+    target, target_id, executor_fn = _resolve_target(args, targets)
+    session = _build_cli_session(target, target_id)
+    agent   = Agent(llm, ToolExecutor())
+
+    # ── 2. Create queues (Python equivalent of Go channels) ──────────────────
+    # Mirrors: s.Input = make(chan any, 10) at pkg/agent/conversation.go:202
+    in_q      = queue.Queue()    # TerminalUI → Agent
+    out_q     = queue.Queue()    # Agent      → TerminalUI
+    confirm_q = queue.Queue()    # TerminalUI → Agent (y/n for destructive cmds)
+
+    # ── 3. Start agent loop in background thread ──────────────────────────────
+    # Mirrors: go Agent.Run() at pkg/agent/conversation.go:385
+    store = EventStore()
+
+    agent_thread = threading.Thread(
+        target=agent.run_loop,
+        kwargs=dict(
+            in_q=in_q, out_q=out_q, confirm_q=confirm_q,
+            session=session, target_id=target_id,
+            target=target, executor_fn=executor_fn,
+            store=store,
+        ),
+        daemon=True,
+        name="agent-loop",
+    )
+    agent_thread.start()
+
+    # ── 4. Optionally start event monitor + triage ────────────────────────────
+    watcher = None
+    if args.monitor:
+        triage  = Triage(in_q, out_q, executor_fn=executor_fn, store=store)
+        watcher = EventWatcher(executor_fn)
+        watcher.on_event(triage.handle)
+        watcher.watch()
+        print(f"  Monitoring: ON  (L1/L2/L3 auto-triage enabled)")
+
+    # ── 5. Print startup info ─────────────────────────────────────────────────
+    target_label = target.get("name", "local sandbox")
+    if llm.tool_model == llm.answer_model:
+        print(f"\nAziro Ops  —  {target_label}")
+        print(f"  Model:    {llm.tool_model}")
+    else:
+        print(f"\nAziro Ops  —  {target_label}")
+        print(f"  Tool model:   {llm.tool_model}")
+        print(f"  Answer model: {llm.answer_model}")
+
+    # ── 6. Start terminal UI in main thread (blocks until exit) ──────────────
+    # Mirrors: go TerminalUI.Run() at pkg/ui/terminal.go:143
+    ui = TerminalUI(in_q, out_q, confirm_q)
+    ui.run()
+
+    # ── 7. Cleanup ────────────────────────────────────────────────────────────
+    if watcher:
+        watcher.stop()
+
+
+if __name__ == "__main__":
+    main()

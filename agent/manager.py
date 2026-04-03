@@ -1,10 +1,12 @@
 """
 agent/manager.py — per-target session state (message history for each connection).
 """
-from targets import get_target
-from prompts import SYSTEM
+from targets  import TargetManager
+from prompts  import SYSTEM
 
 MAX_HISTORY = 20
+
+_targets = TargetManager()
 
 
 def _trim(messages):
@@ -21,11 +23,12 @@ class AgentSession:
 
     def get(self, target_id):
         if target_id not in self._sessions:
-            target = get_target(target_id)
+            target = _targets.get(target_id)
             name   = target["name"] if target else "server"
             ttype  = target.get("type", "ssh") if target else "ssh"
             self._sessions[target_id] = [
-                {"role": "system", "content": SYSTEM + f"\n\nYou are connected to: {name} (type: {ttype})"}
+                {"role": "system",
+                 "content": SYSTEM + f"\n\nYou are connected to: {name} (type: {ttype})"}
             ]
         return self._sessions[target_id]
 
