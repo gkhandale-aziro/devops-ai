@@ -108,6 +108,12 @@ export const api = {
       req<StoredEvent>(`/api/events/${id}`),
     byObject: (name: string, limit = 20) =>
       req<StoredEvent[]>(`/api/events/object/${encodeURIComponent(name)}?limit=${limit}`),
+    updateStatus: (id: number, status: string) =>
+      req<{ ok: boolean }>(`/api/events/${id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ status }),
+      }),
   },
 
   stats: () => req<Stats>("/api/stats"),

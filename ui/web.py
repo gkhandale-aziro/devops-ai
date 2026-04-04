@@ -500,7 +500,7 @@ def api_sessions_chat_stream(sid):
 
 @app.route("/api/events", methods=["GET"])
 def api_events():
-    """List events. Filter: ?level=L2  ?object=nginx  ?limit=50"""
+    """List events. Filter: ?level=SEV1  ?object=nginx  ?limit=50"""
     return jsonify(_store.get_events(
         limit       = int(request.args.get("limit", 50)),
         level       = request.args.get("level"),
@@ -515,6 +515,15 @@ def api_event_detail(event_id):
     if not event:
         return jsonify({"error": "not found"}), 404
     return jsonify(event)
+
+
+@app.route("/api/events/<int:event_id>", methods=["PATCH"])
+def api_event_update(event_id):
+    """Update event status: open | acknowledged | resolved"""
+    status = (request.json or {}).get("status", "").strip()
+    if not _store.update_event_status(event_id, status):
+        return jsonify({"error": "invalid status"}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/api/events/object/<path:name>", methods=["GET"])

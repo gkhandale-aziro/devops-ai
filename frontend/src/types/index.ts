@@ -67,6 +67,8 @@ export interface Analysis {
   remediation: string;
 }
 
+export type IncidentStatus = "open" | "acknowledged" | "resolved";
+
 export interface StoredEvent {
   id:              number;
   timestamp:       string;
@@ -76,6 +78,7 @@ export interface StoredEvent {
   object:          string;
   namespace:       string;
   message:         string;
+  status:          IncidentStatus;
   last_diagnosis?: string;
   snapshots?:      Snapshot[];
   analyses?:       Analysis[];

@@ -32,6 +32,7 @@ class EventStore:
     def __init__(self, db_file=DB_FILE):
         self._db = db_file
         self._init_schema()
+        self._migrate()
 
     # ── schema ────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ class EventStore:
                     object    TEXT    NOT NULL,
                     namespace TEXT    DEFAULT '',
                     message   TEXT    DEFAULT '',
+                    status    TEXT    NOT NULL DEFAULT 'open',
                     raw       TEXT    DEFAULT ''
                 );
 
@@ -71,6 +73,14 @@ class EventStore:
                 CREATE INDEX IF NOT EXISTS idx_events_level     ON events(level);
                 PRAGMA foreign_keys = ON;
             """)
+
+    def _migrate(self):
+        """Add columns introduced after initial schema without dropping existing data."""
+        try:
+            with self._conn() as c:
+                c.execute("ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open'")
+        except Exception:
+            pass  # column already exists
 
     def _conn(self):
         conn = sqlite3.connect(self._db, check_same_thread=False)
@@ -105,6 +115,15 @@ class EventStore:
 
         self._purge_old()
         return eid
+
+    def update_event_status(self, event_id: int, status: str) -> bool:
+        """Update event status: open | acknowledged | resolved"""
+        valid = {"open", "acknowledged", "resolved"}
+        if status not in valid:
+            return False
+        with self._conn() as c:
+            c.execute("UPDATE events SET status = ? WHERE id = ?", (status, event_id))
+        return True
 
     def save_snapshot(self, event_id: int, kind: str, content: str):
         """
@@ -209,7 +228,7 @@ class EventStore:
                               MAX(timestamp)  AS last_seen,
                               MAX(level)      AS worst_level
                        FROM   events
-                       WHERE  level IN ('L2','L3')
+                       WHERE  level IN ('SEV1','SEV2')
                        GROUP  BY object
                        ORDER  BY count DESC
                        LIMIT  10"""
