@@ -6,6 +6,12 @@ import json
 import uuid
 import os
 
+_SENSITIVE_KEYS = {
+    "password", "private_key", "secret_key", "secret_access_key",
+    "api_key", "token", "auth_token", "access_token", "client_secret",
+    "service_account_key", "credentials",
+}
+
 
 class TargetManager:
     """
@@ -62,3 +68,19 @@ class TargetManager:
 
     def has_local(self):
         return any(t.get("type") == "local" for t in self.load())
+
+    @staticmethod
+    def mask_config(config: dict) -> dict:
+        """Return config with sensitive values replaced by '***'."""
+        return {
+            k: ("***" if k.lower() in _SENSITIVE_KEYS else v)
+            for k, v in config.items()
+        }
+
+    def load_safe(self):
+        """Return targets list with sensitive config fields masked."""
+        targets = self.load()
+        return [
+            {**t, "config": self.mask_config(t.get("config", {}))}
+            for t in targets
+        ]

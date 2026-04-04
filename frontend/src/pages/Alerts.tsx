@@ -18,7 +18,9 @@ const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
   const [alerts,      setAlerts]      = useState<AlertEntry[]>([]);
   const [filter,      setFilter]      = useState<TriageLevel | "all">("all");
-  const [selectedTid, setSelectedTid] = useState("");
+  const [selectedTid, setSelectedTid] = useState(() =>
+    localStorage.getItem("alerts_selectedTid") ?? ""
+  );
   const [starting,    setStarting]    = useState(false);
 
   // count per level without implicit any
@@ -72,7 +74,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
           <Label>Target</Label>
           <select
             value={selectedTid}
-            onChange={e => setSelectedTid(e.target.value)}
+            onChange={e => { setSelectedTid(e.target.value); localStorage.setItem("alerts_selectedTid", e.target.value); }}
             disabled={monitorActive}
             style={{ width: "100%", background: "#0f1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 13 }}
           >

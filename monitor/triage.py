@@ -1,11 +1,11 @@
 """
-monitor/triage.py — classifies events into L1 / L2 / L3 and feeds the agent.
+monitor/triage.py — classifies events into SEV1 / SEV2 / SEV3 and feeds the agent.
 
-L1 — Detect   : Warning events with unknown reason. Logged to terminal only.
-L2 — Diagnose : Known warnings (CrashLoopBackOff, OOMKilled, ...).
-                Captures snapshots → stores in DB → sends to AI with history.
-L3 — Resolve  : Critical events (NodeNotReady, DiskPressure, ...).
-                Same as L2 + AI proposes remediation command.
+SEV3 — Detect   : Warning events with unknown reason. Logged to terminal only.
+SEV2 — Diagnose : Known warnings (CrashLoopBackOff, OOMKilled, ...).
+                  Captures snapshots → stores in DB → sends to AI with history.
+SEV1 — Resolve  : Critical events (NodeNotReady, DiskPressure, ...).
+                  Same as SEV2 + AI proposes remediation command.
 
 Key improvements over polling-then-asking:
   1. Snapshots captured the moment event fires — logs/describe saved immediately
@@ -21,14 +21,14 @@ _REINVESTIGATE_AFTER = 30 * 60   # 30 minutes
 
 # ── severity tables ───────────────────────────────────────────────────────────
 
-_L2_REASONS = {
+_SEV2_REASONS = {
     "BackOff", "CrashLoopBackOff", "Failed", "FailedMount",
     "Unhealthy", "FailedScheduling", "OOMKilled",
     "ImagePullBackOff", "ErrImagePull", "Error",
     "Evicted", "FailedCreate", "FailedSync", "HighRestartCount",
 }
 
-_L3_REASONS = {
+_SEV1_REASONS = {
     "NodeNotReady", "MemoryPressure", "DiskPressure",
     "PIDPressure", "NetworkUnavailable", "OutOfDisk", "KubeletNotReady",
 }
@@ -88,11 +88,11 @@ class Triage:
     # ── classification ────────────────────────────────────────────────────────
 
     def _classify(self, reason):
-        if reason in _L3_REASONS: return "SEV1"
-        if reason in _L2_REASONS: return "SEV2"
+        if reason in _SEV1_REASONS: return "SEV1"
+        if reason in _SEV2_REASONS: return "SEV2"
         return "SEV3"
 
-    # ── L1 ───────────────────────────────────────────────────────────────────
+    # ── SEV3 (info/detect) ───────────────────────────────────────────────────
 
     def _l1(self, event):
         self._out_q.put({
@@ -103,7 +103,7 @@ class Triage:
             "auto_investigate": False,
         })
 
-    # ── L2 ───────────────────────────────────────────────────────────────────
+    # ── SEV2 (diagnose) ──────────────────────────────────────────────────────
 
     def _l2(self, event):
         obj = event["object"]
@@ -136,7 +136,7 @@ class Triage:
                 "text":     self._build_query("SEV2", event, snaps, history),
             })
 
-    # ── L3 ───────────────────────────────────────────────────────────────────
+    # ── SEV1 (critical/resolve) ──────────────────────────────────────────────
 
     def _l3(self, event):
         obj = event["object"]

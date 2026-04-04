@@ -109,6 +109,16 @@ function TabContent({ tabId, data, loading, target }: TabContentProps) {
   if (loading) return <LoadingSpinner />;
   if (!tabId)  return null;
 
+  if (data.error) {
+    return (
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+        <div style={{ background: "#2a0011", border: "1px solid #f43f5e", borderRadius: 8, padding: "14px 20px", fontSize: 13, color: "#fb7185", maxWidth: 480, textAlign: "center" }}>
+          {data.error}
+        </div>
+      </div>
+    );
+  }
+
   const ttype = target.type;
 
   // Overview — rich metric cards for SSH/local

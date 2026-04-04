@@ -46,6 +46,9 @@ class EventWatcher:
         watcher.stop()
     """
 
+    # How long (seconds) before the same pod/node issue is re-emitted
+    _DEDUP_TTL = 300  # 5 minutes
+
     def __init__(self, executor_fn):
         """
         executor_fn : callable(command: str) -> str
@@ -56,6 +59,9 @@ class EventWatcher:
         self._exec      = executor_fn
         self._callbacks = []
         self._stop      = threading.Event()
+        # dedup caches: key → last_emitted_timestamp
+        self._pod_seen  = {}   # (namespace, name, reason) → time.time()
+        self._node_seen = {}   # (name, reason) → time.time()
 
     def on_event(self, callback):
         """Register a callback invoked for every new event dict."""
@@ -162,24 +168,29 @@ class EventWatcher:
                     status    = parts[3]
                     restarts  = int(parts[4]) if parts[4].isdigit() else 0
 
+                    reason = None
                     if status in _BAD_POD_STATUSES:
-                        self._emit({
-                            "source":    "kubernetes",
-                            "namespace": namespace,
-                            "type":      "Warning",
-                            "reason":    status,
-                            "object":    name,
-                            "message":   f"Pod {name} in {namespace} — status: {status}, restarts: {restarts}",
-                        })
+                        reason = status
                     elif restarts >= _HIGH_RESTART_THRESHOLD:
-                        self._emit({
-                            "source":    "kubernetes",
-                            "namespace": namespace,
-                            "type":      "Warning",
-                            "reason":    "HighRestartCount",
-                            "object":    name,
-                            "message":   f"Pod {name} in {namespace} has restarted {restarts} times",
-                        })
+                        reason = "HighRestartCount"
+
+                    if reason:
+                        dedup_key = (namespace, name, reason)
+                        now = time.time()
+                        last = self._pod_seen.get(dedup_key, 0)
+                        if now - last >= self._DEDUP_TTL:
+                            self._pod_seen[dedup_key] = now
+                            msg = (f"Pod {name} in {namespace} — status: {status}, restarts: {restarts}"
+                                   if reason != "HighRestartCount"
+                                   else f"Pod {name} in {namespace} has restarted {restarts} times")
+                            self._emit({
+                                "source":    "kubernetes",
+                                "namespace": namespace,
+                                "type":      "Warning",
+                                "reason":    reason,
+                                "object":    name,
+                                "message":   msg,
+                            })
 
             except Exception:
                 pass
@@ -207,14 +218,18 @@ class EventWatcher:
                     status = parts[1]    # Ready / NotReady / SchedulingDisabled
 
                     if status != "Ready":
-                        self._emit({
-                            "source":    "kubernetes",
-                            "namespace": "",
-                            "type":      "Warning",
-                            "reason":    "NodeNotReady",
-                            "object":    name,
-                            "message":   f"Node {name} status is {status}",
-                        })
+                        dedup_key = (name, "NodeNotReady")
+                        now = time.time()
+                        if now - self._node_seen.get(dedup_key, 0) >= self._DEDUP_TTL:
+                            self._node_seen[dedup_key] = now
+                            self._emit({
+                                "source":    "kubernetes",
+                                "namespace": "",
+                                "type":      "Warning",
+                                "reason":    "NodeNotReady",
+                                "object":    name,
+                                "message":   f"Node {name} status is {status}",
+                            })
 
             except Exception:
                 pass

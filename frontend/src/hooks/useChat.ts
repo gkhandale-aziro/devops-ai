@@ -54,6 +54,7 @@ export function useTargetChat(targetId: string | null) {
       }
     } catch (e) {
       setMessages((prev: ChatMsg[]) => {
+        if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
         const next = [...prev];
         next[next.length - 1] = { role: "assistant", content: `Error: ${String(e)}` };
         return next;

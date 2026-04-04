@@ -14,6 +14,7 @@ export default function App() {
   const [monitorActive, setMonitorActive] = useState(false);
   const [showAdd,       setShowAdd]       = useState(false);
   const [aiModel,       setAiModel]       = useState("");
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   useEffect(() => {
     loadTargets();
@@ -30,15 +31,20 @@ export default function App() {
   }
 
   async function handleRemove(id: string) {
-    if (!confirm("Remove this connection?")) return;
+    setConfirmRemove(id);
+  }
+
+  async function doRemove() {
+    if (!confirmRemove) return;
+    const id = confirmRemove;
+    setConfirmRemove(null);
     await api.targets.remove(id);
     if (activeTarget?.id === id) setActiveTarget(null);
-    loadTargets();
+    await loadTargets();
   }
 
   async function handleAdd(name: string, type: Target["type"], config: Record<string, string>) {
     const t = await api.targets.add(name, type, config);
-    // Test connection — remove target and surface error if it fails
     const test = await api.targets.test(t.id);
     if (test.status !== "online") {
       await api.targets.remove(t.id);
@@ -48,6 +54,8 @@ export default function App() {
     await loadTargets();
     setActiveTarget(t);
   }
+
+  const targetName = targets.find(t => t.id === confirmRemove)?.name ?? "";
 
   return (
     <BrowserRouter>
@@ -73,6 +81,12 @@ export default function App() {
               />
             } />
             <Route path="/history" element={<History />} />
+            <Route path="*"        element={
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "#64748b" }}>
+                <div style={{ fontSize: 48, color: "#2d3148" }}>404</div>
+                <div style={{ fontSize: 14 }}>Page not found</div>
+              </div>
+            } />
           </Routes>
         </div>
 
@@ -81,6 +95,32 @@ export default function App() {
             onClose={() => setShowAdd(false)}
             onAdd={handleAdd}
           />
+        )}
+
+        {/* Inline confirm dialog — replaces window.confirm() */}
+        {confirmRemove && (
+          <div style={{ position: "fixed", inset: 0, background: "#00000088", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, padding: 24, width: 340, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Remove connection?</div>
+              <div style={{ fontSize: 13, color: "#94a3b8" }}>
+                Remove <strong style={{ color: "#e2e8f0" }}>{targetName}</strong>? This cannot be undone.
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setConfirmRemove(null)}
+                  style={{ background: "#1e2240", border: "1px solid #2d3148", color: "#94a3b8", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={doRemove}
+                  style={{ background: "#b91c1c", border: "none", color: "#fff", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </BrowserRouter>

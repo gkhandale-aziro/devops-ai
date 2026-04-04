@@ -50,16 +50,22 @@ def _trim(messages):
     return system + history[-MAX_HISTORY:]
 
 
+_CMD_TIMEOUT = 30  # seconds per command
+
 def _run_many(target, cmds):
-    """Run multiple commands in parallel on a target."""
+    """Run multiple commands in parallel on a target, with per-command timeout."""
     if len(cmds) <= 1:
         return {k: _tools.execute(target, v) for k, v in cmds.items()}
     results = {}
     with ThreadPoolExecutor(max_workers=min(len(cmds), 8)) as pool:
         futures = {pool.submit(_tools.execute, target, cmd): key
                    for key, cmd in cmds.items()}
-        for future in as_completed(futures):
-            results[futures[future]] = future.result()
+        for future in as_completed(futures, timeout=_CMD_TIMEOUT * len(cmds)):
+            key = futures[future]
+            try:
+                results[key] = future.result(timeout=_CMD_TIMEOUT)
+            except Exception as e:
+                results[key] = f"[TIMEOUT or ERROR] {e}"
     return results
 
 
@@ -91,13 +97,20 @@ def serve_react(path: str):
 
 @app.route("/api/targets", methods=["GET"])
 def api_list():
-    return jsonify(_targets.load())
+    return jsonify(_targets.load_safe())
 
 
 @app.route("/api/targets", methods=["POST"])
 def api_add():
-    d = request.json
-    return jsonify(_targets.add(d["name"], d["type"], d.get("config", {})))
+    d = request.json or {}
+    name = (d.get("name") or "").strip()
+    ttype = (d.get("type") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    valid_types = {"ssh", "kubernetes", "docker", "aws", "gcp", "azure", "terraform", "local"}
+    if ttype not in valid_types:
+        return jsonify({"error": f"invalid type: {ttype}"}), 400
+    return jsonify(_targets.add(name, ttype, d.get("config", {})))
 
 
 @app.route("/api/targets/<tid>", methods=["DELETE"])
@@ -107,17 +120,31 @@ def api_delete(tid):
     return jsonify({"ok": True})
 
 
+_TEST_COMMANDS = {
+    "kubernetes": "kubectl cluster-info 2>&1 | head -5",
+    "docker":     "docker info --format '{{.ServerVersion}}' 2>&1",
+    "aws":        "aws sts get-caller-identity 2>&1",
+    "gcp":        "gcloud config get-value project 2>&1",
+    "azure":      "az account show --query name -o tsv 2>&1",
+    "terraform":  "terraform version 2>&1 | head -2",
+}
+
 @app.route("/api/targets/<tid>/test", methods=["GET"])
 def api_test(tid):
     target = _targets.get(tid)
     if not target:
         return jsonify({"status": "error", "message": "Target not found"}), 404
-    out = _tools.execute(target, "echo OK && uname -a && uptime")
-    if "SSH ERROR" in out or "ERROR" in out:
-        _targets.update_status(tid, "offline")
-        return jsonify({"status": "offline", "message": out})
-    _targets.update_status(tid, "online")
-    return jsonify({"status": "online", "message": out})
+    ttype = target.get("type", "ssh")
+    cmd   = _TEST_COMMANDS.get(ttype, "echo OK && uname -a && uptime")
+    out   = _tools.execute(target, cmd)
+    # treat empty output or known error markers as offline
+    failed = not out.strip() or any(e in out for e in ["SSH ERROR", "ERROR:", "error:", "command not found", "No such file"])
+    # kubernetes: must see "Kubernetes control plane" to be truly online
+    if ttype == "kubernetes":
+        failed = "control plane" not in out.lower() and "kubernetes" not in out.lower()
+    status = "offline" if failed else "online"
+    _targets.update_status(tid, status)
+    return jsonify({"status": status, "message": out})
 
 
 # ── tab commands (dashboard quick-view panels) ────────────────────────────────
@@ -262,7 +289,6 @@ def api_tab(tid, tab):
                  if unit else f"journalctl -n {lines} --no-pager 2>/dev/null")
         return jsonify({"logs": _tools.execute(target, cmd)})
 
-    _targets.update_status(tid, "online")
     return jsonify(_run_many(target, cmds))
 
 
@@ -359,10 +385,10 @@ def _broadcast_alert(event):
 
 
 def _web_classify(raw_event):
-    from monitor.triage import _L2_REASONS, _L3_REASONS
+    from monitor.triage import _SEV1_REASONS, _SEV2_REASONS
     r = raw_event.get("reason", "")
-    if r in _L3_REASONS: return "SEV1"
-    if r in _L2_REASONS: return "SEV2"
+    if r in _SEV1_REASONS: return "SEV1"
+    if r in _SEV2_REASONS: return "SEV2"
     return "SEV3"
 
 
@@ -401,7 +427,8 @@ def api_monitor_start(tid):
             _web_watcher.stop()
         _web_watcher = EventWatcher(executor)
         _web_watcher.on_event(_web_triage_handle)
-        _web_watcher.on_event(lambda e: _store.save_event(e, _web_classify(e)))
+        # only persist Warning events — Normal events are informational noise
+        _web_watcher.on_event(lambda e: _store.save_event(e, _web_classify(e)) if e.get("type") == "Warning" else None)
         _web_watcher.watch()
 
     return jsonify({"ok": True, "monitoring": tid})

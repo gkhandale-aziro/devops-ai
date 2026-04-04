@@ -150,19 +150,27 @@ class EventStore:
 
     def get_events(self, limit: int = 50, level: str = None,
                    object_name: str = None) -> list:
-        """Return recent events, optionally filtered by level and/or object name."""
-        sql    = "SELECT * FROM events"
-        params = []
+        """Return recent events with last_diagnosis, optionally filtered."""
         where  = []
+        params = []
         if level:
-            where.append("level = ?")
+            where.append("e.level = ?")
             params.append(level)
         if object_name:
-            where.append("object LIKE ?")
+            where.append("e.object LIKE ?")
             params.append(f"%{object_name}%")
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY timestamp DESC LIMIT ?"
+
+        where_clause = ("WHERE " + " AND ".join(where)) if where else ""
+        sql = f"""
+            SELECT e.*,
+                   (SELECT a.diagnosis FROM analyses a
+                    WHERE  a.event_id = e.id
+                    ORDER  BY a.timestamp DESC LIMIT 1) AS last_diagnosis
+            FROM   events e
+            {where_clause}
+            ORDER  BY e.timestamp DESC
+            LIMIT  ?
+        """
         params.append(limit)
 
         with self._conn() as c:

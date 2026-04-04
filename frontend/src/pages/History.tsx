@@ -14,7 +14,10 @@ const STATUS_STYLES: Record<IncidentStatus, { color: string; bg: string; label: 
 
 // ── relative time helper ──────────────────────────────────────────────────────
 function relativeTime(ts: string): string {
-  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  const ms = new Date(ts).getTime();
+  if (isNaN(ms)) return ts;
+  const diff = Math.floor((Date.now() - ms) / 1000);
+  if (diff < 0)    return "just now";
   if (diff < 60)   return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
