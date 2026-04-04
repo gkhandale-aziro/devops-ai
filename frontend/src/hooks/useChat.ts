@@ -68,3 +68,56 @@ export function useTargetChat(targetId: string | null) {
 
   return { messages, loading, send, clear };
 }
+
+export function useSessionChat(sessionId: string | null) {
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [loading,  setLoading]  = useState(false);
+
+  const send = useCallback(async (text: string) => {
+    if (!sessionId || !text.trim()) return;
+
+    setMessages(prev => [...prev, { role: "user", content: text }]);
+    setLoading(true);
+
+    const placeholder: ChatMsg = { role: "assistant", content: "" };
+    setMessages(prev => [...prev, placeholder]);
+
+    try {
+      const res = await api.sessions.chatStream(sessionId, text);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      let full = "";
+
+      for await (const evt of readSSE(res)) {
+        if (typeof evt.error === "string") {
+          setMessages(prev => {
+            const next = [...prev];
+            next[next.length - 1] = { role: "assistant", content: `⚠ ${evt.error}` };
+            return next;
+          });
+          return;
+        }
+        if (typeof evt.t === "string") {
+          full += evt.t;
+          setMessages(prev => {
+            const next = [...prev];
+            next[next.length - 1] = { role: "assistant", content: full };
+            return next;
+          });
+        }
+      }
+    } catch (e) {
+      setMessages(prev => {
+        if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
+        const next = [...prev];
+        next[next.length - 1] = { role: "assistant", content: `Error: ${String(e)}` };
+        return next;
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionId]);
+
+  const clear = useCallback(() => setMessages([]), []);
+
+  return { messages, loading, send, clear };
+}

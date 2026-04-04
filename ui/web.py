@@ -38,7 +38,7 @@ _session  = AgentSession()
 _store    = EventStore()
 
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
-app = Flask(__name__, static_folder=_DIST, static_url_path="")
+app = Flask(__name__, static_folder=None)
 
 MAX_HISTORY = 20
 
@@ -223,13 +223,38 @@ TAB_COMMANDS = {
 }
 TAB_COMMANDS["local"] = TAB_COMMANDS["ssh"]
 
+if platform.system() == "Windows":
+    TAB_COMMANDS["local"] = {
+        "overview": {
+            "uptime":     'powershell -Command "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime"',
+            "memory":     'powershell -Command "$m=Get-CimInstance Win32_OperatingSystem; $t=[math]::Round($m.TotalVisibleMemorySize/1024); $f=[math]::Round($m.FreePhysicalMemory/1024); $u=$t-$f; Write-Output \\"Mem: $t $u $f\\""',
+            "disk":       'powershell -Command "Get-PSDrive C | ForEach-Object { $u=[math]::Round($_.Used/1GB,1); $f=[math]::Round($_.Free/1GB,1); $t=$u+$f; $p=[math]::Round($u/$t*100); Write-Output \\"C: ${t}G ${u}G ${f}G ${p}%\\" }"',
+            "cpu":        'powershell -Command "$c=(Get-CimInstance Win32_Processor).LoadPercentage; Write-Output \\"${c}% us\\""',
+            "os":         'powershell -Command "(Get-CimInstance Win32_OperatingSystem).Caption"',
+            "failed_svc": 'powershell -Command "Get-Service | Where-Object {$_.Status -eq \\"Stopped\\" -and $_.StartType -eq \\"Automatic\\"} | Select-Object -First 5 -ExpandProperty Name"',
+            "top_procs":  'powershell -Command "Get-Process | Sort-Object CPU -Descending | Select-Object -First 6 | Format-Table -AutoSize Name, Id, CPU, WorkingSet"',
+            "hostname":   "hostname",
+        },
+        "network": {
+            "ports":      'powershell -Command "Get-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess | Format-Table -AutoSize"',
+            "routes":     "route print",
+            "dns":        'powershell -Command "Get-DnsClientServerAddress | Format-Table -AutoSize"',
+            "interfaces": 'powershell -Command "Get-NetIPAddress | Select-Object InterfaceAlias,IPAddress,PrefixLength | Format-Table -AutoSize"',
+        },
+        "storage": {
+            "filesystems": 'powershell -Command "Get-PSDrive -PSProvider FileSystem | Format-Table Name,Used,Free -AutoSize"',
+            "top_dirs":    'powershell -Command "Get-ChildItem C:\\ -Directory -ErrorAction SilentlyContinue | ForEach-Object { $s=(Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum; [PSCustomObject]@{Name=$_.Name; SizeGB=[math]::Round($s/1GB,2)} } | Sort-Object SizeGB -Descending | Select-Object -First 10 | Format-Table -AutoSize"',
+            "inodes":      'powershell -Command "Get-PSDrive -PSProvider FileSystem | Format-Table Name,Used,Free -AutoSize"',
+        },
+    }
+
 
 def _auto_register_localhost():
-    if platform.system() == "Windows":
-        return
     if _targets.has_local():
         return
-    _targets.add(f"This Server ({socket.gethostname()})", "local", {})
+    t = _targets.add(f"This Server ({socket.gethostname()})", "local", {})
+    _targets.update_status(t["id"], "online")
+    print(f"  Auto-registered local target: {socket.gethostname()}")
 
 _auto_register_localhost()
 

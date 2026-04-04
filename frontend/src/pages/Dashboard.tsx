@@ -3,7 +3,7 @@ import type { Target } from "../types";
 import { TABS_BY_TYPE }  from "../types";
 import { api, readSSE }  from "../api/client";
 import { useTargetChat } from "../hooks/useChat";
-import { ChatPanel }     from "../components/ChatPanel";
+import { ChatPanel } from "../components/ChatPanel";
 
 interface Props {
   target: Target | null;
@@ -24,9 +24,9 @@ export function Dashboard({ target }: Props) {
     clear();
   }, [target?.id]);
 
-  // Load tab data when tab changes
+  // Load tab data when tab changes (skip for chat tab)
   useEffect(() => {
-    if (!target || !activeTab || activeTab === "chat") return;
+    if (!target || !activeTab || activeTab === "__chat") return;
     setTabLoading(true);
     setTabData({});
     api.tab(target.id, activeTab)
@@ -49,8 +49,26 @@ export function Dashboard({ target }: Props) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+      {/* Page header */}
+      <div style={{
+        padding: "12px 20px",
+        borderBottom: "1px solid #1e2235",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flexShrink: 0,
+        background: "#0f1219",
+      }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c8cf8" strokeWidth="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        <strong style={{ fontSize: 15 }}>{target.name}</strong>
+        <span style={{ fontSize: 12, color: "#64748b", background: "#1a1d27", padding: "2px 8px", borderRadius: 4 }}>{target.type}</span>
+      </div>
+
       {/* Tab bar */}
-      <div style={{ display: "flex", background: "#0d1117", borderBottom: "1px solid #2d3148", flexShrink: 0 }}>
+      <div style={{ display: "flex", background: "#0d1117", borderBottom: "1px solid #1e2235", flexShrink: 0, padding: "0 16px" }}>
         {tabs.map(t => (
           <button
             key={t.id}
@@ -65,14 +83,13 @@ export function Dashboard({ target }: Props) {
             {t.label}
           </button>
         ))}
-        {/* chat always appended */}
         <button
-          onClick={() => setActiveTab("chat")}
+          onClick={() => setActiveTab("__chat")}
           style={{
             padding: "10px 16px", fontSize: 12, border: "none", background: "transparent",
-            color: activeTab === "chat" ? "#7c8cf8" : "#64748b",
-            borderBottom: activeTab === "chat" ? "2px solid #7c8cf8" : "2px solid transparent",
-            cursor: "pointer", marginLeft: "auto",
+            color: activeTab === "__chat" ? "#7c8cf8" : "#64748b",
+            borderBottom: activeTab === "__chat" ? "2px solid #7c8cf8" : "2px solid transparent",
+            cursor: "pointer", whiteSpace: "nowrap", marginLeft: "auto",
           }}
         >
           💬 AI Chat
@@ -81,8 +98,13 @@ export function Dashboard({ target }: Props) {
 
       {/* Content */}
       <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
-        {activeTab === "chat" ? (
-          <ChatPanel messages={messages} loading={chatLoading} onSend={send} placeholder={`Ask about ${target.name}…`} />
+        {activeTab === "__chat" ? (
+          <ChatPanel
+            messages={messages}
+            loading={chatLoading}
+            onSend={send}
+            placeholder={`Ask about ${target.name}…`}
+          />
         ) : (
           <TabContent
             tabId={activeTab}

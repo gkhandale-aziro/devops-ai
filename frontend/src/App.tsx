@@ -3,9 +3,11 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import type { Target } from "./types";
 import { api }        from "./api/client";
 import { Sidebar }    from "./components/Sidebar";
+import { Home }       from "./pages/Home";
 import { Dashboard }  from "./pages/Dashboard";
 import { Alerts }     from "./pages/Alerts";
 import { History }    from "./pages/History";
+import { Chat }       from "./pages/Chat";
 import { AddTargetModal } from "./components/AddTargetModal";
 
 export default function App() {
@@ -72,8 +74,9 @@ export default function App() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Routes>
-            <Route path="/"        element={<Dashboard target={activeTarget} />} />
-            <Route path="/alerts"  element={
+            <Route path="/"          element={<Home targets={targets} monitorActive={monitorActive} />} />
+            <Route path="/dashboard" element={<Dashboard target={activeTarget} />} />
+            <Route path="/alerts"    element={
               <Alerts
                 targets={targets}
                 monitorActive={monitorActive}
@@ -81,6 +84,7 @@ export default function App() {
               />
             } />
             <Route path="/history" element={<History />} />
+            <Route path="/chat"    element={<Chat targets={targets} activeTarget={activeTarget} />} />
             <Route path="*"        element={
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "#64748b" }}>
                 <div style={{ fontSize: 48, color: "#2d3148" }}>404</div>

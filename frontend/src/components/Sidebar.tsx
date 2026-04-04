@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { Target } from "../types";
 
@@ -20,6 +20,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel }: Props) {
   const loc = useLocation();
+  const nav = useNavigate();
 
   const navItem = (to: string, label: string, icon: ReactNode): ReactNode => {
     const active = loc.pathname === to;
@@ -65,7 +66,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           return (
             <div
               key={t.id}
-              onClick={() => onSelect(t)}
+              onClick={() => { onSelect(t); nav("/dashboard"); }}
               style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "8px 10px", borderRadius: 6, cursor: "pointer",
@@ -101,7 +102,10 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
 
       {/* nav */}
       <div style={{ borderTop: "1px solid #2d3148", padding: 8, display: "flex", flexDirection: "column", gap: 2 }}>
-        {navItem("/", "Dashboard",
+        {navItem("/", "Home",
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        )}
+        {navItem("/dashboard", "Dashboard",
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         )}
         {navItem("/alerts", "Live Alerts",
@@ -112,6 +116,9 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         )}
         {navItem("/history", "History",
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        )}
+        {navItem("/chat", "AI Chat",
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         )}
       </div>
 

@@ -1,9 +1,10 @@
-import { useState, useCallback, type ReactNode } from "react";
+import { useState, useCallback } from "react";
 import type { Target, MonitorAlert, TriageLevel, SSEEvent } from "../types";
 import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
 import { api }           from "../api/client";
 import { useMonitorSSE } from "../hooks/useSSE";
 import { AlertCard }     from "../components/AlertCard";
+import { AIDrawer }      from "../components/AIDrawer";
 
 interface Props {
   targets:         Target[];
@@ -23,7 +24,11 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
   );
   const [starting,    setStarting]    = useState(false);
 
-  // count per level without implicit any
+  // AI drawer
+  const [aiOpen,    setAiOpen]    = useState(false);
+  const [aiContext, setAiContext] = useState("");
+  const [aiTitle,   setAiTitle]   = useState("");
+
   const counts: Record<TriageLevel, number> = { SEV1: 0, SEV2: 0, SEV3: 0 };
   for (const a of alerts) counts[a.level]++;
 
@@ -62,126 +67,155 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
     onMonitorChange(false);
   }
 
+  function openAIForAlert(a: AlertEntry) {
+    const prompt =
+      `You are a Kubernetes SRE. Explain this live alert clearly and suggest what to do next.\n\n` +
+      `Severity: ${a.level} (${LEVEL_LABELS[a.level]})\n` +
+      `Reason: ${a.reason}\nObject: ${a.object}${a.namespace ? " / " + a.namespace : ""}\n` +
+      `Source: ${a.source}\nTime: ${a.ts}\nMessage: ${a.message ?? "—"}`;
+    setAiContext(prompt);
+    setAiTitle(`AI: ${a.reason} — ${a.object}`);
+    setAiOpen(true);
+  }
+
   const visible = filter === "all" ? alerts : alerts.filter(a => a.level === filter);
 
   return (
-    <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-      {/* sidebar */}
-      <div style={{ width: 240, background: "#0d1117", borderRight: "1px solid #2d3148", padding: 14, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
+      {/* ── Top bar ────────────────────────────────────────────────────── */}
+      <div style={{
+        padding: "12px 20px",
+        borderBottom: "1px solid #1e2235",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        flexShrink: 0,
+        background: "#0f1219",
+      }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: "50%",
+          background: monitorActive ? "#ef4444" : "#64748b",
+          display: "inline-block",
+          animation: monitorActive ? "pulse 1.5s infinite" : "none",
+          flexShrink: 0,
+        }} />
+        <strong style={{ fontSize: 15 }}>Live Alerts</strong>
 
-        <div>
-          <Label>Target</Label>
-          <select
-            value={selectedTid}
-            onChange={e => { setSelectedTid(e.target.value); localStorage.setItem("alerts_selectedTid", e.target.value); }}
-            disabled={monitorActive}
-            style={{ width: "100%", background: "#0f1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 13 }}
-          >
-            <option value="">— select —</option>
-            {targets.map(t => (
-              <option key={t.id} value={t.id}>{t.name} ({t.type})</option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <Label>Monitor</Label>
-          {!monitorActive ? (
-            <button
-              onClick={startMonitor}
-              disabled={!selectedTid || starting}
-              style={{ background: "#16a34a", border: "none", color: "#fff", borderRadius: 6, padding: 8, fontSize: 13, fontWeight: 600, cursor: selectedTid ? "pointer" : "not-allowed", opacity: selectedTid ? 1 : 0.5 }}
-            >
-              {starting ? "Starting…" : "Start Monitoring"}
-            </button>
-          ) : (
-            <button
-              onClick={stopMonitor}
-              style={{ background: "#b91c1c", border: "none", color: "#fff", borderRadius: 6, padding: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-            >
-              Stop Monitoring
-            </button>
-          )}
-          <div style={{ fontSize: 12, color: monitorActive ? "#22c55e" : "#64748b", background: "#1a1d27", border: `1px solid ${monitorActive ? "#22c55e" : "#2d3148"}`, borderRadius: 6, padding: "7px 10px" }}>
-            {monitorActive ? "● Monitoring active" : "○ Not monitoring"}
-          </div>
-        </div>
-
-        {/* counters */}
-        <div>
-          <Label>Counts</Label>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Severity counters */}
           <div style={{ display: "flex", gap: 6 }}>
             {LEVELS.map(l => {
               const c = LEVEL_COLORS[l];
               return (
-                <div key={l} style={{ flex: 1, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 6, padding: "8px 6px", textAlign: "center" }}>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: c.text }}>{counts[l]}</div>
-                  <div style={{ fontSize: 10, color: "#64748b" }}>{l}</div>
+                <div key={l} style={{
+                  background: c.bg, border: `1px solid ${c.border}`,
+                  borderRadius: 8, padding: "4px 10px", textAlign: "center",
+                  display: "flex", alignItems: "center", gap: 6, minWidth: 56,
+                }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: c.text }}>{counts[l]}</span>
+                  <span style={{ fontSize: 10, color: "#64748b" }}>{l}</span>
                 </div>
               );
             })}
           </div>
-        </div>
 
-        {/* filter */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <Label>Filter</Label>
-          {(["all", ...LEVELS] as const).map(f => (
+          <span style={{ fontSize: 12, color: "#475569" }}>|</span>
+
+          {/* Filter pills */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {(["all", ...LEVELS] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                style={{
+                  padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  background: filter === f ? (f === "all" ? "#1e2240" : LEVEL_COLORS[f].bg) : "transparent",
+                  border: `1px solid ${filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].border) : "#2d3148"}`,
+                  color: filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].text) : "#64748b",
+                }}
+              >{f === "all" ? "All" : f}</button>
+            ))}
+          </div>
+
+          <span style={{ fontSize: 12, color: "#475569" }}>|</span>
+
+          {/* Target selector + start/stop */}
+          <select
+            value={selectedTid}
+            onChange={e => { setSelectedTid(e.target.value); localStorage.setItem("alerts_selectedTid", e.target.value); }}
+            disabled={monitorActive}
+            style={{
+              background: "#161a26",
+              border: "1px solid #2d3148",
+              color: "#e2e8f0",
+              borderRadius: 6,
+              padding: "5px 10px",
+              fontSize: 12,
+              outline: "none",
+              minWidth: 140,
+            }}
+          >
+            <option value="">— target —</option>
+            {targets.map(t => (
+              <option key={t.id} value={t.id}>{t.name} ({t.type})</option>
+            ))}
+          </select>
+
+          {!monitorActive ? (
             <button
-              key={f}
-              onClick={() => setFilter(f)}
+              onClick={startMonitor}
+              disabled={!selectedTid || starting}
               style={{
-                background: filter === f ? (f === "all" ? "#1e2240" : LEVEL_COLORS[f].bg) : "#1a1d27",
-                border:     `1px solid ${filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].border) : "#2d3148"}`,
-                color:      filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].text) : "#94a3b8",
-                borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", textAlign: "left",
+                background: "#16a34a", border: "none", color: "#fff",
+                borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+                cursor: selectedTid ? "pointer" : "not-allowed",
+                opacity: selectedTid ? 1 : 0.5,
               }}
-            >
-              {f === "all" ? "All levels" : `${f} — ${LEVEL_LABELS[f]}`}
-            </button>
-          ))}
-        </div>
+            >{starting ? "Starting…" : "Start"}</button>
+          ) : (
+            <button
+              onClick={stopMonitor}
+              style={{
+                background: "#b91c1c", border: "none", color: "#fff",
+                borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >Stop</button>
+          )}
 
-        <button
-          onClick={() => setAlerts([])}
-          style={{ background: "#1a1d27", border: "1px solid #2d3148", color: "#64748b", borderRadius: 6, padding: 7, fontSize: 12, cursor: "pointer", marginTop: "auto" }}
-        >
-          Clear feed
-        </button>
+          {alerts.length > 0 && (
+            <button
+              onClick={() => setAlerts([])}
+              style={{ background: "none", border: "1px solid #2d3148", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+            >Clear</button>
+          )}
+        </div>
       </div>
 
-      {/* main feed */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ padding: "10px 16px", borderBottom: "1px solid #2d3148", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: monitorActive ? "#ef4444" : "#64748b", display: "inline-block", animation: monitorActive ? "pulse 1.5s infinite" : "none" }} />
-          <strong style={{ fontSize: 14 }}>Live Event Feed</strong>
-          <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>
-            {visible.length} alert{visible.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {visible.length === 0 && (
-            <div style={{ textAlign: "center", color: "#64748b", fontSize: 13, paddingTop: 60 }}>
+      {/* ── Alert feed ─────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {visible.length === 0 && (
+          <div style={{ textAlign: "center", color: "#64748b", fontSize: 13, paddingTop: 80 }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2d3148" strokeWidth="1.2" style={{ marginBottom: 12 }}>
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            <div>
               {monitorActive
                 ? "No alerts yet. Waiting for events…"
                 : "Start monitoring a target to see live alerts here."}
             </div>
-          )}
-          {visible.map(a => <AlertCard key={a.id} alert={a} />)}
-        </div>
+          </div>
+        )}
+        {visible.map(a => (
+          <AlertCard key={a.id} alert={a} onClick={() => openAIForAlert(a)} />
+        ))}
       </div>
 
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
-    </div>
-  );
-}
+      {/* AI Drawer */}
+      <AIDrawer open={aiOpen} context={aiContext} title={aiTitle} onClose={() => setAiOpen(false)} />
 
-function Label({ children }: { children: ReactNode }) {
-  return (
-    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".8px", color: "#64748b", marginBottom: 4 }}>
-      {children}
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
     </div>
   );
 }
