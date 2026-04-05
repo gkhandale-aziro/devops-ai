@@ -22,12 +22,23 @@ interface Props {
   onSelectTarget: (t: Target) => void;
 }
 
-const PAGES: Array<{ label: string; path: string; icon: string; accent: string }> = [
-  { label: "Home",       path: "/",         icon: "⌂",  accent: "#6366f1" },
-  { label: "Dashboard",  path: "/dashboard", icon: "▦",  accent: "#818cf8" },
-  { label: "Live Alerts",path: "/alerts",    icon: "⚡", accent: "#f43f5e" },
-  { label: "History",    path: "/history",   icon: "◷",  accent: "#06b6d4" },
-  { label: "AI Chat",    path: "/chat",      icon: "✦",  accent: "#818cf8" },
+// SVG icons as strings rendered via dangerouslySetInnerHTML — no emoji
+const PAGE_ICONS: Record<string, string> = {
+  home:      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+  dashboard: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
+  alerts:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+  history:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  chat:      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  ai:        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  target:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>`,
+};
+
+const PAGES: Array<{ label: string; path: string; iconKey: string; accent: string }> = [
+  { label: "Home",        path: "/",          iconKey: "home",      accent: "#6366f1" },
+  { label: "Dashboard",   path: "/dashboard", iconKey: "dashboard", accent: "#818cf8" },
+  { label: "Live Alerts", path: "/alerts",    iconKey: "alerts",    accent: "#f43f5e" },
+  { label: "History",     path: "/history",   iconKey: "history",   accent: "#06b6d4" },
+  { label: "AI Chat",     path: "/chat",      iconKey: "chat",      accent: "#818cf8" },
 ];
 
 export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props) {
@@ -67,12 +78,12 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
     if (!q) {
       // Default: show pages + targets
       PAGES.forEach(p => res.push({
-        id: p.path, icon: p.icon, label: p.label,
+        id: p.path, icon: PAGE_ICONS[p.iconKey], label: p.label,
         sub: "Navigate", accent: p.accent,
         action: () => { nav(p.path); setOpen(false); },
       }));
       targets.forEach(t => res.push({
-        id: t.id, icon: "◉", label: t.name,
+        id: t.id, icon: PAGE_ICONS.target, label: t.name,
         sub: t.type, accent: "#22c55e",
         action: () => { onSelectTarget(t); nav("/dashboard"); setOpen(false); },
       }));
@@ -83,7 +94,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
     // Filter pages
     PAGES.filter(p => p.label.toLowerCase().includes(ql)).forEach(p =>
       res.push({
-        id: p.path, icon: p.icon, label: p.label,
+        id: p.path, icon: PAGE_ICONS[p.iconKey], label: p.label,
         sub: "Page", accent: p.accent,
         action: () => { nav(p.path); setOpen(false); },
       })
@@ -92,7 +103,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
     // Filter targets
     targets.filter(t => t.name.toLowerCase().includes(ql) || t.type.includes(ql)).forEach(t =>
       res.push({
-        id: t.id, icon: "◉", label: t.name,
+        id: t.id, icon: PAGE_ICONS.target, label: t.name,
         sub: `${t.type} · ${t.status}`, accent: "#22c55e",
         action: () => { onSelectTarget(t); nav("/dashboard"); setOpen(false); },
       })
@@ -101,7 +112,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
     // AI query shortcut
     res.push({
       id: "__ai__",
-      icon: "✦",
+      icon: PAGE_ICONS.ai,
       label: `Ask AI: "${q}"`,
       sub: "Open AI Chat",
       accent: "#818cf8",
@@ -236,7 +247,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
                 transition: "background .08s",
               }}
             >
-              <span style={{ fontSize: 16, color: r.accent ?? "#64748b", width: 20, textAlign: "center", flexShrink: 0 }}>{r.icon}</span>
+              <span style={{ color: r.accent ?? "#64748b", width: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: r.icon }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
                 {r.sub && <div style={{ fontSize: 11, color: "#475569", marginTop: 1 }}>{r.sub}</div>}
