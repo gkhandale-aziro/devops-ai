@@ -38,7 +38,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
   const visibleMessages = messages;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", flex: 1, overflow: "hidden" }}>
 
       {/* Messages feed */}
       <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
