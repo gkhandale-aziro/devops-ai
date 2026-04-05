@@ -3,7 +3,7 @@
  * Shows Deployment → Pods → Services → Ingresses as connected nodes.
  * Pure CSS/SVG — no external graph library needed.
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { Target } from "../types";
 import { api } from "../api/client";
 
@@ -239,18 +239,89 @@ export function ResourceGraph({ target, namespace }: Props) {
         </svg>
       </div>
 
-      {/* Selected node detail */}
+      {/* Selected node detail panel */}
       {selected && (
-        <div style={{ flexShrink: 0, borderTop: "1px solid #1e2235", background: "#0f1219", padding: "10px 16px", display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: KIND_COLOR[selected.kind].text, background: KIND_COLOR[selected.kind].bg, border: `1px solid ${KIND_COLOR[selected.kind].border}`, borderRadius: 4, padding: "2px 8px", textTransform: "uppercase" }}>
-            {selected.kind}
-          </span>
-          <strong style={{ fontSize: 13 }}>{selected.name}</strong>
-          {selected.namespace && <span style={{ fontSize: 11, color: "#64748b" }}>/ {selected.namespace}</span>}
-          <span style={{ fontSize: 11, color: "#64748b" }}>Status: <span style={{ color: POD_STATUS_COLOR[selected.status] ?? "#94a3b8" }}>{selected.status}</span></span>
-          <button onClick={() => setSelected(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16 }}>✕</button>
-        </div>
+        <TopologyDetail target={target} node={selected} onClose={() => setSelected(null)} />
       )}
+    </div>
+  );
+}
+
+// ── Topology detail panel (shows describe/logs on click) ──────────────────────
+
+function TopologyDetail({ target, node, onClose }: { target: Target; node: Node; onClose: () => void }) {
+  const [tab, setTab]       = useState<"info" | "describe" | "logs">("info");
+  const [detail, setDetail] = useState<Record<string, string>>({});
+  const [loading, setLoad]  = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchDetail = useCallback(async () => {
+    if (Object.keys(detail).length > 0) return;
+    setLoad(true);
+    try {
+      const d = await api.resource(target.id, node.kind, node.name, node.namespace);
+      setDetail(d);
+    } finally {
+      setLoad(false);
+    }
+  }, [target.id, node.id]);
+
+  useEffect(() => { if (tab !== "info") fetchDetail(); }, [tab]);
+
+  const statusColor = POD_STATUS_COLOR[node.status] ?? "#94a3b8";
+  const c = KIND_COLOR[node.kind];
+  const panelHeight = expanded ? "60vh" : 180;
+
+  return (
+    <div style={{ flexShrink: 0, borderTop: "1px solid #1e2235", background: "#0f1219", display: "flex", flexDirection: "column", height: panelHeight, transition: "height .2s" }}>
+      {/* Header */}
+      <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #1e2235", flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.text, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, padding: "2px 8px", textTransform: "uppercase" }}>
+          {node.kind}
+        </span>
+        <strong style={{ fontSize: 13 }}>{node.name}</strong>
+        {node.namespace && <span style={{ fontSize: 11, color: "#64748b" }}>/ {node.namespace}</span>}
+        <span style={{ fontSize: 11, color: "#64748b" }}>Status: <span style={{ color: statusColor }}>{node.status}</span></span>
+
+        {/* Tabs */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
+          {(["info", "describe", "logs"] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
+              padding: "3px 10px", fontSize: 11, background: tab === t ? "#1e2240" : "transparent",
+              border: `1px solid ${tab === t ? "#6366f1" : "#2d3148"}`,
+              color: tab === t ? "#818cf8" : "#64748b",
+              borderRadius: 4, cursor: "pointer", fontWeight: tab === t ? 600 : 400,
+              textTransform: "capitalize",
+            }}>{t}</button>
+          ))}
+        </div>
+        <button onClick={() => setExpanded(e => !e)} title={expanded ? "Minimize" : "Maximize"}
+          style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: "2px 4px" }}>
+          {expanded ? "▾" : "▴"}
+        </button>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px" }}>
+        {tab === "info" && (
+          <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "4px 12px", fontSize: 12 }}>
+            <span style={{ color: "#64748b" }}>Kind</span><span>{node.kind}</span>
+            <span style={{ color: "#64748b" }}>Name</span><span>{node.name}</span>
+            <span style={{ color: "#64748b" }}>Namespace</span><span>{node.namespace || "—"}</span>
+            <span style={{ color: "#64748b" }}>Status</span><span style={{ color: statusColor }}>{node.status}</span>
+          </div>
+        )}
+        {tab === "describe" && (
+          loading ? <span style={{ color: "#64748b", fontSize: 12 }}>Loading…</span>
+            : <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 11, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.5, margin: 0 }}>{detail.describe ?? "—"}</pre>
+        )}
+        {tab === "logs" && (
+          loading ? <span style={{ color: "#64748b", fontSize: 12 }}>Loading…</span>
+            : node.kind === "pod"
+              ? <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 11, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.5, margin: 0 }}>{detail.logs ?? "No logs (only available for pods)"}</pre>
+              : <div style={{ color: "#64748b", fontSize: 12, paddingTop: 8 }}>Logs are only available for pod resources.</div>
+        )}
+      </div>
     </div>
   );
 }

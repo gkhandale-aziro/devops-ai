@@ -679,14 +679,23 @@ function GenericTab({ data }: { data: Record<string, string> }) {
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
-function Card({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+function Card({ title, hint, children, defaultOpen = true }: { title: string; hint?: string; children: ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 8, overflow: "hidden" }}>
-      <div style={{ padding: "10px 14px", borderBottom: "1px solid #2d3148", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ padding: "10px 14px", borderBottom: open ? "1px solid #2d3148" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#64748b" strokeWidth="1.5"
+          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .15s", flexShrink: 0 }}>
+          <polyline points="3,1 7,5 3,9" />
+        </svg>
         {title}
         {hint && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>· {hint}</span>}
+        <span style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{open ? "▼" : "▶"}</span>
       </div>
-      <div style={{ padding: "12px 14px" }}>{children}</div>
+      {open && <div style={{ padding: "12px 14px" }}>{children}</div>}
     </div>
   );
 }

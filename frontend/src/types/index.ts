@@ -126,6 +126,7 @@ export interface ChatSession {
 export type TabId =
   | "overview" | "kubernetes" | "logs" | "network" | "storage"  // ssh/local
   | "nodes" | "pods" | "deployments" | "services" | "events"    // kubernetes
+  | "workloads" | "k8s_storage" | "ingress"                     // kubernetes extra
   | "containers" | "images" | "networks" | "volumes" | "stats"  // docker
   | "account" | "ec2" | "s3" | "eks" | "rds"                   // aws
   | "compute" | "gke" | "iam"                                   // gcp
@@ -153,12 +154,14 @@ export const TABS_BY_TYPE: Record<TargetType, Tab[]> = {
     { id: "storage",    label: "Storage"    },
   ],
   kubernetes: [
-    { id: "nodes",       label: "Nodes"       },
-    { id: "pods",        label: "Pods"        },
-    { id: "deployments", label: "Deployments" },
-    { id: "services",    label: "Services"    },
-    { id: "network",     label: "Network"     },
-    { id: "events",      label: "Events"      },
+    { id: "nodes",        label: "Nodes"       },
+    { id: "pods",         label: "Pods"        },
+    { id: "workloads",    label: "Workloads"   },
+    { id: "services",     label: "Services"    },
+    { id: "ingress",      label: "Ingress"     },
+    { id: "k8s_storage",  label: "Storage"     },
+    { id: "network",      label: "Network"     },
+    { id: "events",       label: "Events"      },
   ],
   docker: [
     { id: "containers", label: "Containers" },
