@@ -6,6 +6,7 @@ import { useTargetChat } from "../hooks/useChat";
 import { ChatPanel } from "../components/ChatPanel";
 import { LogStream } from "../components/LogStream";
 import { ResourceGraph } from "../components/ResourceGraph";
+import { parseKubectl } from "../utils/parseKubectl";
 
 interface Props {
   target: Target | null;
@@ -774,15 +775,6 @@ function GenericTab({ data }: { data: Record<string, string> }) {
 
 // ── Generic kubectl table renderer ───────────────────────────────────────────
 
-function parseKubectl(raw: string): { headers: string[]; rows: string[][] } {
-  const lines = (raw ?? "").trim().split("\n").filter(Boolean);
-  if (lines.length < 1) return { headers: [], rows: [] };
-  const headers = lines[0].trim().split(/\s{2,}/).map(h =>
-    h.replace(/-/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
-  );
-  const rows = lines.slice(1).map(l => l.trim().split(/\s{2,}/));
-  return { headers, rows };
-}
 
 type ColorFn = (val: string, col: string) => string | null;
 
