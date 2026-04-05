@@ -241,6 +241,17 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
     return <LogsTab raw={data.logs ?? ""} target={target} />;
   }
 
+  // Kubernetes rich tabs
+  if (tabId === "events")      return <EventsTab      data={data} />;
+  if (tabId === "services")    return <ServicesTab    data={data} />;
+  if (tabId === "workloads")   return <WorkloadsTab   data={data} />;
+  if (tabId === "k8s_storage") return <K8sStorageTab  data={data} />;
+  if (tabId === "ingress")     return <IngressTab     data={data} />;
+  if (tabId === "network")     return <NetworkTab     data={data} />;
+
+  // Docker rich tabs
+  if (tabId === "containers")  return <DockerContainersTab data={data} />;
+
   // Generic — card-per-key
   return <GenericTab data={data} />;
 }
@@ -706,6 +717,220 @@ function GenericTab({ data }: { data: Record<string, string> }) {
           <Pre>{val}</Pre>
         </Card>
       ))}
+    </div>
+  );
+}
+
+// ── Generic kubectl table renderer ───────────────────────────────────────────
+
+function parseKubectl(raw: string): { headers: string[]; rows: string[][] } {
+  const lines = (raw ?? "").trim().split("\n").filter(Boolean);
+  if (lines.length < 1) return { headers: [], rows: [] };
+  const headers = lines[0].trim().split(/\s{2,}/);
+  const rows = lines.slice(1).map(l => l.trim().split(/\s{2,}/));
+  return { headers, rows };
+}
+
+type ColorFn = (val: string, col: string) => string | null;
+
+function KubectlTable({ raw, colorFn, onRowClick }: {
+  raw:        string;
+  colorFn?:   ColorFn;
+  onRowClick?: (cols: string[], headers: string[]) => void;
+}) {
+  const noData = !raw || /^\[?(TIMEOUT|ERROR|No resources|not found)/i.test(raw.trim());
+  if (noData) return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>{raw?.trim() || "No data"}</div>;
+
+  const { headers, rows } = parseKubectl(raw);
+  if (!headers.length) return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>No data</div>;
+
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+      <thead>
+        <tr style={{ background: "#0d1117" }}>
+          {headers.map(h => (
+            <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", borderBottom: "1px solid #2d3148", whiteSpace: "nowrap" }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((cols, i) => (
+          <tr key={i}
+            onClick={() => onRowClick?.(cols, headers)}
+            style={{ borderBottom: "1px solid #1a1f2e", cursor: onRowClick ? "pointer" : "default", background: i % 2 === 1 ? "#0c0e16" : "transparent", transition: "background .1s" }}
+            onMouseEnter={ev => { if (onRowClick) ev.currentTarget.style.background = "#1a1d27"; }}
+            onMouseLeave={ev => { ev.currentTarget.style.background = i % 2 === 1 ? "#0c0e16" : "transparent"; }}
+          >
+            {headers.map((h, j) => {
+              const val = cols[j] ?? "—";
+              const color = colorFn?.(val, h);
+              return (
+                <td key={j} style={{ padding: "7px 12px", color: j === 0 ? "#e2e8f0" : "#94a3b8", verticalAlign: "top" }}>
+                  {color
+                    ? <span style={{ background: color + "22", color, border: `1px solid ${color}44`, borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 600 }}>{val}</span>
+                    : val}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ── Events tab ────────────────────────────────────────────────────────────────
+
+function EventsTab({ data }: { data: Record<string, string> }) {
+  const raw = data.output ?? "";
+  const colorFn: ColorFn = (val, col) => {
+    if (col.toUpperCase() === "TYPE") {
+      if (val === "Warning") return "#f59e0b";
+      if (val === "Normal")  return "#22c55e";
+    }
+    return null;
+  };
+  return (
+    <div style={{ overflowY: "auto", flex: 1 }}>
+      <KubectlTable raw={raw} colorFn={colorFn} />
+    </div>
+  );
+}
+
+// ── Services tab ──────────────────────────────────────────────────────────────
+
+function ServicesTab({ data }: { data: Record<string, string> }) {
+  const colorFn: ColorFn = (val, col) => {
+    if (col.toUpperCase() === "TYPE") {
+      if (val === "LoadBalancer") return "#818cf8";
+      if (val === "NodePort")     return "#06b6d4";
+      if (val === "ClusterIP")    return "#64748b";
+    }
+    return null;
+  };
+  return (
+    <div style={{ overflowY: "auto", flex: 1 }}>
+      <KubectlTable raw={data.services ?? ""} colorFn={colorFn} />
+    </div>
+  );
+}
+
+// ── Workloads tab ─────────────────────────────────────────────────────────────
+
+function WorkloadsTab({ data }: { data: Record<string, string> }) {
+  const readyColor: ColorFn = (val, col) => {
+    if (col.toUpperCase() === "READY" || col.toUpperCase() === "AVAILABLE") {
+      if (val.includes("0/") || val === "0") return "#ef4444";
+    }
+    return null;
+  };
+
+  const sections: { label: string; key: string }[] = [
+    { label: "Deployments",  key: "deployments"  },
+    { label: "StatefulSets", key: "statefulsets" },
+    { label: "DaemonSets",   key: "daemonsets"   },
+    { label: "Jobs",         key: "jobs"         },
+    { label: "CronJobs",     key: "cronjobs"     },
+  ];
+
+  return (
+    <div style={{ overflowY: "auto", flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      {sections.map(s => {
+        const raw = data[s.key] ?? "";
+        const hasData = raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT");
+        return (
+          <Card key={s.key} title={s.label} defaultOpen={s.key === "deployments"}>
+            {hasData
+              ? <div style={{ overflowX: "auto" }}><KubectlTable raw={raw} colorFn={readyColor} /></div>
+              : <div style={{ color: "#475569", fontSize: 13 }}>No {s.label.toLowerCase()} found</div>
+            }
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── K8s Storage tab ───────────────────────────────────────────────────────────
+
+function K8sStorageTab({ data }: { data: Record<string, string> }) {
+  const pvcColor: ColorFn = (val, col) => {
+    if (col.toUpperCase() === "STATUS") {
+      if (val === "Bound")   return "#22c55e";
+      if (val === "Pending") return "#f59e0b";
+      if (val === "Lost")    return "#ef4444";
+    }
+    return null;
+  };
+
+  return (
+    <div style={{ overflowY: "auto", flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      <Card title="Persistent Volume Claims" defaultOpen={true}>
+        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvcColor} /></div>
+      </Card>
+      <Card title="Persistent Volumes" defaultOpen={false}>
+        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvcColor} /></div>
+      </Card>
+      <Card title="Storage Classes" defaultOpen={false}>
+        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.storageclasses ?? ""} /></div>
+      </Card>
+    </div>
+  );
+}
+
+// ── Ingress tab ───────────────────────────────────────────────────────────────
+
+function IngressTab({ data }: { data: Record<string, string> }) {
+  return (
+    <div style={{ overflowY: "auto", flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      <Card title="Ingresses" defaultOpen={true}>
+        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses ?? ""} /></div>
+      </Card>
+      <Card title="Ingress Classes" defaultOpen={false}>
+        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingressclasses ?? ""} /></div>
+      </Card>
+    </div>
+  );
+}
+
+// ── Network tab ───────────────────────────────────────────────────────────────
+
+function NetworkTab({ data }: { data: Record<string, string> }) {
+  const svcColor: ColorFn = (val, col) => {
+    if (col.toUpperCase() === "TYPE") {
+      if (val === "LoadBalancer") return "#818cf8";
+      if (val === "NodePort")     return "#06b6d4";
+    }
+    return null;
+  };
+  return (
+    <div style={{ overflowY: "auto", flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      {data.services    && <Card title="Services"         defaultOpen={true} ><div style={{ overflowX: "auto" }}><KubectlTable raw={data.services}    colorFn={svcColor} /></div></Card>}
+      {data.ingresses   && <Card title="Ingresses"        defaultOpen={false}><div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses}   /></div></Card>}
+      {data.netpolicies && <Card title="Network Policies" defaultOpen={false}><div style={{ overflowX: "auto" }}><KubectlTable raw={data.netpolicies} /></div></Card>}
+      {data.endpoints   && <Card title="Endpoints"        defaultOpen={false}><div style={{ overflowX: "auto" }}><KubectlTable raw={data.endpoints}   /></div></Card>}
+      {data.ports       && <Card title="Listening Ports"  defaultOpen={true} ><Pre>{data.ports}</Pre></Card>}
+      {data.routes      && <Card title="Routes"           defaultOpen={false}><Pre>{data.routes}</Pre></Card>}
+      {data.interfaces  && <Card title="Interfaces"       defaultOpen={false}><Pre>{data.interfaces}</Pre></Card>}
+      {data.dns         && <Card title="DNS"              defaultOpen={false}><Pre>{data.dns}</Pre></Card>}
+    </div>
+  );
+}
+
+// ── Docker tabs ───────────────────────────────────────────────────────────────
+
+function DockerContainersTab({ data }: { data: Record<string, string> }) {
+  const colorFn: ColorFn = (val, col) => {
+    if (col.toUpperCase() === "STATUS") {
+      if (/^Up/i.test(val))   return "#22c55e";
+      if (/Exited/i.test(val)) return "#ef4444";
+      if (/Paused/i.test(val)) return "#f59e0b";
+    }
+    return null;
+  };
+  return (
+    <div style={{ overflowY: "auto", flex: 1 }}>
+      <KubectlTable raw={data.output ?? ""} colorFn={colorFn} />
     </div>
   );
 }
