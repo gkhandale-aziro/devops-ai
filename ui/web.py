@@ -590,3 +590,149 @@ def api_events_by_object(name):
 def api_stats():
     """Cluster incident stats: counts by level, top failing objects."""
     return jsonify(_store.get_stats())
+
+
+# ── Topology API ──────────────────────────────────────────────────────────────
+
+@app.route("/api/topology/<tid>", methods=["GET"])
+def api_topology(tid):
+    """
+    Return structured K8s resource graph for a namespace.
+    ?namespace=default  (default: all namespaces, top 5)
+    """
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
+
+    ns = request.args.get("namespace", "").strip()
+    ns_flag = f"-n {ns}" if ns and _SAFE_NAME_RE.match(ns) else "-A"
+
+    try:
+        cmds = {
+            "deployments":  f"kubectl get deployments {ns_flag} --no-headers 2>/dev/null",
+            "replicasets":  f"kubectl get replicasets {ns_flag} --no-headers 2>/dev/null",
+            "pods":         f"kubectl get pods {ns_flag} --no-headers 2>/dev/null",
+            "services":     f"kubectl get services {ns_flag} --no-headers 2>/dev/null",
+            "ingresses":    f"kubectl get ingresses {ns_flag} --no-headers 2>/dev/null",
+        }
+        raw = _run_many(target, cmds)
+
+        def parse_table(text, cols):
+            rows = []
+            for line in (text or "").strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= cols:
+                    rows.append(parts)
+            return rows
+
+        # Parse deployments: NS NAME READY UP-TO-DATE AVAILABLE AGE
+        deps = []
+        for r in parse_table(raw.get("deployments", ""), 4):
+            deps.append({"namespace": r[0], "name": r[1], "ready": r[2], "available": r[3]})
+
+        # Parse pods: NS NAME READY STATUS RESTARTS AGE
+        pods = []
+        for r in parse_table(raw.get("pods", ""), 5):
+            pods.append({"namespace": r[0], "name": r[1], "ready": r[2], "status": r[3], "restarts": r[4]})
+
+        # Parse services: NS NAME TYPE CLUSTER-IP EXTERNAL-IP PORT AGE
+        svcs = []
+        for r in parse_table(raw.get("services", ""), 4):
+            svcs.append({"namespace": r[0], "name": r[1], "type": r[2], "port": r[5] if len(r) > 5 else ""})
+
+        # Parse ingresses: NS NAME CLASS HOSTS ADDR PORT AGE
+        ings = []
+        for r in parse_table(raw.get("ingresses", ""), 4):
+            ings.append({"namespace": r[0], "name": r[1], "hosts": r[3] if len(r) > 3 else ""})
+
+        return jsonify({
+            "deployments": deps[:30],
+            "pods":        pods[:60],
+            "services":    svcs[:30],
+            "ingresses":   ings[:20],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Live log streaming ────────────────────────────────────────────────────────
+
+_SAFE_POD_RE = re.compile(r'^[a-z0-9][a-z0-9.\-]*$', re.IGNORECASE)
+
+@app.route("/api/logs/<tid>/stream")
+def api_logs_stream(tid):
+    """
+    SSE stream of kubectl logs -f for a pod.
+    ?pod=name  &namespace=default  &container=main
+    """
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
+
+    pod       = request.args.get("pod", "").strip()
+    ns        = request.args.get("namespace", "default").strip()
+    container = request.args.get("container", "").strip()
+
+    if not pod or not _SAFE_POD_RE.match(pod):
+        return jsonify({"error": "invalid pod name"}), 400
+    if ns and not _SAFE_NAME_RE.match(ns):
+        return jsonify({"error": "invalid namespace"}), 400
+
+    ns_flag = f"-n {ns}" if ns else ""
+    c_flag  = f"-c {container}" if container and _SAFE_NAME_RE.match(container) else ""
+    cmd     = f"kubectl logs -f --tail=100 {pod} {ns_flag} {c_flag} 2>&1"
+
+    def generate():
+        try:
+            import subprocess
+            proc = subprocess.Popen(
+                cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            for line in proc.stdout:
+                yield f"data: {json.dumps({'line': line.rstrip()})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── Search / Cmd+K API ────────────────────────────────────────────────────────
+
+@app.route("/api/search/<tid>")
+def api_search(tid):
+    """
+    Quick search for Cmd+K palette.
+    ?q=nginx  Returns pods, deployments, nodes matching the query.
+    """
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"results": []})
+
+    q = request.args.get("q", "").strip().lower()
+    if not q or len(q) < 2:
+        return jsonify({"results": []})
+
+    try:
+        raw = _run_many(target, {
+            "pods":  f"kubectl get pods -A --no-headers 2>/dev/null | grep -i {q} | head -10",
+            "nodes": f"kubectl get nodes --no-headers 2>/dev/null | grep -i {q} | head -5",
+            "deps":  f"kubectl get deployments -A --no-headers 2>/dev/null | grep -i {q} | head -5",
+        })
+        results = []
+        for line in (raw.get("pods") or "").strip().split("\n"):
+            parts = line.split()
+            if len(parts) >= 4:
+                results.append({"kind": "pod", "namespace": parts[0], "name": parts[1], "status": parts[3]})
+        for line in (raw.get("nodes") or "").strip().split("\n"):
+            parts = line.split()
+            if len(parts) >= 2:
+                results.append({"kind": "node", "namespace": "", "name": parts[0], "status": parts[1]})
+        for line in (raw.get("deps") or "").strip().split("\n"):
+            parts = line.split()
+            if len(parts) >= 4:
+                results.append({"kind": "deployment", "namespace": parts[0], "name": parts[1], "status": parts[2]})
+        return jsonify({"results": results[:20]})
+    except Exception:
+        return jsonify({"results": []})

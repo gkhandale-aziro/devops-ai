@@ -9,6 +9,8 @@ import { Alerts }     from "./pages/Alerts";
 import { History }    from "./pages/History";
 import { Chat }       from "./pages/Chat";
 import { AddTargetModal } from "./components/AddTargetModal";
+import { CommandPalette } from "./components/CommandPalette";
+import { ThemeProvider }  from "./components/ThemeContext";
 
 export default function App() {
   const [targets,       setTargets]       = useState<Target[]>([]);
@@ -60,8 +62,9 @@ export default function App() {
   const targetName = targets.find(t => t.id === confirmRemove)?.name ?? "";
 
   return (
+    <ThemeProvider>
     <BrowserRouter>
-      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#0d1117", color: "#e2e8f0" }}>
+      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--c-bg-base, #0d1117)", color: "var(--c-text-primary, #e2e8f0)" }}>
         <Sidebar
           targets={targets}
           activeId={activeTarget?.id ?? null}
@@ -126,7 +129,15 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* P1: Cmd+K Command Palette */}
+        <CommandPalette
+          targets={targets}
+          activeTarget={activeTarget}
+          onSelectTarget={setActiveTarget}
+        />
       </div>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }

@@ -117,6 +117,30 @@ export const api = {
   },
 
   stats: () => req<Stats>("/api/stats"),
+
+  // ── Topology ──────────────────────────────────────────────────────────────
+  topology: (targetId: string, namespace?: string) => {
+    const qs = namespace ? `?namespace=${encodeURIComponent(namespace)}` : "";
+    return req<{
+      deployments: Array<{ namespace: string; name: string; ready: string; available: string }>;
+      pods:        Array<{ namespace: string; name: string; ready: string; status: string; restarts: string }>;
+      services:    Array<{ namespace: string; name: string; type: string; port: string }>;
+      ingresses:   Array<{ namespace: string; name: string; hosts: string }>;
+    }>(`/api/topology/${targetId}${qs}`);
+  },
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  search: (targetId: string, q: string) =>
+    req<{ results: Array<{ kind: string; namespace: string; name: string; status: string }> }>(
+      `/api/search/${targetId}?q=${encodeURIComponent(q)}`
+    ),
+
+  // ── Log stream ────────────────────────────────────────────────────────────
+  logStreamUrl: (targetId: string, pod: string, namespace: string, container?: string) => {
+    const params = new URLSearchParams({ pod, namespace });
+    if (container) params.set("container", container);
+    return `/api/logs/${targetId}/stream?${params}`;
+  },
 };
 
 // ── SSE stream reader helper ───────────────────────────────────────────────────

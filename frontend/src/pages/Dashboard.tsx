@@ -4,6 +4,8 @@ import { TABS_BY_TYPE }  from "../types";
 import { api, readSSE }  from "../api/client";
 import { useTargetChat } from "../hooks/useChat";
 import { ChatPanel } from "../components/ChatPanel";
+import { LogStream } from "../components/LogStream";
+import { ResourceGraph } from "../components/ResourceGraph";
 
 interface Props {
   target: Target | null;
@@ -15,6 +17,7 @@ export function Dashboard({ target }: Props) {
   const [tabLoading, setTabLoading] = useState(false);
 
   const { messages, loading: chatLoading, send, clear } = useTargetChat(target?.id ?? null);
+  const [logStream, setLogStream] = useState<{ pod: string; namespace: string } | null>(null);
 
   // Reset tab when target changes
   useEffect(() => {
@@ -103,23 +106,57 @@ export function Dashboard({ target }: Props) {
           </svg>
           AI Chat
         </button>
+        {(target.type === "kubernetes" || target.type === "ssh" || target.type === "local") && (
+          <button
+            onClick={() => setActiveTab("__topology")}
+            style={{
+              padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
+              color: activeTab === "__topology" ? "#818cf8" : "#64748b",
+              borderBottom: activeTab === "__topology" ? "2px solid #6366f1" : "2px solid transparent",
+              cursor: "pointer", whiteSpace: "nowrap",
+              fontWeight: activeTab === "__topology" ? 600 : 400,
+              display: "flex", alignItems: "center", gap: 5,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/>
+              <line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/>
+            </svg>
+            Topology
+          </button>
+        )}
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
-        {activeTab === "__chat" ? (
-          <ChatPanel
-            messages={messages}
-            loading={chatLoading}
-            onSend={send}
-            placeholder={`Ask about ${target.name}…`}
-          />
-        ) : (
-          <TabContent
-            tabId={activeTab}
-            data={tabData}
-            loading={tabLoading}
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+          {activeTab === "__chat" ? (
+            <ChatPanel
+              messages={messages}
+              loading={chatLoading}
+              onSend={send}
+              placeholder={`Ask about ${target.name}…`}
+            />
+          ) : activeTab === "__topology" ? (
+            <ResourceGraph target={target} namespace="" />
+          ) : (
+            <TabContent
+              tabId={activeTab}
+              data={tabData}
+              loading={tabLoading}
+              target={target}
+              onStreamLogs={(pod, namespace) => setLogStream({ pod, namespace })}
+            />
+          )}
+        </div>
+
+        {/* Log stream tray (P4) */}
+        {logStream && target && (
+          <LogStream
             target={target}
+            pod={logStream.pod}
+            namespace={logStream.namespace}
+            onClose={() => setLogStream(null)}
           />
         )}
       </div>
@@ -134,9 +171,10 @@ interface TabContentProps {
   data:    Record<string, string>;
   loading: boolean;
   target:  Target;
+  onStreamLogs?: (pod: string, namespace: string) => void;
 }
 
-function TabContent({ tabId, data, loading, target }: TabContentProps) {
+function TabContent({ tabId, data, loading, target, onStreamLogs }: TabContentProps) {
   if (loading) return <LoadingSpinner />;
   if (!tabId)  return null;
 
@@ -164,7 +202,7 @@ function TabContent({ tabId, data, loading, target }: TabContentProps) {
 
   // Pods — clickable table
   if (tabId === "pods") {
-    return <PodTable raw={data.pods ?? data.output ?? ""} target={target} />;
+    return <PodTable raw={data.pods ?? data.output ?? ""} target={target} onStreamLogs={onStreamLogs} />;
   }
 
   // Logs — colorized
@@ -322,11 +360,13 @@ function NodeTable({ raw, target }: { raw: string; target: Target }) {
 
 // ── Pod table ─────────────────────────────────────────────────────────────────
 
-function PodTable({ raw, target }: { raw: string; target: Target }) {
+function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; onStreamLogs?: (pod: string, ns: string) => void }) {
   const [resource,  setResource]  = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [nsFilter,  setNsFilter]  = useState("");
   const [search,    setSearch]    = useState("");
+  const [aiBadges,  setAiBadges]  = useState<Record<string, string>>({});
+  const [badgeLoading, setBadgeLoading] = useState<Record<string, boolean>>({});
 
   if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
     return <div style={{ padding: 20, color: "#64748b", fontSize: 13 }}>kubectl not available or no pods found.</div>;
@@ -361,6 +401,26 @@ function PodTable({ raw, target }: { raw: string; target: Target }) {
   const statusColor = (s: string) =>
     s === "Running" ? "#22c55e" : s.includes("Error") || s.includes("Crash") || s === "OOMKilled" ? "#ef4444" : "#f59e0b";
 
+  const BAD_STATUSES = new Set(["CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff", "ErrImagePull", "CreateContainerError"]);
+
+  const fetchAIBadge = async (name: string, ns: string, status: string) => {
+    const key = `${ns}/${name}`;
+    if (aiBadges[key] || badgeLoading[key]) return;
+    setBadgeLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await api.analyzeStream(`Quick 1-sentence diagnosis for pod "${name}" in namespace "${ns}" with status "${status}". Be concise.`);
+      let text = "";
+      for await (const evt of readSSE(res)) {
+        if (typeof evt.t === "string") text += evt.t;
+      }
+      setAiBadges(prev => ({ ...prev, [key]: text.slice(0, 120) }));
+    } catch {
+      setAiBadges(prev => ({ ...prev, [key]: "AI unavailable" }));
+    } finally {
+      setBadgeLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
       {/* filter bar */}
@@ -389,7 +449,7 @@ function PodTable({ raw, target }: { raw: string; target: Target }) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#0d1117", position: "sticky", top: 0 }}>
-              {["Namespace","Name","Ready","Status","Restarts","Age"].map(h => (
+              {["Namespace","Name","Ready","Status","Restarts","Age",""].map(h => (
                 <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", borderBottom: "1px solid #2d3148" }}>{h}</th>
               ))}
             </tr>
@@ -401,6 +461,8 @@ function PodTable({ raw, target }: { raw: string; target: Target }) {
               const [ns, name, ready, status] = c;
               const restarts = c[4] ?? "0";
               const sc = statusColor(status);
+              const isBad = BAD_STATUSES.has(status);
+              const badgeKey = `${ns}/${name}`;
               return (
                 <tr key={i} onClick={() => openResource("pod", name, ns)}
                   style={{ borderBottom: "1px solid #1e2130", cursor: "pointer", transition: "background .1s" }}
@@ -408,7 +470,35 @@ function PodTable({ raw, target }: { raw: string; target: Target }) {
                   onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
                 >
                   <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{ns}</td>
-                  <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 500 }}>{name}</td>
+                  <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 500 }}>
+                    {name}
+                    {/* P3: Inline AI badge for unhealthy pods */}
+                    {isBad && !aiBadges[badgeKey] && !badgeLoading[badgeKey] && (
+                      <button
+                        onClick={e => { e.stopPropagation(); fetchAIBadge(name, ns, status); }}
+                        title="AI Insight"
+                        style={{
+                          marginLeft: 6, background: "#818cf822", border: "1px solid #818cf844",
+                          color: "#818cf8", borderRadius: 4, padding: "1px 5px",
+                          fontSize: 9, fontWeight: 700, cursor: "pointer", verticalAlign: "middle",
+                        }}
+                      >
+                        ✦ AI
+                      </button>
+                    )}
+                    {badgeLoading[badgeKey] && (
+                      <span style={{ marginLeft: 6, fontSize: 9, color: "#818cf8" }}>analyzing…</span>
+                    )}
+                    {aiBadges[badgeKey] && (
+                      <div style={{
+                        marginTop: 3, fontSize: 10, color: "#a5b4fc", lineHeight: 1.4,
+                        background: "#1e2240", border: "1px solid #6366f133",
+                        borderRadius: 4, padding: "3px 7px", maxWidth: 400,
+                      }}>
+                        ✦ {aiBadges[badgeKey]}
+                      </div>
+                    )}
+                  </td>
                   <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{ready}</td>
                   <td style={{ padding: "8px 12px" }}>
                     <span style={{ background: sc + "22", color: sc, border: `1px solid ${sc}44`, borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
@@ -419,6 +509,21 @@ function PodTable({ raw, target }: { raw: string; target: Target }) {
                     {restarts}
                   </td>
                   <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{c[c.length - 1]}</td>
+                  <td style={{ padding: "8px 12px" }}>
+                    {onStreamLogs && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onStreamLogs(name, ns); }}
+                        title="Stream logs"
+                        style={{
+                          background: "#06b6d422", border: "1px solid #06b6d444",
+                          color: "#06b6d4", borderRadius: 4, padding: "2px 7px",
+                          fontSize: 10, fontWeight: 600, cursor: "pointer",
+                        }}
+                      >
+                        ▶ Logs
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}

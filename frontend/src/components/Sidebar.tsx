@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { Target } from "../types";
+import { ThemeSwitcher } from "./ThemeContext";
 
 interface Props {
   targets:       Target[];
@@ -244,6 +245,11 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           </div>
         </div>
       )}
+
+      {/* P5: Theme switcher */}
+      <div style={{ padding: "6px 14px 10px", borderTop: "1px solid #1e2235" }}>
+        <ThemeSwitcher />
+      </div>
     </div>
   );
 }
