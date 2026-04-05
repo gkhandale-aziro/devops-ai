@@ -18,6 +18,9 @@ export function Dashboard({ target }: Props) {
 
   const { messages, loading: chatLoading, send, clear } = useTargetChat(target?.id ?? null);
   const [logStream, setLogStream] = useState<{ pod: string; namespace: string } | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reloadTab = useCallback(() => setReloadKey(k => k + 1), []);
+  const [topoNamespace, setTopoNamespace] = useState("");
 
   // Reset tab when target changes
   useEffect(() => {
@@ -36,7 +39,7 @@ export function Dashboard({ target }: Props) {
       .then(setTabData)
       .catch(() => setTabData({ error: "Failed to load" }))
       .finally(() => setTabLoading(false));
-  }, [target?.id, activeTab]);
+  }, [target?.id, activeTab, reloadKey]);
 
   if (!target) {
     return (
@@ -66,8 +69,9 @@ export function Dashboard({ target }: Props) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c8cf8" strokeWidth="2">
           <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
         </svg>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", marginRight: 8 }}>Dashboard</span>
-        <span style={{ fontSize: 15 }}>{target.name}</span>
+        <span style={{ fontSize: 11, color: "#475569", fontWeight: 500 }}>Dashboard</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+        <strong style={{ fontSize: 15 }}>{target.name}</strong>
         <span style={{ fontSize: 12, color: "#64748b", background: "#1a1d27", padding: "2px 8px", borderRadius: 4 }}>{target.type}</span>
       </div>
 
@@ -139,7 +143,18 @@ export function Dashboard({ target }: Props) {
               placeholder={`Ask about ${target.name}…`}
             />
           ) : activeTab === "__topology" ? (
-            <ResourceGraph target={target} namespace="" />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ padding: "8px 16px", borderBottom: "1px solid #1e2235", display: "flex", alignItems: "center", gap: 8, background: "#0b0d14", flexShrink: 0 }}>
+                <label style={{ fontSize: 11, color: "#64748b" }}>Namespace</label>
+                <input
+                  value={topoNamespace}
+                  onChange={e => setTopoNamespace(e.target.value)}
+                  placeholder="all namespaces"
+                  style={{ background: "#161b27", border: "1px solid #2d3555", color: "#e2e8f0", borderRadius: 5, padding: "3px 8px", fontSize: 11, width: 180 }}
+                />
+              </div>
+              <ResourceGraph target={target} namespace={topoNamespace} />
+            </div>
           ) : (
             <TabContent
               tabId={activeTab}
@@ -147,6 +162,7 @@ export function Dashboard({ target }: Props) {
               loading={tabLoading}
               target={target}
               onStreamLogs={(pod, namespace) => setLogStream({ pod, namespace })}
+              onRetry={reloadTab}
             />
           )}
         </div>
@@ -173,26 +189,32 @@ interface TabContentProps {
   loading: boolean;
   target:  Target;
   onStreamLogs?: (pod: string, namespace: string) => void;
+  onRetry?: () => void;
 }
 
-function TabContent({ tabId, data, loading, target, onStreamLogs }: TabContentProps) {
-  const [retryKey, setRetryKey] = useState(0);
+function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: TabContentProps) {
   if (loading) return <LoadingSpinner />;
   if (!tabId)  return null;
 
   if (data.error) {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
-        <div style={{ background: "var(--c-bg-error,#2a0011)", border: "1px solid var(--c-border-error,#f43f5e)", borderRadius: 8, padding: "14px 20px", fontSize: 13, color: "var(--c-text-error,#fb7185)", maxWidth: 480, textAlign: "center" }}>
+        <div style={{ background: "#2a0011", border: "1px solid #f43f5e", borderRadius: 8, padding: "14px 20px", fontSize: 13, color: "#fb7185", maxWidth: 480, textAlign: "center" }}>
           {data.error}
         </div>
-        <button
-          onClick={() => setRetryKey(k => k + 1)}
-          style={{ background: "var(--c-accent,#6366f1)", color: "#fff", border: "none", borderRadius: 6, padding: "7px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-          aria-label="Retry loading tab"
-        >
-          Retry
-        </button>
+        {onRetry && (
+          <button onClick={onRetry} style={{
+            display: "flex", alignItems: "center", gap: 6,
+            background: "#1a1d27", border: "1px solid #2d3148",
+            color: "#94a3b8", borderRadius: 6, padding: "6px 14px",
+            fontSize: 12, cursor: "pointer",
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+            </svg>
+            Retry
+          </button>
+        )}
       </div>
     );
   }
@@ -268,12 +290,12 @@ function OverviewTab({ data }: { data: Record<string, string> }) {
           { label: "Disk",       val: diskUsed,          sub: `of ${diskTotal} (${diskPct}%)`, pct: diskPct },
           { label: "Uptime",     val: uptimeStr,         sub: os, pct: -1 },
         ].map(card => (
-          <div key={card.label} style={{ background: "var(--c-bg-surface,#1a1d27)", border: "1px solid var(--c-border,#2d3148)", borderRadius: 8, padding: 14 }}>
-            <div style={{ fontSize: 11, color: "var(--c-text-muted,#64748b)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>{card.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: card.pct >= 0 ? pctColor(card.pct) : "var(--c-accent-hover,#7c8cf8)" }}>{card.val}</div>
-            <div style={{ fontSize: 11, color: "var(--c-text-muted,#64748b)", marginTop: 3 }}>{card.sub}</div>
+          <div key={card.label} style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 8, padding: 14 }}>
+            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>{card.label}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: card.pct >= 0 ? pctColor(card.pct) : "#7c8cf8" }}>{card.val}</div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{card.sub}</div>
             {card.pct >= 0 && (
-              <div style={{ height: 4, background: "var(--c-border,#2d3148)", borderRadius: 2, marginTop: 10 }}>
+              <div style={{ height: 4, background: "#2d3148", borderRadius: 2, marginTop: 10 }}>
                 <div style={{ height: "100%", width: `${card.pct}%`, background: fillColor(card.pct), borderRadius: 2, transition: "width .5s" }} />
               </div>
             )}
@@ -433,11 +455,11 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
       {/* filter bar */}
-      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--c-border,#1a2235)", display: "flex", gap: 8, flexShrink: 0, alignItems: "center", background: "var(--c-bg-surface,#0a0f1e)" }}>
+      <div style={{ padding: "8px 16px", borderBottom: "1px solid #2d3148", display: "flex", gap: 8, flexShrink: 0 }}>
         <select
           value={nsFilter}
           onChange={e => setNsFilter(e.target.value)}
-          style={{ background: "var(--c-bg-raised,#0f1629)", border: "1px solid var(--c-border-strong,#263050)", color: "var(--c-text-primary,#f1f5f9)", borderRadius: 7, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}
+          style={{ background: "#0f1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "5px 10px", fontSize: 12 }}
         >
           <option value="">All namespaces</option>
           {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
@@ -446,10 +468,10 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search pods…"
-          style={{ background: "var(--c-bg-raised,#0f1629)", border: "1px solid var(--c-border-strong,#263050)", color: "var(--c-text-primary,#f1f5f9)", borderRadius: 7, padding: "6px 10px", fontSize: 12, flex: 1 }}
+          style={{ background: "#0f1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "5px 10px", fontSize: 12, flex: 1 }}
         />
-        <span style={{ fontSize: 11, color: "var(--c-text-faint,#475569)", whiteSpace: "nowrap" }}>
-          <strong style={{ color: "var(--c-text-muted,#64748b)", fontWeight: 600 }}>{lines.length}</strong> pod{lines.length !== 1 ? "s" : ""} · click row for details
+        <span style={{ fontSize: 11, color: "#64748b", alignSelf: "center" }}>
+          {lines.length} pod{lines.length !== 1 ? "s" : ""} · click row for Describe / Logs / AI
         </span>
       </div>
 
@@ -457,9 +479,9 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
       <div style={{ overflowY: "auto", flex: 1 }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ background: "var(--c-bg-surface,#0a0f1e)", position: "sticky", top: 0, zIndex: 1 }}>
+            <tr style={{ background: "#0d1117", position: "sticky", top: 0 }}>
               {["Namespace","Name","Ready","Status","Restarts","Age",""].map(h => (
-                <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "var(--c-text-muted,#64748b)", textTransform: "uppercase", letterSpacing: ".6px", borderBottom: "1px solid var(--c-border,#1a2235)" }}>{h}</th>
+                <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", borderBottom: "1px solid #2d3148" }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -474,82 +496,62 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
               const badgeKey = `${ns}/${name}`;
               return (
                 <tr key={i} onClick={() => openResource("pod", name, ns)}
-                  style={{ cursor: "pointer", transition: "background .12s", borderBottom: i % 2 === 0 ? "none" : "none" }}
-                  onMouseEnter={ev => (ev.currentTarget.style.background = "var(--c-bg-raised,#0f1629)")}
-                  onMouseLeave={ev => (ev.currentTarget.style.background = i % 2 === 0 ? "transparent" : "var(--c-bg-surface,#0a0f1e)")}
+                  style={{ borderBottom: "1px solid #1e2130", cursor: "pointer", transition: "background .1s" }}
+                  onMouseEnter={ev => (ev.currentTarget.style.background = "#1a1d27")}
+                  onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
                 >
-                  {/* Namespace — tertiary, muted */}
-                  <td style={{ padding: "10px 14px", fontSize: 11, color: "var(--c-text-faint,#475569)", fontWeight: 500 }}>{ns}</td>
-                  {/* Name — primary, bold */}
-                  <td style={{ padding: "10px 14px" }}>
-                    <span
-                      style={{ fontSize: 13, fontWeight: 600, color: "var(--c-text-primary,#f1f5f9)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block", verticalAlign: "middle" }}
-                      title={name}
-                    >
-                      {name}
-                    </span>
+                  <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{ns}</td>
+                  <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 500 }}>
+                    {name}
                     {/* P3: Inline AI badge for unhealthy pods */}
                     {isBad && !aiBadges[badgeKey] && !badgeLoading[badgeKey] && (
                       <button
                         onClick={e => { e.stopPropagation(); fetchAIBadge(name, ns, status); }}
-                        title="Diagnose pod issue with AI"
-                        aria-label="Diagnose pod issue with AI"
+                        title="AI Insight"
                         style={{
-                          marginLeft: 7, background: "#818cf818", border: "1px solid #818cf833",
-                          color: "#818cf8", borderRadius: 5, padding: "2px 7px",
-                          fontSize: 10, fontWeight: 700, cursor: "pointer", verticalAlign: "middle",
-                          transition: "all .15s",
+                          marginLeft: 6, background: "#818cf822", border: "1px solid #818cf844",
+                          color: "#818cf8", borderRadius: 4, padding: "1px 5px",
+                          fontSize: 9, fontWeight: 700, cursor: "pointer", verticalAlign: "middle",
                         }}
                       >
-                        Diagnose
+                        ✦ AI
                       </button>
                     )}
                     {badgeLoading[badgeKey] && (
-                      <span style={{ marginLeft: 7, fontSize: 10, color: "#818cf8", fontStyle: "italic" }}>analyzing…</span>
+                      <span style={{ marginLeft: 6, fontSize: 9, color: "#818cf8" }}>analyzing…</span>
                     )}
                     {aiBadges[badgeKey] && (
                       <div style={{
-                        marginTop: 5, fontSize: 11, color: "#a5b4fc", lineHeight: 1.5,
-                        background: "#6366f110", border: "1px solid #6366f133",
-                        borderRadius: 6, padding: "5px 10px", maxWidth: 420,
+                        marginTop: 3, fontSize: 10, color: "#a5b4fc", lineHeight: 1.4,
+                        background: "#1e2240", border: "1px solid #6366f133",
+                        borderRadius: 4, padding: "3px 7px", maxWidth: 400,
                       }}>
-                        <span style={{ color: "#818cf8", fontWeight: 700 }}>✦ </span>{aiBadges[badgeKey]}
+                        ✦ {aiBadges[badgeKey]}
                       </div>
                     )}
                   </td>
-                  {/* Ready — secondary */}
-                  <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--c-text-secondary,#94a3b8)" }}>{ready}</td>
-                  {/* Status badge */}
-                  <td style={{ padding: "10px 14px" }}>
-                    <span style={{ background: sc + "18", color: sc, border: `1px solid ${sc}33`, borderRadius: 5, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>
+                  <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{ready}</td>
+                  <td style={{ padding: "8px 12px" }}>
+                    <span style={{ background: sc + "22", color: sc, border: `1px solid ${sc}44`, borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
                       {status}
                     </span>
                   </td>
-                  {/* Restarts — color-coded weight */}
-                  <td style={{ padding: "10px 14px", fontSize: 12, fontWeight: +restarts > 5 ? 700 : 400, color: +restarts > 5 ? "#f59e0b" : +restarts > 0 ? "var(--c-text-secondary,#94a3b8)" : "var(--c-text-faint,#475569)" }}>
+                  <td style={{ padding: "8px 12px", fontSize: 12, color: +restarts > 5 ? "#f59e0b" : +restarts > 0 ? "#94a3b8" : "#64748b" }}>
                     {restarts}
                   </td>
-                  <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--c-text-faint,#475569)" }}>{c[c.length - 1]}</td>
-                  {/* Logs — SVG icon button */}
-                  <td style={{ padding: "10px 14px" }}>
+                  <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{c[c.length - 1]}</td>
+                  <td style={{ padding: "8px 12px" }}>
                     {onStreamLogs && (
                       <button
                         onClick={e => { e.stopPropagation(); onStreamLogs(name, ns); }}
                         title="Stream logs"
                         style={{
-                          background: "#06b6d412", border: "1px solid #06b6d433",
-                          color: "#06b6d4", borderRadius: 6, padding: "4px 9px",
-                          fontSize: 11, fontWeight: 600, cursor: "pointer",
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          transition: "all .15s",
+                          background: "#06b6d422", border: "1px solid #06b6d444",
+                          color: "#06b6d4", borderRadius: 4, padding: "2px 7px",
+                          fontSize: 10, fontWeight: 600, cursor: "pointer",
                         }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#06b6d422"; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#06b6d412"; }}
                       >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                          <polygon points="5,3 19,12 5,21"/>
-                        </svg>
-                        Logs
+                        ▶ Logs
                       </button>
                     )}
                   </td>
@@ -603,56 +605,33 @@ function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
   useEffect(() => { if (tab === "ai" && resource && !aiText && !aiLoading) runAI(); }, [tab]);
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "#000000aa", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        background: "var(--c-bg-raised, #0f1629)",
-        border: "1px solid var(--c-border-strong, #263050)",
-        borderRadius: 14,
-        boxShadow: "0 24px 80px #000000aa, 0 4px 24px #00000066",
-        width: 760, maxHeight: "82vh",
-        display: "flex", flexDirection: "column",
-        animation: "fadeIn .18s ease-out",
-      }}>
-        {/* Header */}
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--c-border, #1a2235)", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ background: "#4f46e522", color: "#818cf8", border: "1px solid #4f46e544", borderRadius: 6, padding: "3px 9px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px" }}>
+    <div style={{ position: "fixed", inset: 0, background: "#00000088", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
+         onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, width: 740, maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #2d3148", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ background: "#4f46e533", color: "#7c8cf8", border: "1px solid #4f46e5", borderRadius: 4, padding: "2px 7px", fontSize: 11 }}>
             {loading ? "…" : resource?.kind}
           </span>
-          <strong style={{ fontSize: 15, fontWeight: 700, color: "var(--c-text-primary,#f1f5f9)", letterSpacing: "-.2px" }}>{resource?.name}</strong>
-          {resource?.ns && <span style={{ fontSize: 12, color: "var(--c-text-muted,#64748b)", fontWeight: 500 }}>/ {resource.ns}</span>}
-          {/* SVG close — no emoji */}
-          <button
-            onClick={onClose}
-            aria-label="Close resource detail modal"
-            style={{ marginLeft: "auto", background: "var(--c-bg-overlay,#182035)", border: "1px solid var(--c-border,#1a2235)", color: "var(--c-text-muted,#64748b)", width: 28, height: 28, borderRadius: 7, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#f43f5e44"; (e.currentTarget as HTMLElement).style.color = "#f43f5e"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--c-border,#1a2235)"; (e.currentTarget as HTMLElement).style.color = "var(--c-text-muted,#64748b)"; }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+          <strong style={{ fontSize: 14 }}>{resource?.name}</strong>
+          {resource?.ns && <span style={{ fontSize: 12, color: "#64748b" }}>· {resource.ns}</span>}
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         {!loading && resource && (
           <>
-            {/* Tab bar */}
-            <div style={{ display: "flex", borderBottom: "1px solid var(--c-border,#1a2235)", padding: "0 20px", background: "var(--c-bg-surface,#0a0f1e)" }}>
+            <div style={{ display: "flex", borderBottom: "1px solid #2d3148", padding: "0 16px" }}>
               {(["describe", "logs", "previous", "ai"] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)} style={{
-                  padding: "10px 16px", fontSize: 12, fontWeight: tab === t ? 600 : 400,
-                  background: "none", border: "none",
-                  color: tab === t ? "#818cf8" : "var(--c-text-muted,#64748b)",
-                  borderBottom: tab === t ? "2px solid #6366f1" : "2px solid transparent",
-                  cursor: "pointer", transition: "color .15s", whiteSpace: "nowrap",
-                }}>{t === "previous" ? "Prev Logs" : t === "ai" ? "AI Analysis" : t.charAt(0).toUpperCase() + t.slice(1)}</button>
+                  padding: "8px 14px", fontSize: 12, background: "none", border: "none",
+                  color: tab === t ? "#7c8cf8" : "#64748b", borderBottom: tab === t ? "2px solid #7c8cf8" : "2px solid transparent",
+                  cursor: "pointer", textTransform: "capitalize",
+                }}>{t === "previous" ? "Prev Logs" : t === "ai" ? "AI Analysis" : t === "describe" ? "Details" : t}</button>
               ))}
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: "18px 20px" }}>
+            <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
               {tab === "ai"
-                ? (aiLoading ? <LoadingSpinner /> : <div style={{ fontSize: 13, lineHeight: 1.85, whiteSpace: "pre-wrap", color: "var(--c-text-secondary,#94a3b8)" }}>{aiText}</div>)
+                ? (aiLoading ? <LoadingSpinner /> : <div style={{ fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{aiText}</div>)
                 : <Pre>{resource.data[tab === "previous" ? "previous" : tab] ?? "—"}</Pre>
               }
             </div>
@@ -736,43 +715,27 @@ function GenericTab({ data }: { data: Record<string, string> }) {
 function Card({ title, hint, children, defaultOpen = true }: { title: string; hint?: string; children: ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{
-      background: "var(--c-bg-raised, #0f1629)",
-      border: "1px solid var(--c-border, #1a2235)",
-      borderRadius: 10, overflow: "hidden",
-      boxShadow: "0 2px 8px #00000033",
-    }}>
+    <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 8, overflow: "hidden" }}>
       <div
         onClick={() => setOpen(o => !o)}
-        style={{
-          padding: "11px 16px",
-          borderBottom: open ? "1px solid var(--c-border, #1a2235)" : "none",
-          display: "flex", alignItems: "center", gap: 8,
-          cursor: "pointer", userSelect: "none",
-        }}
+        style={{ padding: "10px 14px", borderBottom: open ? "1px solid #2d3148" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
       >
-        {/* Chevron — SVG only, no emoji */}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--c-text-muted,#64748b)" strokeWidth="1.8"
-          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .2s", flexShrink: 0 }}>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#64748b" strokeWidth="1.5"
+          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .15s", flexShrink: 0 }}>
           <polyline points="3,1 7,5 3,9" />
         </svg>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-text-primary,#f1f5f9)", letterSpacing: "-.1px", flex: 1 }}>
-          {title}
-        </span>
-        {hint && (
-          <span style={{ fontSize: 11, color: "var(--c-text-muted,#64748b)", fontWeight: 400, background: "var(--c-bg-overlay,#182035)", padding: "1px 6px", borderRadius: 4 }}>
-            {hint}
-          </span>
-        )}
+        {title}
+        {hint && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>· {hint}</span>}
+        <span style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{open ? "▼" : "▶"}</span>
       </div>
-      {open && <div style={{ padding: "14px 16px" }}>{children}</div>}
+      {open && <div style={{ padding: "12px 14px" }}>{children}</div>}
     </div>
   );
 }
 
 function Pre({ children }: { children: ReactNode }) {
   return (
-    <pre className="mono" style={{ fontSize: 12, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.7, margin: 0 }}>
+    <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 12, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.6, margin: 0 }}>
       {children}
     </pre>
   );
@@ -780,9 +743,10 @@ function Pre({ children }: { children: ReactNode }) {
 
 function LoadingSpinner() {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, color: "var(--c-text-muted,#64748b)", fontSize: 13 }}>
-      <span style={{ display: "inline-block", width: 16, height: 16, border: "2px solid var(--c-border,#1a2235)", borderTopColor: "var(--c-accent,#6366f1)", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, color: "#64748b", fontSize: 13 }}>
+      <span style={{ display: "inline-block", width: 16, height: 16, border: "2px solid #2d3148", borderTopColor: "#7c8cf8", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
       Loading…
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }

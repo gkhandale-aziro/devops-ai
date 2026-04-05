@@ -15,34 +15,27 @@ interface Props {
   onClose: () => void;
 }
 
-const MAX_LINES   = 500;
-const MAX_RETRIES = 5;
-const BASE_DELAY  = 1000;
-const MAX_DELAY   = 30_000;
+const MAX_LINES = 500;
 
 export function LogStream({ target, pod, namespace, container, onClose }: Props) {
-  const [lines, setLines]         = useState<string[]>([]);
-  const [paused, setPaused]       = useState(false);
-  const [search, setSearch]       = useState("");
+  const [lines, setLines]       = useState<string[]>([]);
+  const [paused, setPaused]     = useState(false);
+  const [search, setSearch]     = useState("");
   const [connected, setConnected] = useState(false);
-  const bottomRef  = useRef<HTMLDivElement>(null);
-  const esRef      = useRef<EventSource | null>(null);
-  const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryRef   = useRef(0);
-  const pausedRef  = useRef(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const esRef     = useRef<EventSource | null>(null);
+  const pausedRef = useRef(false);
   pausedRef.current = paused;
 
   const connect = useCallback(() => {
     esRef.current?.close();
+    setLines([]);
     setConnected(false);
 
     const url = api.logStreamUrl(target.id, pod, namespace, container);
     const es = new EventSource(url);
 
-    es.onopen = () => {
-      retryRef.current = 0;
-      setConnected(true);
-    };
+    es.onopen = () => setConnected(true);
 
     es.onmessage = (ev) => {
       try {
@@ -61,58 +54,45 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
 
     es.onerror = () => {
       es.close();
-      esRef.current = null;
       setConnected(false);
-      if (retryRef.current >= MAX_RETRIES) return;
-      const delay = Math.min(BASE_DELAY * Math.pow(2, retryRef.current), MAX_DELAY);
-      retryRef.current += 1;
-      timerRef.current = setTimeout(connect, delay);
     };
 
     esRef.current = es;
   }, [target.id, pod, namespace, container]);
 
   useEffect(() => {
-    retryRef.current = 0;
-        <button
-          onClick={() => setPaused(p => !p)}
-          aria-label={paused ? "Resume log stream" : "Pause log stream"}
-          style={{
-            background: paused ? "#f59e0b22" : "#22c55e22",
-            border: `1px solid ${paused ? "#f59e0b" : "#22c55e"}`,
-            color: paused ? "#f59e0b" : "#22c55e",
-            borderRadius: 5, padding: "3px 8px", fontSize: 10,
-            fontWeight: 700, cursor: "pointer",
-          }}
-        >
-          {paused ? "\u25b6 Resume" : "\u23f8 Pause"}
-        </button>
+    connect();
+    return () => { esRef.current?.close(); };
+  }, [connect]);
 
-        <button
-          onClick={() => { setLines([]); }}
-          title="Clear"
-          aria-label="Clear log lines"
-          style={{
-            background: "transparent", border: "1px solid #2d3555",
-            color: "#64748b", borderRadius: 5, padding: "3px 8px",
-            fontSize: 10, cursor: "pointer",
-          }}
-        >
-          Clear
-        </button>
+  // Auto-scroll when not paused
+  useEffect(() => {
+    if (!pausedRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [lines.length]);
 
-        <span style={{ fontSize: 10, color: "#475569" }}>{lines.length} lines</span>
+  const filtered = search
+    ? lines.filter(l => l.toLowerCase().includes(search.toLowerCase()))
+    : lines;
 
-        <button
-          onClick={onClose}
-          aria-label="Close log stream"
-          style={{
-            background: "none", border: "none", color: "#64748b",
-            cursor: "pointer", fontSize: 16, lineHeight: 1,
-          }}
-        >
-          \u2715
-        </button>
+  const highlightLine = (line: string) => {
+    if (line.includes("ERROR") || line.includes("error") || line.includes("FATAL"))
+      return "#ef4444";
+    if (line.includes("WARN") || line.includes("warn"))
+      return "#f59e0b";
+    return "#8b949e";
+  };
+
+  return (
+    <div style={{
+      height: 280, flexShrink: 0,
+      borderTop: "1px solid #1e2235",
+      background: "#0b0d14",
+      display: "flex", flexDirection: "column",
+    }}>
+      {/* Header */}
+      <div style={{
         padding: "6px 12px",
         borderBottom: "1px solid #1e2235",
         display: "flex", alignItems: "center", gap: 10,
@@ -176,12 +156,9 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
 
         <button
           onClick={onClose}
-          style={{
-            background: "none", border: "none", color: "#64748b",
-            cursor: "pointer", fontSize: 16, lineHeight: 1,
-          }}
+          style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px 4px" }}
         >
-          ✕
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
 

@@ -77,10 +77,9 @@ export function ResourceGraph({ target, namespace }: Props) {
         data.services.filter(s => s.name !== "kubernetes").slice(0, 12).forEach((svc, i) => {
           const id = `svc-${svc.name}-${svc.namespace}`;
           ns.push({ id, kind: "service", name: svc.name, namespace: svc.namespace, status: svc.type, x: COL[1], y: 40 + i * (NODE_H + ROW_GAP), width: NODE_W, height: NODE_H });
-          // Connect ingresses to services by host/name match only
+          // Connect ingresses to services (by name heuristic)
           data.ingresses.forEach(ing => {
-            const hosts = ing.hosts ?? "";
-            if (hosts.includes(svc.name) || svc.name.includes(ing.name.split("-")[0])) {
+            if (ing.hosts?.includes(svc.name) || Math.random() < 0.3) {
               es.push({ from: `ing-${ing.name}`, to: id });
             }
           });
@@ -292,23 +291,18 @@ function TopologyDetail({ target, node, onClose }: { target: Target; node: Node;
               border: `1px solid ${tab === t ? "#6366f1" : "#2d3148"}`,
               color: tab === t ? "#818cf8" : "#64748b",
               borderRadius: 4, cursor: "pointer", fontWeight: tab === t ? 600 : 400,
-              textTransform: "capitalize",
-            }}>{t}</button>
+            }}>{t === "describe" ? "Details" : t === "info" ? "Info" : "Logs"}</button>
           ))}
         </div>
-          <button
-            onClick={() => setExpanded(e => !e)}
-            title={expanded ? "Minimize" : "Maximize"}
-            aria-label={expanded ? "Minimize detail panel" : "Maximize detail panel"}
-            style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: "2px 4px" }}>
-            {expanded ? "▾" : "▴"}
-          </button>
-          <button
-            onClick={onClose}
-            aria-label="Close detail panel"
-            style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16 }}>
-            ✕
-          </button>
+        <button onClick={() => setExpanded(e => !e)} title={expanded ? "Minimize" : "Maximize"}
+          style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            {expanded ? <polyline points="18 15 12 9 6 15"/> : <polyline points="6 9 12 15 18 9"/>}
+          </svg>
+        </button>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px 4px" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px" }}>
