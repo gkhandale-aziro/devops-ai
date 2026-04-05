@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import type { StoredEvent, TriageLevel, Snapshot, Analysis, IncidentStatus } from "../types";
-import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
+import { LEVEL_COLORS, LEVEL_LABELS, levelColor } from "../types";
 import { api } from "../api/client";
 import { LevelBadge }   from "../components/LevelBadge";
 import { AIDrawer }      from "../components/AIDrawer";
@@ -85,7 +85,7 @@ export function History() {
       .join("\n");
     const prompt =
       `You are a Kubernetes SRE. Explain this incident clearly and suggest remediation steps.\n\n` +
-      `Severity: ${ev.level} (${LEVEL_LABELS[ev.level]})\n` +
+      `Severity: ${ev.level} (${(LEVEL_LABELS as Record<string, string>)[ev.level] ?? ev.level})\n` +
       `Reason: ${ev.reason}\nObject: ${ev.object}${ev.namespace ? " / " + ev.namespace : ""}\n` +
       `Source: ${ev.source}\nTime: ${ev.timestamp}\nMessage: ${ev.message ?? "—"}\n${snaps}`;
     setAiContext(prompt);
@@ -99,7 +99,7 @@ export function History() {
     setEvents((prev: StoredEvent[]) => prev.map((e: StoredEvent) => e.id === ev.id ? { ...e, status } : e));
   }
 
-  const sevColor = (lv: TriageLevel) => LEVEL_COLORS[lv].border;
+  const sevColor = (lv: string) => levelColor(lv).border;
   const hasFilters = level !== "" || objInput !== "";
 
   return (

@@ -29,11 +29,18 @@ export const LEVEL_LABELS: Record<TriageLevel, string> = {
   SEV3: "Info",
 };
 
-export const LEVEL_COLORS: Record<TriageLevel, { border: string; bg: string; text: string }> = {
+export const LEVEL_COLORS: Record<string, { border: string; bg: string; text: string }> = {
   SEV1: { border: "#f43f5e", bg: "#2a0011", text: "#fb7185" },
   SEV2: { border: "#f59e0b", bg: "#2a1a00", text: "#fbbf24" },
   SEV3: { border: "#06b6d4", bg: "#0c2233", text: "#22d3ee" },
 };
+
+const _FALLBACK_COLOR = { border: "#64748b", bg: "#1e293b", text: "#94a3b8" };
+
+/** Safe accessor — returns fallback for unknown levels (e.g. legacy 'L2' data). */
+export function levelColor(level: string) {
+  return LEVEL_COLORS[level] ?? _FALLBACK_COLOR;
+}
 
 // ── Monitor alert (SSE) ───────────────────────────────────────────────────────
 
@@ -73,7 +80,7 @@ export interface StoredEvent {
   id:              number;
   timestamp:       string;
   source:          string;
-  level:           TriageLevel;
+  level:           string;
   reason:          string;
   object:          string;
   namespace:       string;

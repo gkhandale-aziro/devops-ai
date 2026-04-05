@@ -1,13 +1,13 @@
-import type { TriageLevel } from "../types";
-import { LEVEL_LABELS, LEVEL_COLORS } from "../types";
+import { LEVEL_LABELS, levelColor } from "../types";
 
 interface Props {
-  level: TriageLevel;
+  level: string;
   showLabel?: boolean;
 }
 
 export function LevelBadge({ level, showLabel = false }: Props) {
-  const c = LEVEL_COLORS[level];
+  const c = levelColor(level);
+  const label = (LEVEL_LABELS as Record<string, string>)[level];
   return (
     <span
       style={{
@@ -21,7 +21,7 @@ export function LevelBadge({ level, showLabel = false }: Props) {
         whiteSpace:    "nowrap",
       }}
     >
-      {level}{showLabel ? ` — ${LEVEL_LABELS[level]}` : ""}
+      {level}{showLabel && label ? ` — ${label}` : ""}
     </span>
   );
 }
