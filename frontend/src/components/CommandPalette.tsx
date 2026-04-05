@@ -114,8 +114,10 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
     // K8s live search if there's an active target
     if (activeTarget && q.length >= 2) {
       setLoading(true);
+      const controller = new AbortController();
       try {
         const { results: kres } = await api.search(activeTarget.id, q);
+        if (controller.signal.aborted) return;
         const kindIcons: Record<string, string> = { pod: "◈", node: "◆", deployment: "⬡" };
         const kindColors: Record<string, string> = { pod: "#22c55e", node: "#6366f1", deployment: "#f59e0b" };
         const k8sResults: Result[] = kres.map(r => ({
@@ -130,6 +132,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
       } catch { /* silent */ } finally {
         setLoading(false);
       }
+      return () => controller.abort();
     }
   }, [targets, activeTarget, nav, onSelectTarget]);
 

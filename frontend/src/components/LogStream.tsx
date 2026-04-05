@@ -15,27 +15,34 @@ interface Props {
   onClose: () => void;
 }
 
-const MAX_LINES = 500;
+const MAX_LINES   = 500;
+const MAX_RETRIES = 5;
+const BASE_DELAY  = 1000;
+const MAX_DELAY   = 30_000;
 
 export function LogStream({ target, pod, namespace, container, onClose }: Props) {
-  const [lines, setLines]       = useState<string[]>([]);
-  const [paused, setPaused]     = useState(false);
-  const [search, setSearch]     = useState("");
+  const [lines, setLines]         = useState<string[]>([]);
+  const [paused, setPaused]       = useState(false);
+  const [search, setSearch]       = useState("");
   const [connected, setConnected] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const esRef     = useRef<EventSource | null>(null);
-  const pausedRef = useRef(false);
+  const bottomRef  = useRef<HTMLDivElement>(null);
+  const esRef      = useRef<EventSource | null>(null);
+  const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryRef   = useRef(0);
+  const pausedRef  = useRef(false);
   pausedRef.current = paused;
 
   const connect = useCallback(() => {
     esRef.current?.close();
-    setLines([]);
     setConnected(false);
 
     const url = api.logStreamUrl(target.id, pod, namespace, container);
     const es = new EventSource(url);
 
-    es.onopen = () => setConnected(true);
+    es.onopen = () => {
+      retryRef.current = 0;
+      setConnected(true);
+    };
 
     es.onmessage = (ev) => {
       try {
@@ -54,15 +61,25 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
 
     es.onerror = () => {
       es.close();
+      esRef.current = null;
       setConnected(false);
+      if (retryRef.current >= MAX_RETRIES) return;
+      const delay = Math.min(BASE_DELAY * Math.pow(2, retryRef.current), MAX_DELAY);
+      retryRef.current += 1;
+      timerRef.current = setTimeout(connect, delay);
     };
 
     esRef.current = es;
   }, [target.id, pod, namespace, container]);
 
   useEffect(() => {
+    retryRef.current = 0;
+    setLines([]);
     connect();
-    return () => { esRef.current?.close(); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      esRef.current?.close();
+    };
   }, [connect]);
 
   // Auto-scroll when not paused

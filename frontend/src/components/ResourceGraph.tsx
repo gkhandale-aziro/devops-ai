@@ -77,9 +77,10 @@ export function ResourceGraph({ target, namespace }: Props) {
         data.services.filter(s => s.name !== "kubernetes").slice(0, 12).forEach((svc, i) => {
           const id = `svc-${svc.name}-${svc.namespace}`;
           ns.push({ id, kind: "service", name: svc.name, namespace: svc.namespace, status: svc.type, x: COL[1], y: 40 + i * (NODE_H + ROW_GAP), width: NODE_W, height: NODE_H });
-          // Connect ingresses to services (by name heuristic)
+          // Connect ingresses to services by host/name match only
           data.ingresses.forEach(ing => {
-            if (ing.hosts?.includes(svc.name) || Math.random() < 0.3) {
+            const hosts = ing.hosts ?? "";
+            if (hosts.includes(svc.name) || svc.name.includes(ing.name.split("-")[0])) {
               es.push({ from: `ing-${ing.name}`, to: id });
             }
           });

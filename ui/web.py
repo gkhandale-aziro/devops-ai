@@ -686,20 +686,32 @@ def api_logs_stream(tid):
     if ns and not _SAFE_NAME_RE.match(ns):
         return jsonify({"error": "invalid namespace"}), 400
 
-    ns_flag = f"-n {ns}" if ns else ""
-    c_flag  = f"-c {container}" if container and _SAFE_NAME_RE.match(container) else ""
-    cmd     = f"kubectl logs -f --tail=100 {pod} {ns_flag} {c_flag} 2>&1"
+    # Build command as a list — shell=False eliminates injection risk entirely
+    cmd = ["kubectl", "logs", "-f", "--tail=100", pod]
+    if ns:
+        cmd += ["-n", ns]
+    if container and _SAFE_NAME_RE.match(container):
+        cmd += ["-c", container]
 
     def generate():
+        import subprocess
+        proc = None
         try:
-            import subprocess
             proc = subprocess.Popen(
-                cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+                cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
             )
             for line in proc.stdout:
                 yield f"data: {json.dumps({'line': line.rstrip()})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            # Terminate child process on client disconnect or stream end
+            if proc and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
         yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype="text/event-stream",

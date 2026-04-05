@@ -22,13 +22,6 @@ export function Chat(_props: Props) {
     }).catch(() => {});
   }, []);
 
-  // Auto-select first session
-  useEffect(() => {
-    if (sessions.length > 0 && !activeSession) {
-      switchSession(sessions[0].id);
-    }
-  }, [sessions]);
-
   const { messages, loading, send, clear } = useSessionChat(activeSession);
 
   const createSession = useCallback(async () => {
@@ -67,6 +60,13 @@ export function Chat(_props: Props) {
       setHistLoading(false);
     }
   }, [clear]);
+
+  // Auto-select first session — placed after switchSession to avoid used-before-declared error
+  useEffect(() => {
+    if (sessions.length > 0 && !activeSession) {
+      switchSession(sessions[0].id);
+    }
+  }, [sessions, switchSession]);
 
   // Combine history with live messages (dedup by showing history only when live is empty)
   const displayMessages = messages.length > 0 ? messages : history;
