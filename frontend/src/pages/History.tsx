@@ -254,8 +254,15 @@ export function History() {
                         <td style={{ padding: "9px 14px", fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>
                           <span title={e.timestamp}>{relativeTime(e.timestamp)}</span>
                         </td>
-                        <td style={{ padding: "9px 14px", fontSize: 13 }}>{e.reason}</td>
-                        <td style={{ padding: "9px 14px", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <td style={{ padding: "9px 14px" }}>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{e.reason}</div>
+                          {e.last_diagnosis && (
+                            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
+                              ✦ {e.last_diagnosis.slice(0, 80)}{e.last_diagnosis.length > 80 ? "…" : ""}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: "9px 14px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{e.object}</div>
                           <div style={{ fontSize: 10, color: "#64748b" }}>{e.source}{e.namespace ? ` / ${e.namespace}` : ""}</div>
                         </td>

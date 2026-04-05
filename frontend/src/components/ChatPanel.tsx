@@ -1,87 +1,168 @@
 import { useState, useRef, useEffect } from "react";
 import type { ChatMsg } from "../hooks/useChat";
+import { Markdown } from "./Markdown";
 
 interface Props {
-  messages: ChatMsg[];
-  loading:  boolean;
-  onSend:   (text: string) => void;
+  messages:     ChatMsg[];
+  loading:      boolean;
+  onSend:       (text: string) => void;
   placeholder?: string;
 }
 
 export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
-  const [text, setText] = useState("");
+  const [text,    setText]    = useState("");
+  const [focused, setFocused] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (feedRef.current)
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [messages]);
 
   function submit() {
     const t = text.trim();
     if (!t || loading) return;
     setText("");
+    // Reset textarea height
+    if (inputRef.current) inputRef.current.style.height = "auto";
     onSend(t);
   }
 
+  function onInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setText(e.target.value);
+    // Auto-grow
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+  }
+
+  const visibleMessages = messages;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      {/* messages */}
-      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {messages.length === 0 && (
-          <div style={{ color: "#64748b", fontSize: 13, textAlign: "center", marginTop: 40 }}>
-            Ask me anything about this target…
+
+      {/* Messages feed */}
+      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {visibleMessages.length === 0 && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, color: "#64748b", paddingTop: 40 }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 14,
+              background: "#6366f118", border: "1px solid #6366f133",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.8">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600, marginBottom: 4 }}>AI Assistant</div>
+              <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                {placeholder ?? "Ask anything about this target…"}
+              </div>
+            </div>
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "85%" }}>
-            {m.cmds && m.cmds.length > 0 && (
-              <div style={{ background: "#0d1117", border: "1px solid #2d3148", borderRadius: 6, padding: "6px 10px", marginBottom: 6, fontSize: 11, fontFamily: "monospace", color: "#64748b" }}>
-                {m.cmds.map((c, ci) => <div key={ci}>$ {c}</div>)}
+
+        {visibleMessages.map((m, i) => {
+          const isUser = m.role === "user";
+          const isLast = i === visibleMessages.length - 1;
+
+          return (
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4, animation: "fadeIn .2s ease-out" }}>
+              {/* Role label */}
+              <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 600, paddingLeft: isUser ? 0 : 4 }}>
+                {isUser ? "You" : "Aziro AI"}
               </div>
-            )}
-            <div
-              style={{
-                background:   m.role === "user" ? "#4f46e5" : "#1a1d27",
-                border:       m.role === "user" ? "none" : "1px solid #2d3148",
-                borderRadius: m.role === "user" ? "10px 10px 2px 10px" : "10px 10px 10px 2px",
-                padding:      "10px 14px",
-                fontSize:     13,
-                lineHeight:   1.6,
-                color:        "#e2e8f0",
-                whiteSpace:   "pre-wrap",
-                wordBreak:    "break-word",
-              }}
-            >
-              {m.content || (loading && i === messages.length - 1
-                ? <ThinkingDots />
-                : "—")}
+
+              {/* Bubble */}
+              <div style={{
+                maxWidth: "82%",
+                background: isUser ? "linear-gradient(135deg,#6366f1,#818cf8)" : "#161b27",
+                border: isUser ? "none" : "1px solid #1e2235",
+                borderRadius: isUser ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
+                padding: "10px 14px",
+                fontSize: 13,
+                lineHeight: 1.65,
+                color: "#e2e8f0",
+              }}>
+                {isUser ? (
+                  <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.content}</span>
+                ) : m.content ? (
+                  <Markdown>{m.content}</Markdown>
+                ) : loading && isLast ? (
+                  <ThinkingDots />
+                ) : "—"}
+              </div>
+
+              {/* Commands */}
+              {m.cmds && m.cmds.length > 0 && (
+                <div style={{
+                  background: "#0b0d14", border: "1px solid #1e2235",
+                  borderRadius: 6, padding: "6px 10px",
+                  fontSize: 11, fontFamily: "'Cascadia Code','Consolas',monospace",
+                  color: "#22c55e", maxWidth: "82%",
+                }}>
+                  {m.cmds.map((c, ci) => <div key={ci}>$ {c}</div>)}
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: 10, color: "#64748b", marginTop: 3, textAlign: m.role === "user" ? "right" : "left" }}>
-              {m.role === "user" ? "You" : "AI"}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* input */}
-      <div style={{ padding: "10px 16px", borderTop: "1px solid #2d3148", flexShrink: 0 }}>
-        <div style={{ display: "flex", gap: 8, background: "#0d1117", border: "1px solid #2d3148", borderRadius: 8, padding: "8px 12px", transition: "border-color .15s" }}>
+      {/* Input bar */}
+      <div style={{
+        padding: "12px 16px 16px",
+        borderTop: "1px solid #1e2235",
+        background: "#0b0d14",
+        flexShrink: 0,
+      }}>
+        <div style={{
+          display: "flex", gap: 10, alignItems: "flex-end",
+          background: "#161b27",
+          border: `1px solid ${focused ? "#6366f1" : "#1e2235"}`,
+          borderRadius: 10, padding: "10px 12px",
+          transition: "border-color .15s",
+        }}>
           <textarea
+            ref={inputRef}
             rows={1}
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={onInput}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
-            placeholder={placeholder ?? "Ask anything…"}
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#e2e8f0", fontSize: 13, resize: "none", fontFamily: "inherit" }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={placeholder ?? "Ask anything… (Enter to send, Shift+Enter for new line)"}
+            style={{
+              flex: 1, background: "transparent", border: "none", outline: "none",
+              color: "#e2e8f0", fontSize: 13, resize: "none",
+              fontFamily: "inherit", lineHeight: 1.5,
+              minHeight: 20, maxHeight: 120,
+            }}
           />
           <button
             onClick={submit}
             disabled={loading || !text.trim()}
-            style={{ background: loading ? "#374151" : "#4f46e5", border: "none", borderRadius: 6, padding: "4px 14px", color: "#fff", fontWeight: 600, cursor: loading ? "default" : "pointer", opacity: loading ? 0.6 : 1 }}
+            style={{
+              background: loading || !text.trim() ? "#1e2235" : "#6366f1",
+              border: "none", borderRadius: 7,
+              width: 32, height: 32, flexShrink: 0,
+              color: "#fff", fontWeight: 700,
+              cursor: loading || !text.trim() ? "default" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "background .15s",
+            }}
           >
-            {loading ? "…" : "↑"}
+            {loading ? (
+              <span style={{ width: 13, height: 13, border: "2px solid #6366f133", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+              </svg>
+            )}
           </button>
+        </div>
+        <div style={{ fontSize: 10, color: "#374151", marginTop: 6, textAlign: "center" }}>
+          Enter to send · Shift+Enter for new line
         </div>
       </div>
     </div>
@@ -90,17 +171,15 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
 
 function ThinkingDots() {
   return (
-    <span style={{ display: "inline-flex", gap: 3 }}>
+    <span style={{ display: "inline-flex", gap: 4, alignItems: "center", height: 16 }}>
       {[0, 1, 2].map(i => (
-        <span
-          key={i}
-          style={{
-            width: 5, height: 5, borderRadius: "50%", background: "#94a3b8", display: "inline-block",
-            animation: `bounce 1.2s ${i * 0.2}s infinite`,
-          }}
-        />
+        <span key={i} style={{
+          width: 6, height: 6, borderRadius: "50%",
+          background: "#818cf8", display: "inline-block",
+          animation: `bounce 1.2s ${i * 0.2}s infinite`,
+        }} />
       ))}
-      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-4px);opacity:1}}`}</style>
+      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-5px);opacity:1}}`}</style>
     </span>
   );
 }

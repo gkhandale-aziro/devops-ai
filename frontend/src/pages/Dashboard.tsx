@@ -68,31 +68,40 @@ export function Dashboard({ target }: Props) {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: "flex", background: "#0d1117", borderBottom: "1px solid #1e2235", flexShrink: 0, padding: "0 16px" }}>
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            style={{
-              padding: "10px 16px", fontSize: 12, border: "none", background: "transparent",
-              color: activeTab === t.id ? "#7c8cf8" : "#64748b",
-              borderBottom: activeTab === t.id ? "2px solid #7c8cf8" : "2px solid transparent",
-              cursor: "pointer", whiteSpace: "nowrap",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div style={{ display: "flex", background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, padding: "0 12px", overflowX: "auto" }}>
+        {tabs.map(t => {
+          const active = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              style={{
+                padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
+                color: active ? "#818cf8" : "#64748b",
+                borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
+                cursor: "pointer", whiteSpace: "nowrap", fontWeight: active ? 600 : 400,
+                transition: "color .15s",
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
         <button
           onClick={() => setActiveTab("__chat")}
           style={{
-            padding: "10px 16px", fontSize: 12, border: "none", background: "transparent",
-            color: activeTab === "__chat" ? "#7c8cf8" : "#64748b",
-            borderBottom: activeTab === "__chat" ? "2px solid #7c8cf8" : "2px solid transparent",
+            padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
+            color: activeTab === "__chat" ? "#818cf8" : "#64748b",
+            borderBottom: activeTab === "__chat" ? "2px solid #6366f1" : "2px solid transparent",
             cursor: "pointer", whiteSpace: "nowrap", marginLeft: "auto",
+            fontWeight: activeTab === "__chat" ? 600 : 400,
+            display: "flex", alignItems: "center", gap: 5,
           }}
         >
-          💬 AI Chat
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          AI Chat
         </button>
       </div>
 
@@ -499,21 +508,48 @@ function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
 // ── Logs tab ──────────────────────────────────────────────────────────────────
 
 function LogsTab({ raw, target }: { raw: string; target: Target }) {
-  const [content, setContent] = useState(raw);
+  const [content,  setContent]  = useState(raw);
+  const [selected, setSelected] = useState("");
+
   const load = (unit: string) => {
+    setSelected(unit);
     api.tab(target.id, "logs", unit ? { unit } : {}).then(d => setContent(d.logs ?? ""));
   };
+
+  const filters = [
+    { key: "",           label: "All" },
+    { key: "kubelet",    label: "kubelet" },
+    { key: "containerd", label: "containerd" },
+    { key: "ssh",        label: "sshd" },
+  ];
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: "1px solid #2d3148", display: "flex", gap: 8 }}>
-        {["", "kubelet", "containerd", "ssh"].map(u => (
-          <button key={u} onClick={() => load(u)} style={{ background: "#1a1d27", border: "1px solid #2d3148", color: "#94a3b8", borderRadius: 4, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>
-            {u || "All"}
-          </button>
-        ))}
+      <div style={{ padding: "8px 16px", borderBottom: "1px solid #1e2235", display: "flex", gap: 6, background: "#0b0d14" }}>
+        {filters.map(f => {
+          const active = selected === f.key;
+          return (
+            <button
+              key={f.key}
+              onClick={() => load(f.key)}
+              style={{
+                background: active ? "#1e2340" : "transparent",
+                border: `1px solid ${active ? "#6366f1" : "#1e2235"}`,
+                color: active ? "#818cf8" : "#64748b",
+                borderRadius: 5, padding: "4px 10px", fontSize: 11,
+                cursor: "pointer", fontWeight: active ? 600 : 400,
+                transition: "all .15s",
+              }}
+            >
+              {f.label}
+            </button>
+          );
+        })}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-        <Pre>{content}</Pre>
+        {content ? <Pre>{content}</Pre> : (
+          <div style={{ color: "#475569", fontSize: 13, textAlign: "center", paddingTop: 40 }}>No logs found</div>
+        )}
       </div>
     </div>
   );
