@@ -1,40 +1,89 @@
 # Aziro Ops
 
-AI-powered DevOps dashboard by Aziro that connects to your infrastructure and provides real-time monitoring, command execution, and AI-driven recommendations.
+> AI-powered DevOps command center — monitor, inspect, and fix your infrastructure with natural language.
+
+Aziro Ops connects to your servers, Kubernetes clusters, and cloud accounts and gives you a professional dashboard with real-time monitoring, agentic AI chat, and intelligent incident management — all in one place.
+
+---
+
+## What's New
+
+- **Cmd+K Command Palette** — search targets, pages, and K8s resources instantly
+- **Resource Topology Graph** — visual map of Ingress → Service → Deployment → Pod relationships
+- **Inline AI Badges** — click `✦ AI` on any unhealthy pod for an instant one-line diagnosis
+- **Live Log Streaming** — real-time `kubectl logs -f` tray, filter + pause + auto-scroll
+- **Theme Switcher** — Indigo (default), Tron (cyan), Sapphire (blue) — persisted per browser
+- **OLED Dark Mode** — redesigned with Plus Jakarta Sans, sparkline charts, skeleton loaders
+- **SEV1/SEV2/SEV3** severity system with persistent incident history and AI diagnosis
+- **K8s Workloads/Ingress/Storage tabs** — full Kubernetes resource coverage beyond pods/nodes
+- **Collapsible resource cards** — every section is expandable/collapsible
+- **Markdown AI responses** — formatted code blocks, headers, and lists in chat
+
+---
 
 ## Supported Targets
 
 | Type | Connection | What you get |
 |------|-----------|-------------|
-| **Server (SSH)** | SSH (password or key) | CPU, memory, disk, network, logs, services — Linux, Windows, Mac |
-| **Kubernetes** | kubectl context | Pods, nodes, deployments, services, network — click any resource for describe + AI analysis |
+| **Kubernetes** | kubectl context | Nodes, Pods, Deployments, Services, Ingress, Storage, Workloads, topology graph |
+| **Server (SSH)** | SSH password or key | CPU, memory, disk, network, logs, services — Linux, Windows, Mac |
+| **Local** | Auto-detected | Same as SSH — auto-registered when running on Linux |
 | **Docker** | Local or remote daemon | Containers, images, networks, volumes, stats |
 | **AWS** | CLI profile + region | EC2, S3, EKS, RDS, account info |
 | **GCP** | Project ID | Compute, GKE, Storage, IAM |
 | **Azure** | Subscription ID | VMs, AKS, Storage, Resource Groups |
 | **Terraform** | Workspace directory | State, plan, outputs |
 
+---
+
 ## Features
 
-- **Dashboard** — Grafana-style metrics for SSH servers (CPU, memory, disk, uptime)
-- **K8s Lens-style** — Click any pod/node/deployment/service to see describe, logs, and AI recommendations
-- **AI Chat** — Side panel + full-page chat with real-time streaming responses
-- **100+ AI models** — Ollama, OpenAI, Claude, Gemini, Groq, Bedrock, and more via LiteLLM
-- **Two-model architecture** — Fast model for tool calling, smart model for answers
-- **Streaming** — Responses appear word-by-word like ChatGPT, not blank screen then wall of text
-- **Auto-detect** — When deployed on Linux, auto-registers the host machine
-- **Multi-target** — Manage multiple servers, clusters, and cloud accounts from one dashboard
+### Dashboard
+- Tab-based resource explorer per target type
+- **Kubernetes**: Nodes, Pods, Workloads, Services, Ingress, Storage, Network, Events tabs
+- **SSH/Local**: Overview (CPU/memory/disk/uptime metrics), Logs, Network, Storage
+- Click any resource → modal with Describe / Logs / Prev Logs / AI Analysis tabs
+- Inline `✦ AI` badge on unhealthy pods — one-click diagnosis without opening chat
+
+### AI Chat
+- Target-scoped chat: ask about a specific cluster or server
+- General sessions: persistent conversation history across sessions
+- Streaming responses word-by-word (SSE), Markdown rendered with code highlighting
+- Two-model architecture: fast model for tool calls, smart model for answers
+
+### Monitoring & Alerts
+- Background watcher streams Kubernetes events via `kubectl get events -w`
+- Auto-triages to **SEV1** (critical), **SEV2** (warning), **SEV3** (info)
+- Stores all incidents in SQLite with snapshots, AI diagnosis, and remediation
+- Live Alerts page with SSE push — no polling needed
+
+### Incident History
+- Full incident log with AI diagnosis inline
+- Filter by severity, status, or resource name
+- Acknowledge / Resolve workflow
+- Status persists across restarts
+
+### Competitive Features (Devtron/Lens/Grafana parity)
+| Feature | Inspired by |
+|---------|-------------|
+| Cmd+K palette with live K8s search | VS Code / Linear |
+| Resource topology SVG graph | ArgoCD resource tree |
+| Inline AI on unhealthy resources | Datadog Bits AI |
+| Live log streaming tray | Lens bottom tray |
+| Theme switcher | Grafana themes |
+
+---
 
 ## Supported AI Models
 
-Aziro Ops uses **LiteLLM** and supports **100+ AI providers** — local or cloud. Just set an environment variable.
+Uses **LiteLLM** — supports 100+ providers. Set `AI_MODEL` or use separate `TOOL_MODEL` / `ANSWER_MODEL`.
 
-| Provider | Model example | API key env var |
+| Provider | Example model | API key env var |
 |----------|--------------|-----------------|
 | **Ollama** (local, free) | `ollama/llama3.1:8b` | — |
+| **Google Gemini** | `gemini/gemini-2.0-flash` | `GEMINI_API_KEY` |
 | **OpenAI** | `gpt-4o-mini`, `gpt-4o` | `OPENAI_API_KEY` |
 | **Anthropic Claude** | `claude-haiku-4-5-20251001` | `ANTHROPIC_API_KEY` |
-| **Google Gemini** | `gemini/gemini-2.0-flash` | `GEMINI_API_KEY` |
 | **Groq** (fast, free tier) | `groq/llama-3.1-8b-instant` | `GROQ_API_KEY` |
 | **AWS Bedrock** | `bedrock/anthropic.claude-3-haiku` | AWS credentials |
 | **Azure OpenAI** | `azure/my-gpt4-deployment` | `AZURE_API_KEY` |
@@ -43,33 +92,37 @@ Aziro Ops uses **LiteLLM** and supports **100+ AI providers** — local or cloud
 | **Deepseek** | `deepseek/deepseek-chat` | `DEEPSEEK_API_KEY` |
 | **Cohere** | `cohere/command-r-plus` | `COHERE_API_KEY` |
 
-**Two-model architecture** (optional) — use a fast model for tool calls, a smarter model for final answers:
+**Two-model architecture** — fast model for tool calls, smart model for final answers:
 
 ```bash
 TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 python3 app.py
 ```
 
+---
+
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
 
 # Option 1: Local model (Ollama — free, private)
 ollama pull llama3.1:8b
 AI_MODEL=ollama/llama3.1:8b python3 app.py
 
-# Option 2: Cloud model (faster, needs API key)
-export OPENAI_API_KEY="sk-..."
-AI_MODEL=gpt-4o-mini python3 app.py
+# Option 2: Cloud model
+export GEMINI_API_KEY="..."
+AI_MODEL=gemini/gemini-2.0-flash python3 app.py
 
-# Option 3: Mix models (fast tool calls + smart answers)
+# Option 3: Two-model setup (recommended for best performance)
 export GROQ_API_KEY="gsk_..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 python3 app.py
 ```
 
-Open [http://localhost:5000](http://localhost:5000) and add your first server.
+Open [http://localhost:5000](http://localhost:5000) and add your first connection.
+
+---
 
 ## Architecture
 
@@ -77,174 +130,115 @@ Open [http://localhost:5000](http://localhost:5000) and add your first server.
 
 ```
 devops-ai/
-├── app.py                  ← Flask routes only (thin entry point)
-├── main.py                 ← CLI entry point
-├── ui-dashboard.html       ← Full frontend (single-page app)
+├── app.py                   ← Entry point
+├── ui/
+│   └── web.py               ← Flask routes (thin, logic-free)
 │
-├── agent/                  ← Agentic loop
-│   ├── conversation.py     ← SSE streaming + tool loop (max 5 steps)
-│   ├── manager.py          ← Per-target message history
-│   ├── needs_tools.py      ← Greeting vs infra heuristic
-│   └── tests/
+├── frontend/                ← React 18 + TypeScript + Vite SPA
+│   └── src/
+│       ├── pages/           ← Home, Dashboard, Alerts, History, Chat
+│       ├── components/      ← Sidebar, CommandPalette, ResourceGraph,
+│       │                       LogStream, ChatPanel, AIDrawer, ThemeContext
+│       ├── hooks/           ← useChat, useSSE (exponential backoff)
+│       └── api/client.ts    ← Typed API layer + SSE stream reader
 │
-├── providers/              ← LiteLLM wrapper
-│   ├── client.py           ← chat(), chat_stream(), TOOL_MODEL / ANSWER_MODEL
-│   └── tests/
+├── agent/                   ← Agentic loop
+│   ├── conversation.py      ← SSE streaming + tool loop (max 5 steps)
+│   ├── manager.py           ← Per-target message history
+│   └── needs_tools.py       ← Greeting vs infra heuristic
 │
-├── tools/                  ← One file per target type
-│   ├── executor.py         ← Routes command to correct tool by target type
-│   ├── base.py             ← run_command(), 30s timeout, 3000 char truncation
-│   ├── filter.py           ← is_destructive() — blocks dangerous commands
-│   ├── ssh.py              ← paramiko, password + key auth, 1 retry
-│   ├── kubectl.py          ← kubectl + context injection
-│   ├── docker.py           ← docker + DOCKER_HOST
-│   ├── aws.py              ← aws cli + profile/region
-│   ├── gcp.py              ← gcloud + project
-│   ├── azure.py            ← az cli + subscription
-│   ├── terraform.py        ← terraform + workspace
-│   ├── local.py            ← direct subprocess (no SSH)
-│   └── tests/
+├── providers/               ← LiteLLM wrapper
+│   └── client.py            ← chat(), chat_stream(), TOOL_MODEL / ANSWER_MODEL
 │
-├── sandbox/                ← Execution isolation
-│   ├── safe.py             ← Read-only command whitelist
-│   ├── docker_sandbox.py   ← Container isolation
-│   ├── executor.py         ← Dispatcher — SANDBOX=safe|docker|local
-│   └── tests/
+├── tools/                   ← One file per target type
+│   ├── executor.py          ← Routes command to correct tool
+│   ├── base.py              ← run_command(), 30s timeout, 3000 char truncation
+│   ├── filter.py            ← is_destructive() — blocks dangerous commands
+│   ├── ssh.py, kubectl.py, docker.py
+│   ├── aws.py, gcp.py, azure.py, terraform.py, local.py
+│   └── _run_many()          ← parallel execution, max 8 workers
 │
-├── sessions/               ← Chat session persistence
-│   ├── manager.py          ← CRUD, capped at 100 sessions, chat_sessions.json
-│   └── tests/
+├── monitor/                 ← Background event watcher
+│   ├── watcher.py           ← kubectl get events -w stream
+│   └── triage.py            ← SEV1 / SEV2 / SEV3 classifier
 │
-├── targets/                ← Connection management
-│   ├── manager.py          ← CRUD, targets.json
-│   └── tests/
+├── store/
+│   └── db.py                ← SQLite: events, snapshots, analyses (with JOIN)
 │
-└── prompts/                ← System prompt
-    ├── system_prompt.txt   ← Editable without touching code
-    └── builder.py          ← Injects live pod list at startup
+├── sessions/
+│   └── manager.py           ← Chat sessions, persisted to chat_messages.json
+│
+├── targets/
+│   └── manager.py           ← Connection CRUD, credential masking
+│
+├── sandbox/                 ← Execution isolation
+│   ├── safe.py              ← Read-only command whitelist
+│   ├── docker_sandbox.py    ← Container isolation
+│   └── executor.py          ← SANDBOX=safe|docker|local
+│
+└── prompts/
+    ├── system_prompt.txt    ← Editable without code changes
+    └── builder.py           ← Injects live pod list at startup
 ```
 
-### Component Diagram
+### Request Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Browser  (ui-dashboard.html)                      │
-│                                                                      │
-│  Dashboard · K8s View · Docker · Cloud · AI Chat · Resource Modal   │
-└──────────────────────────────┬──────────────────────────────────────┘
-                                │  HTTP / SSE (fetch + ReadableStream)
-                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                   app.py  (Flask routes only)                        │
-│  /api/targets  /api/tab  /api/resource  /api/chat/<tid>/stream      │
-│  /api/analyze/stream  /api/sessions  /api/sessions/<id>/chat/stream │
-└────────┬──────────────┬──────────────┬──────────────────────────────┘
-         │              │              │
-         ▼              ▼              ▼
-  ┌────────────┐  ┌──────────────┐  ┌─────────────────────────────────┐
-  │ targets/   │  │  sessions/   │  │           agent/                │
-  │ manager.py │  │  manager.py  │  │                                 │
-  │            │  │              │  │  needs_tools.py                 │
-  │ targets    │  │  saved chat  │  │   ├─ greeting → direct stream   │
-  │ .json      │  │  sessions    │  │   └─ infra   → tool loop        │
-  └────────────┘  │  capped @100 │  │                                 │
-                  │  .json       │  │  conversation.py (max 5 steps)  │
-                  └──────────────┘  │   ├─ LLM picks command          │
-                                     │   ├─ execute on target          │
-                                     │   ├─ feed result back           │
-                                     │   └─ stream final answer        │
-                                     │                                 │
-                                     │  manager.py                     │
-                                     │   └─ per-target msg history     │
-                                     └──────────────┬──────────────────┘
-                                                    │
-                             ┌──────────────────────┼──────────────────┐
-                             ▼                      ▼                  ▼
-                    ┌─────────────────┐  ┌───────────────┐  ┌──────────────┐
-                    │   providers/    │  │    tools/     │  │  sandbox/    │
-                    │   client.py     │  │               │  │              │
-                    │                 │  │ executor.py   │  │ safe.py      │
-                    │  chat()         │  │  ├─ ssh.py    │  │ (whitelist)  │
-                    │  chat_stream()  │  │  ├─ kubectl   │  │              │
-                    │                 │  │  ├─ docker    │  │ docker_sand  │
-                    │  TOOL_MODEL     │  │  ├─ aws       │  │ box.py       │
-                    │  ANSWER_MODEL   │  │  ├─ gcp       │  │              │
-                    │                 │  │  ├─ azure     │  │ executor.py  │
-                    │  LiteLLM        │  │  ├─ terraform │  │ SANDBOX env  │
-                    │  100+ providers │  │  └─ local     │  └──────────────┘
-                    │                 │  │               │
-                    │  Ollama         │  │ base.py       │  ┌──────────────┐
-                    │  OpenAI         │  │ filter.py     │  │  prompts/    │
-                    │  Claude         │  │               │  │              │
-                    │  Gemini         │  │ _run_many()   │  │ system_      │
-                    │  Groq           │  │ parallel      │  │ prompt.txt   │
-                    │  Bedrock + more │  │ max 8 workers │  │ builder.py   │
-                    └─────────────────┘  └──────┬────────┘  └──────────────┘
-                                                 │
-                                                 ▼
-                                    ┌────────────────────────┐
-                                    │      Your Infra         │
-                                    │  Server (SSH)           │
-                                    │  Kubernetes             │
-                                    │  Docker                 │
-                                    │  AWS / GCP / Azure      │
-                                    │  Terraform              │
-                                    └────────────────────────┘
+Browser (React SPA)
+       │
+       │  HTTP / SSE
+       ▼
+ui/web.py  (Flask, thin routes)
+       │
+       ├─ /api/targets          → targets/manager.py  (credential-masked)
+       ├─ /api/tab/<tid>/<tab>  → tools/executor.py   (_run_many, parallel)
+       ├─ /api/resource/<tid>   → tools/executor.py   (describe + logs)
+       ├─ /api/topology/<tid>   → kubectl → structured JSON (nodes/edges)
+       ├─ /api/logs/<tid>/stream→ subprocess.Popen kubectl logs -f (SSE)
+       ├─ /api/search/<tid>     → parallel kubectl grep (Cmd+K live search)
+       ├─ /api/chat/<tid>/stream→ agent/conversation.py (tool loop + stream)
+       ├─ /api/sessions/...     → sessions/manager.py (persistent history)
+       ├─ /api/monitor/stream   → monitor/watcher.py (SSE push)
+       └─ /api/events/...       → store/db.py (SQLite, JOIN with analyses)
 ```
 
-### Data Flow
+### AI Agent Loop
 
 ```
-User message (browser)
-        │
-        ▼
+User message
+      │
+      ▼
 agent/needs_tools.py
-        │
-        ├─ greeting / general question
-        │       │
-        │       └──▶  providers/chat_stream()
-        │                     │
-        │                     └──▶  SSE tokens → browser
-        │
-        └─ infra question (pod / disk / cpu / logs ...)
-                │
-                └──▶  agent/conversation.py  (max 5 steps)
-                            │
-                            ├─ Step: providers/chat() [TOOL_MODEL]
-                            │         LLM picks a command to run
-                            │
-                            ├─ Step: tools/execute_on_target()
-                            │         │
-                            │         ├─ ssh.py      → Server (SSH)
-                            │         ├─ kubectl.py  → Kubernetes
-                            │         ├─ docker.py   → Docker
-                            │         ├─ aws.py      → AWS
-                            │         ├─ gcp.py      → GCP
-                            │         ├─ azure.py    → Azure
-                            │         └─ terraform.py→ Terraform
-                            │
-                            │         _run_many() — parallel, max 8 workers
-                            │
-                            ├─ output fed back to LLM → repeat
-                            │
-                            └─ Final: providers/chat_stream() [ANSWER_MODEL]
-                                        │
-                                        └──▶  SSE tokens → browser
-                                              "Ran X commands" pill shown
-                                              sessions/manager.py saves history
+      │
+      ├─ greeting / general  ──▶  providers/chat_stream()  ──▶  SSE → browser
+      │
+      └─ infra question
+              │
+              └──▶  agent/conversation.py  (max 5 steps)
+                          │
+                          ├─ LLM [TOOL_MODEL] picks command
+                          ├─ tools/executor.py runs on target
+                          ├─ result fed back to LLM → repeat
+                          └─ LLM [ANSWER_MODEL] streams final answer → browser
 ```
 
-## CLI Mode
+---
 
-For terminal-only usage without the web dashboard:
+## Environment Variables
 
-```bash
-python main.py
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI_MODEL` | `ollama/llama3.1:8b` | Model for both tool calls and answers |
+| `TOOL_MODEL` | — | Override model for tool calls only |
+| `ANSWER_MODEL` | — | Override model for final answers only |
+| `SANDBOX` | `safe` | Execution mode: `safe`, `docker`, or `local` |
+| `PORT` | `5000` | Web server port |
+
+---
 
 ## Requirements
 
 - Python 3.8+
-- Ollama (or any LiteLLM-compatible provider)
-- SSH access to target servers (paramiko)
-- kubectl, docker, aws, gcloud, az, terraform CLIs as needed
+- `pip install -r requirements.txt`
+- At least one AI provider (Ollama locally, or any cloud API key)
+- CLI tools as needed: `kubectl`, `docker`, `aws`, `gcloud`, `az`, `terraform`
