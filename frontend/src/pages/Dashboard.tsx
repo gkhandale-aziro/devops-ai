@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode, type MouseEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, useDeferredValue, type ReactNode, type MouseEvent } from "react";
 import type { Target } from "../types";
 import { TABS_BY_TYPE }  from "../types";
 import { api, readSSE }  from "../api/client";
@@ -359,22 +359,17 @@ function OverviewTab({ data }: { data: Record<string, string> }) {
   );
 }
 
-// ── Node table ────────────────────────────────────────────────────────────────
-// kubectl get nodes -o wide → NAME STATUS ROLES AGE VERSION INTERNAL-IP ...
-// Nodes are cluster-scoped (no namespace), so openResource("node", name, "")
+// ── Node table — hoisted constants ────────────────────────────────────────────
+
+const nodeStatusColor = (s: string) => s === "Ready" ? "#22c55e" : "#ef4444";
 
 function NodeTable({ raw, target }: { raw: string; target: Target }) {
   const [resource, setResource] = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
   const [loading, setLoading]   = useState(false);
 
-  if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
-    return <div style={{ padding: 20, color: "#64748b", fontSize: 13 }}>kubectl not available or no nodes found.</div>;
-  }
+  const allLines = useMemo(() => raw.trim().split("\n"), [raw]);
 
-  const allLines = raw.trim().split("\n");
-  if (allLines.length < 2) return <Pre>{raw}</Pre>;
-
-  const openNode = async (name: string) => {
+  const openNode = useCallback(async (name: string) => {
     setLoading(true);
     try {
       const d = await api.resource(target.id, "node", name, "");
@@ -382,9 +377,12 @@ function NodeTable({ raw, target }: { raw: string; target: Target }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [target.id]);
 
-  const statusColor = (s: string) => s === "Ready" ? "#22c55e" : "#ef4444";
+  if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
+    return <div style={{ padding: 20, color: "#64748b", fontSize: 13 }}>kubectl not available or no nodes found.</div>;
+  }
+  if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
   return (
     <div style={{ overflowY: "auto", flex: 1 }}>
@@ -401,7 +399,7 @@ function NodeTable({ raw, target }: { raw: string; target: Target }) {
             const c = line.trim().split(/\s+/);
             if (c.length < 4) return null;
             const [name, status, roles, age, version, internalIp] = c;
-            const sc = statusColor(status);
+            const sc = nodeStatusColor(status);
             return (
               <tr key={i} onClick={() => openNode(name)}
                 style={{ borderBottom: "1px solid #1e2130", cursor: "pointer", transition: "background .1s" }}
@@ -429,37 +427,44 @@ function NodeTable({ raw, target }: { raw: string; target: Target }) {
   );
 }
 
+// ── Pod table — module-level constants (hoisted to avoid recreation per render)
+
+const POD_BAD_STATUSES = new Set(["CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff", "ErrImagePull", "CreateContainerError"]);
+
+const podStatusColor = (s: string) =>
+  s === "Running" ? "#22c55e" : s.includes("Error") || s.includes("Crash") || s === "OOMKilled" ? "#ef4444" : "#f59e0b";
+
 // ── Pod table ─────────────────────────────────────────────────────────────────
 
 function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; onStreamLogs?: (pod: string, ns: string) => void }) {
-  const [resource,  setResource]  = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
-  const [loading,   setLoading]   = useState(false);
-  const [nsFilter,  setNsFilter]  = useState("");
-  const [search,    setSearch]    = useState("");
-  const [aiBadges,  setAiBadges]  = useState<Record<string, string>>({});
+  const [resource,     setResource]     = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
+  const [loading,      setLoading]      = useState(false);
+  const [nsFilter,     setNsFilter]     = useState("");
+  const [search,       setSearch]       = useState("");
+  const [aiBadges,     setAiBadges]     = useState<Record<string, string>>({});
   const [badgeLoading, setBadgeLoading] = useState<Record<string, boolean>>({});
 
-  if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
-    return <div style={{ padding: 20, color: "#64748b", fontSize: 13 }}>kubectl not available or no pods found.</div>;
-  }
+  // Defer search filter so typing stays responsive with 200+ rows
+  const deferredSearch = useDeferredValue(search);
 
-  const allLines = raw.trim().split("\n");
-  if (allLines.length < 2) return <Pre>{raw}</Pre>;
+  const allLines = useMemo(() => raw.trim().split("\n"), [raw]);
 
-  // collect unique namespaces from output
-  const namespaces = [...new Set(
-    allLines.slice(1).map(l => l.trim().split(/\s+/)[0]).filter(Boolean)
-  )];
+  const namespaces = useMemo(() =>
+    [...new Set(allLines.slice(1).map(l => l.trim().split(/\s+/)[0]).filter(Boolean))],
+    [allLines]
+  );
 
-  // filter rows
-  const lines = allLines.slice(1).filter(line => {
-    const c = line.trim().split(/\s+/);
-    if (nsFilter && c[0] !== nsFilter) return false;
-    if (search && !line.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  const lines = useMemo(() =>
+    allLines.slice(1).filter(line => {
+      const c = line.trim().split(/\s+/);
+      if (nsFilter && c[0] !== nsFilter) return false;
+      if (deferredSearch && !line.toLowerCase().includes(deferredSearch.toLowerCase())) return false;
+      return true;
+    }),
+    [allLines, nsFilter, deferredSearch]
+  );
 
-  const openResource = async (kind: string, name: string, ns: string) => {
+  const openResource = useCallback(async (kind: string, name: string, ns: string) => {
     setLoading(true);
     try {
       const d = await api.resource(target.id, kind, name, ns);
@@ -467,16 +472,10 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
     } finally {
       setLoading(false);
     }
-  };
+  }, [target.id]);
 
-  const statusColor = (s: string) =>
-    s === "Running" ? "#22c55e" : s.includes("Error") || s.includes("Crash") || s === "OOMKilled" ? "#ef4444" : "#f59e0b";
-
-  const BAD_STATUSES = new Set(["CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff", "ErrImagePull", "CreateContainerError"]);
-
-  const fetchAIBadge = async (name: string, ns: string, status: string) => {
+  const fetchAIBadge = useCallback(async (name: string, ns: string, status: string) => {
     const key = `${ns}/${name}`;
-    if (aiBadges[key] || badgeLoading[key]) return;
     setBadgeLoading(prev => ({ ...prev, [key]: true }));
     try {
       const res = await api.analyzeStream(`Quick 1-sentence diagnosis for pod "${name}" in namespace "${ns}" with status "${status}". Be concise.`);
@@ -490,7 +489,12 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
     } finally {
       setBadgeLoading(prev => ({ ...prev, [key]: false }));
     }
-  };
+  }, []);
+
+  if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
+    return <div style={{ padding: 20, color: "#64748b", fontSize: 13 }}>kubectl not available or no pods found.</div>;
+  }
+  if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
@@ -531,8 +535,8 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
               if (c.length < 5) return null;
               const [ns, name, ready, status] = c;
               const restarts = c[4] ?? "0";
-              const sc = statusColor(status);
-              const isBad = BAD_STATUSES.has(status);
+              const sc = podStatusColor(status);
+              const isBad = POD_BAD_STATUSES.has(status);
               const badgeKey = `${ns}/${name}`;
               return (
                 <tr key={i} onClick={() => openResource("pod", name, ns)}

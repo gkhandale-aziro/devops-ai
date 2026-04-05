@@ -17,6 +17,16 @@ interface Props {
 
 const MAX_LINES = 500;
 
+// Hoisted outside component — avoids recreation on every render (js-hoist-regexp)
+const ERROR_RE = /error|fatal/i;
+const WARN_RE  = /warn/i;
+
+function highlightLine(line: string): string {
+  if (ERROR_RE.test(line)) return "#ef4444";
+  if (WARN_RE.test(line))  return "#f59e0b";
+  return "#8b949e";
+}
+
 export function LogStream({ target, pod, namespace, container, onClose }: Props) {
   const [lines, setLines]       = useState<string[]>([]);
   const [paused, setPaused]     = useState(false);
@@ -75,14 +85,6 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
   const filtered = search
     ? lines.filter(l => l.toLowerCase().includes(search.toLowerCase()))
     : lines;
-
-  const highlightLine = (line: string) => {
-    if (line.includes("ERROR") || line.includes("error") || line.includes("FATAL"))
-      return "#ef4444";
-    if (line.includes("WARN") || line.includes("warn"))
-      return "#f59e0b";
-    return "#8b949e";
-  };
 
   return (
     <div style={{
