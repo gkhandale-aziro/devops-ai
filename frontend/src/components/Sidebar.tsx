@@ -149,18 +149,22 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                 </div>
               </div>
 
-              {/* Remove — only on hover */}
+              {/* Remove — only on hover, SVG icon */}
               <button
                 onClick={e => { e.stopPropagation(); onRemove(t.id); }}
+                aria-label="Remove connection"
                 style={{
                   background: "none", border: "none", color: "#ef4444",
-                  cursor: "pointer", padding: "2px 4px", borderRadius: 3,
-                  fontSize: 14, lineHeight: 1,
+                  cursor: "pointer", padding: "3px", borderRadius: 4,
+                  display: "flex", alignItems: "center", justifyContent: "center",
                   opacity: isHovered ? 1 : 0,
                   transition: "opacity .15s",
                 }}
-                title="Remove connection"
-              >×</button>
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             </div>
           );
         })}
