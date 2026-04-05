@@ -336,7 +336,7 @@ function OverviewTab({ data }: { data: Record<string, string> }) {
           { label: "Disk",       val: diskUsed,          sub: `of ${diskTotal} (${diskPct}%)`, pct: diskPct },
           { label: "Uptime",     val: uptimeStr,         sub: os, pct: -1 },
         ].map(card => (
-          <div key={card.label} style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 8, padding: 14 }}>
+          <div key={card.label} style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, padding: 16, boxShadow: "0 4px 16px rgba(0,0,0,.35)" }}>
             <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>{card.label}</div>
             <div style={{ fontSize: 24, fontWeight: 700, color: card.pct >= 0 ? pctColor(card.pct) : "#7c8cf8" }}>{card.val}</div>
             <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{card.sub}</div>
@@ -408,7 +408,7 @@ function NodeTable({ raw, target }: { raw: string; target: Target }) {
             const sc = nodeStatusColor(status);
             return (
               <tr key={i} onClick={() => openNode(name)}
-                style={{ borderBottom: "1px solid #1e2130", cursor: "pointer", transition: "background .1s" }}
+                style={{ cursor: "pointer", transition: "background .1s" }}
                 onMouseEnter={(ev: MouseEvent<HTMLTableRowElement>) => (ev.currentTarget.style.background = "#1a1d27")}
                 onMouseLeave={(ev: MouseEvent<HTMLTableRowElement>) => (ev.currentTarget.style.background = "transparent")}
               >
@@ -505,7 +505,7 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
       {/* filter bar */}
-      <div style={{ padding: "8px 16px", borderBottom: "1px solid #2d3148", display: "flex", gap: 8, flexShrink: 0 }}>
+      <div style={{ padding: "8px 16px", background: "#0d1017", display: "flex", gap: 8, flexShrink: 0 }}>
         <select
           value={nsFilter}
           onChange={e => setNsFilter(e.target.value)}
@@ -546,12 +546,12 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
               const badgeKey = `${ns}/${name}`;
               return (
                 <tr key={i} onClick={() => openResource("pod", name, ns)}
-                  style={{ borderBottom: "1px solid #1e2130", cursor: "pointer", transition: "background .1s" }}
+                  style={{ cursor: "pointer", transition: "background .1s" }}
                   onMouseEnter={ev => (ev.currentTarget.style.background = "#1a1d27")}
                   onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
                 >
                   <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{ns}</td>
-                  <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 500 }}>
+                  <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600 }}>
                     {name}
                     {/* P3: Inline AI badge for unhealthy pods */}
                     {isBad && !aiBadges[badgeKey] && !badgeLoading[badgeKey] && (
@@ -560,8 +560,8 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
                         title="Get AI diagnosis for this pod"
                         style={{
                           marginLeft: 6, background: "#818cf822", border: "1px solid #818cf844",
-                          color: "#818cf8", borderRadius: 4, padding: "1px 6px",
-                          fontSize: 9, fontWeight: 700, cursor: "pointer", verticalAlign: "middle",
+                          color: "#818cf8", borderRadius: 4, padding: "2px 7px",
+                          fontSize: 11, fontWeight: 600, cursor: "pointer", verticalAlign: "middle",
                         }}
                       >
                         ✦ Diagnose
@@ -666,17 +666,17 @@ function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
   const modalTabs = ["describe", "logs", ...(hasPrevLogs ? ["previous"] : []), "ai"] as const;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#00000088", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
+    <div style={{ position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
          onClick={e => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-labelledby="modal-title"
-           style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, width: 740, maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+           style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 12, width: 740, maxHeight: "82vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid #2d3148", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ background: "#4f46e533", color: "#7c8cf8", border: "1px solid #4f46e5", borderRadius: 4, padding: "2px 7px", fontSize: 11 }}>
             {loading ? "…" : resource?.kind}
           </span>
           <strong id="modal-title" style={{ fontSize: 14 }}>{resource?.name}</strong>
           {resource?.ns && <span style={{ fontSize: 12, color: "#64748b" }}>· {resource.ns}</span>}
-          <span style={{ marginLeft: "auto", fontSize: 10, color: "#334155" }}>Esc to close</span>
+          <span style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>Esc to close</span>
           <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
             <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -804,7 +804,7 @@ function KubectlTable({ raw, colorFn, onRowClick }: {
             tabIndex={onRowClick ? 0 : undefined}
             onClick={() => onRowClick?.(cols, headers)}
             onKeyDown={e => { if (onRowClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick(cols, headers); } }}
-            style={{ borderBottom: "1px solid #1a1f2e", cursor: onRowClick ? "pointer" : "default", background: i % 2 === 1 ? "#0c0e16" : "transparent", transition: "background .1s" }}
+            style={{ cursor: onRowClick ? "pointer" : "default", background: i % 2 === 1 ? "#0c0e16" : "transparent", transition: "background .1s" }}
             onMouseEnter={ev => { if (onRowClick) ev.currentTarget.style.background = "#1a1d27"; }}
             onMouseLeave={ev => { ev.currentTarget.style.background = i % 2 === 1 ? "#0c0e16" : "transparent"; }}
           >
@@ -988,7 +988,7 @@ function Card({ title, hint, children, defaultOpen = true }: { title: string; hi
   const [open, setOpen] = useState(defaultOpen);
   const headerId = `card-${title.replace(/\s+/g, "-").toLowerCase()}`;
   return (
-    <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 8, overflow: "hidden" }}>
+    <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,.3)" }}>
       <div
         id={headerId}
         role="button"
@@ -1006,7 +1006,7 @@ function Card({ title, hint, children, defaultOpen = true }: { title: string; hi
         {hint && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>· {hint}</span>}
         <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{open ? "▼" : "▶"}</span>
       </div>
-      {open && <div role="region" aria-labelledby={headerId} style={{ padding: "12px 14px" }}>{children}</div>}
+      {open && <div role="region" aria-labelledby={headerId} style={{ padding: "14px 16px" }}>{children}</div>}
     </div>
   );
 }

@@ -50,6 +50,8 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
         onChange={(e: ChangeEvent<HTMLInputElement>) => setConfig((prev: Record<string, string>) => ({ ...prev, [key]: e.target.value }))}
         placeholder={placeholder}
         style={{ width: "100%", background: "#0d1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none" }}
+        onFocus={e => (e.currentTarget.style.borderColor = "#6366f1")}
+        onBlur={e  => (e.currentTarget.style.borderColor = "#2d3148")}
       />
     </div>
   );
@@ -64,8 +66,8 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
     terraform: <>{field("Workspace", "workspace", "default")}</>,
   };
 
-  const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "#00000088", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" };
-  const box: React.CSSProperties     = { background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, padding: 24, width: 400 };
+  const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" };
+  const box: React.CSSProperties     = { background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 12, padding: 24, width: 420, boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)" };
 
   return (
     <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -102,6 +104,8 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
                 placeholder="prod-k8s"
                 autoFocus
                 style={{ width: "100%", background: "#0d1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none" }}
+                onFocus={e => (e.currentTarget.style.borderColor = "#6366f1")}
+                onBlur={e  => (e.currentTarget.style.borderColor = "#2d3148")}
               />
             </div>
             {fields[selType]}
