@@ -10,10 +10,13 @@ interface Props {
 }
 
 export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
-  const [text,    setText]    = useState("");
+  const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
@@ -23,23 +26,59 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
     const t = text.trim();
     if (!t || loading) return;
     setText("");
-    // Reset textarea height
     if (inputRef.current) inputRef.current.style.height = "auto";
-    onSend(t);
+    setError(null);
+    setRetrying(false);
+    let didRespond = false;
+    // Timeout after 30s if no response
+    timeoutRef.current && clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      if (!didRespond) {
+        setError("AI did not respond. Please try again.");
+        setRetrying(false);
+      }
+    }, 30000);
+    try {
+      onSend(t);
+      // Listen for new assistant message or error
+      // If a new assistant message arrives, clear error
+      // If not, error will be set by timeout
+    } catch (e: any) {
+      setError(e?.message || "Failed to send message.");
+      setRetrying(false);
+    }
   }
+
+  // Watch for new assistant message to clear error/timeout
+  useEffect(() => {
+    if (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
+      setError(null);
+      setRetrying(false);
+      timeoutRef.current && clearTimeout(timeoutRef.current);
+    }
+    // If last message is user and loading is false, show error
+    if (messages.length > 0 && messages[messages.length - 1].role === "user" && !loading && !retrying) {
+      setError("AI did not respond. Please try again.");
+    }
+    // eslint-disable-next-line
+  }, [messages, loading]);
 
   function onInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setText(e.target.value);
-    // Auto-grow
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+  }
+
+  function handleRetry() {
+    setRetrying(true);
+    setError(null);
+    submit();
   }
 
   const visibleMessages = messages;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", flex: 1, overflow: "hidden" }}>
-
       {/* Messages feed */}
       <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
         {visibleMessages.length === 0 && (
@@ -61,18 +100,15 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
             </div>
           </div>
         )}
-
         {visibleMessages.map((m, i) => {
           const isUser = m.role === "user";
           const isLast = i === visibleMessages.length - 1;
-
           return (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4, animation: "fadeIn .2s ease-out" }}>
               {/* Role label */}
               <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 600, paddingLeft: isUser ? 0 : 4 }}>
                 {isUser ? "You" : "Aziro AI"}
               </div>
-
               {/* Bubble */}
               <div style={{
                 maxWidth: "82%",
@@ -92,7 +128,6 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
                   <ThinkingDots />
                 ) : "—"}
               </div>
-
               {/* Commands */}
               {m.cmds && m.cmds.length > 0 && (
                 <div style={{
@@ -107,8 +142,13 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
             </div>
           );
         })}
+        {error && (
+          <div style={{ color: "#fb7185", background: "#2a0011", border: "1px solid #f43f5e", borderRadius: 8, padding: "10px 18px", margin: "8px 0", fontSize: 13, maxWidth: 420 }}>
+            {error}
+            <button onClick={handleRetry} style={{ marginLeft: 16, background: "#6366f1", color: "#fff", border: "none", borderRadius: 5, padding: "3px 10px", fontSize: 12, cursor: "pointer" }} aria-label="Retry AI message">Retry</button>
+          </div>
+        )}
       </div>
-
       {/* Input bar */}
       <div style={{
         padding: "12px 16px 16px",
@@ -138,6 +178,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
               fontFamily: "inherit", lineHeight: 1.5,
               minHeight: 20, maxHeight: 120,
             }}
+            aria-label="Chat input"
           />
           <button
             onClick={submit}
@@ -151,6 +192,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "background .15s",
             }}
+            aria-label="Send message"
           >
             {loading ? (
               <span style={{ width: 13, height: 13, border: "2px solid #6366f133", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />

@@ -74,42 +74,45 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
 
   useEffect(() => {
     retryRef.current = 0;
-    setLines([]);
-    connect();
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      esRef.current?.close();
-    };
-  }, [connect]);
+        <button
+          onClick={() => setPaused(p => !p)}
+          aria-label={paused ? "Resume log stream" : "Pause log stream"}
+          style={{
+            background: paused ? "#f59e0b22" : "#22c55e22",
+            border: `1px solid ${paused ? "#f59e0b" : "#22c55e"}`,
+            color: paused ? "#f59e0b" : "#22c55e",
+            borderRadius: 5, padding: "3px 8px", fontSize: 10,
+            fontWeight: 700, cursor: "pointer",
+          }}
+        >
+          {paused ? "\u25b6 Resume" : "\u23f8 Pause"}
+        </button>
 
-  // Auto-scroll when not paused
-  useEffect(() => {
-    if (!pausedRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [lines.length]);
+        <button
+          onClick={() => { setLines([]); }}
+          title="Clear"
+          aria-label="Clear log lines"
+          style={{
+            background: "transparent", border: "1px solid #2d3555",
+            color: "#64748b", borderRadius: 5, padding: "3px 8px",
+            fontSize: 10, cursor: "pointer",
+          }}
+        >
+          Clear
+        </button>
 
-  const filtered = search
-    ? lines.filter(l => l.toLowerCase().includes(search.toLowerCase()))
-    : lines;
+        <span style={{ fontSize: 10, color: "#475569" }}>{lines.length} lines</span>
 
-  const highlightLine = (line: string) => {
-    if (line.includes("ERROR") || line.includes("error") || line.includes("FATAL"))
-      return "#ef4444";
-    if (line.includes("WARN") || line.includes("warn"))
-      return "#f59e0b";
-    return "#8b949e";
-  };
-
-  return (
-    <div style={{
-      height: 280, flexShrink: 0,
-      borderTop: "1px solid #1e2235",
-      background: "#0b0d14",
-      display: "flex", flexDirection: "column",
-    }}>
-      {/* Header */}
-      <div style={{
+        <button
+          onClick={onClose}
+          aria-label="Close log stream"
+          style={{
+            background: "none", border: "none", color: "#64748b",
+            cursor: "pointer", fontSize: 16, lineHeight: 1,
+          }}
+        >
+          \u2715
+        </button>
         padding: "6px 12px",
         borderBottom: "1px solid #1e2235",
         display: "flex", alignItems: "center", gap: 10,

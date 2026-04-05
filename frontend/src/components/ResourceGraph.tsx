@@ -296,11 +296,19 @@ function TopologyDetail({ target, node, onClose }: { target: Target; node: Node;
             }}>{t}</button>
           ))}
         </div>
-        <button onClick={() => setExpanded(e => !e)} title={expanded ? "Minimize" : "Maximize"}
-          style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: "2px 4px" }}>
-          {expanded ? "▾" : "▴"}
-        </button>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16 }}>✕</button>
+          <button
+            onClick={() => setExpanded(e => !e)}
+            title={expanded ? "Minimize" : "Maximize"}
+            aria-label={expanded ? "Minimize detail panel" : "Maximize detail panel"}
+            style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: "2px 4px" }}>
+            {expanded ? "▾" : "▴"}
+          </button>
+          <button
+            onClick={onClose}
+            aria-label="Close detail panel"
+            style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16 }}>
+            ✕
+          </button>
       </div>
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px" }}>
