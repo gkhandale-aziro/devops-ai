@@ -21,23 +21,25 @@ export function Dashboard({ target }: Props) {
   const [reloadKey, setReloadKey] = useState(0);
   const reloadTab = useCallback(() => setReloadKey(k => k + 1), []);
   const [topoNamespace, setTopoNamespace] = useState("");
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   // Reset tab when target changes
   useEffect(() => {
     if (!target) { setActiveTab(null); return; }
     const tabs = TABS_BY_TYPE[target.type];
     setActiveTab(tabs[0].id);
+    setLastRefreshed(null);
     clear();
   }, [target?.id]);
 
-  // Load tab data when tab changes (skip for chat tab)
+  // Load tab data when tab changes (skip for chat/topology tabs)
   useEffect(() => {
-    if (!target || !activeTab || activeTab === "__chat") return;
+    if (!target || !activeTab || activeTab === "__chat" || activeTab === "__topology") return;
     setTabLoading(true);
     setTabData({});
     api.tab(target.id, activeTab)
-      .then(setTabData)
-      .catch(() => setTabData({ error: "Failed to load" }))
+      .then(d => { setTabData(d); setLastRefreshed(new Date()); })
+      .catch(() => setTabData({ error: `Could not load ${activeTab} data — check kubectl access and cluster connectivity.` }))
       .finally(() => setTabLoading(false));
   }, [target?.id, activeTab, reloadKey]);
 
@@ -73,6 +75,27 @@ export function Dashboard({ target }: Props) {
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
         <strong style={{ fontSize: 15 }}>{target.name}</strong>
         <span style={{ fontSize: 12, color: "#64748b", background: "#1a1d27", padding: "2px 8px", borderRadius: 4 }}>{target.type}</span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          {lastRefreshed && (
+            <span style={{ fontSize: 11, color: "#475569" }}>
+              Refreshed {Math.round((Date.now() - lastRefreshed.getTime()) / 60000) < 1
+                ? "just now"
+                : `${Math.round((Date.now() - lastRefreshed.getTime()) / 60000)}m ago`}
+            </span>
+          )}
+          {!tabLoading && activeTab && activeTab !== "__chat" && activeTab !== "__topology" && (
+            <button onClick={reloadTab} title="Refresh" style={{
+              background: "none", border: "1px solid #2d3148", borderRadius: 5,
+              color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center",
+              gap: 5, padding: "4px 8px", fontSize: 11,
+            }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+              </svg>
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -101,7 +124,7 @@ export function Dashboard({ target }: Props) {
             padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
             color: activeTab === "__chat" ? "#818cf8" : "#64748b",
             borderBottom: activeTab === "__chat" ? "2px solid #6366f1" : "2px solid transparent",
-            cursor: "pointer", whiteSpace: "nowrap", marginLeft: "auto",
+            cursor: "pointer", whiteSpace: "nowrap",
             fontWeight: activeTab === "__chat" ? 600 : 400,
             display: "flex", alignItems: "center", gap: 5,
           }}
@@ -481,8 +504,8 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
           placeholder="Search pods…"
           style={{ background: "#0f1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "5px 10px", fontSize: 12, flex: 1 }}
         />
-        <span style={{ fontSize: 11, color: "#64748b", alignSelf: "center" }}>
-          {lines.length} pod{lines.length !== 1 ? "s" : ""} · click row for Describe / Logs / AI
+        <span style={{ fontSize: 11, color: "#475569", alignSelf: "center" }}>
+          {lines.length} pod{lines.length !== 1 ? "s" : ""}
         </span>
       </div>
 
@@ -491,7 +514,7 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#0d1117", position: "sticky", top: 0 }}>
-              {["Namespace","Name","Ready","Status","Restarts","Age",""].map(h => (
+              {["Namespace","Name","Ready","Status","Restarts","Age","",""].map(h => (
                 <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", borderBottom: "1px solid #2d3148" }}>{h}</th>
               ))}
             </tr>
@@ -518,14 +541,14 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
                     {isBad && !aiBadges[badgeKey] && !badgeLoading[badgeKey] && (
                       <button
                         onClick={e => { e.stopPropagation(); fetchAIBadge(name, ns, status); }}
-                        title="AI Insight"
+                        title="Get AI diagnosis for this pod"
                         style={{
                           marginLeft: 6, background: "#818cf822", border: "1px solid #818cf844",
-                          color: "#818cf8", borderRadius: 4, padding: "1px 5px",
+                          color: "#818cf8", borderRadius: 4, padding: "1px 6px",
                           fontSize: 9, fontWeight: 700, cursor: "pointer", verticalAlign: "middle",
                         }}
                       >
-                        ✦ AI
+                        ✦ Diagnose
                       </button>
                     )}
                     {badgeLoading[badgeKey] && (
@@ -555,7 +578,7 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
                     {onStreamLogs && (
                       <button
                         onClick={e => { e.stopPropagation(); onStreamLogs(name, ns); }}
-                        title="Stream logs"
+                        title="Stream live logs"
                         style={{
                           background: "#06b6d422", border: "1px solid #06b6d444",
                           color: "#06b6d4", borderRadius: 4, padding: "2px 7px",
@@ -566,6 +589,7 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
                       </button>
                     )}
                   </td>
+                  <td style={{ padding: "8px 12px", color: "#334155", textAlign: "right" }}>›</td>
                 </tr>
               );
             })}
@@ -615,6 +639,16 @@ function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
 
   useEffect(() => { if (tab === "ai" && resource && !aiText && !aiLoading) runAI(); }, [tab]);
 
+  // Escape key closes modal
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const hasPrevLogs = resource?.data.previous && !resource.data.previous.includes("[no previous");
+  const modalTabs = ["describe", "logs", ...(hasPrevLogs ? ["previous"] : []), "ai"] as const;
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "#00000088", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
          onClick={e => e.target === e.currentTarget && onClose()}>
@@ -625,15 +659,16 @@ function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
           </span>
           <strong style={{ fontSize: 14 }}>{resource?.name}</strong>
           {resource?.ns && <span style={{ fontSize: 12, color: "#64748b" }}>· {resource.ns}</span>}
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
+          <span style={{ marginLeft: "auto", fontSize: 10, color: "#334155" }}>Esc to close</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         {!loading && resource && (
           <>
             <div style={{ display: "flex", borderBottom: "1px solid #2d3148", padding: "0 16px" }}>
-              {(["describe", "logs", "previous", "ai"] as const).map(t => (
-                <button key={t} onClick={() => setTab(t)} style={{
+              {modalTabs.map(t => (
+                <button key={t} onClick={() => setTab(t as typeof tab)} style={{
                   padding: "8px 14px", fontSize: 12, background: "none", border: "none",
                   color: tab === t ? "#7c8cf8" : "#64748b", borderBottom: tab === t ? "2px solid #7c8cf8" : "2px solid transparent",
                   cursor: "pointer", textTransform: "capitalize",
@@ -726,7 +761,9 @@ function GenericTab({ data }: { data: Record<string, string> }) {
 function parseKubectl(raw: string): { headers: string[]; rows: string[][] } {
   const lines = (raw ?? "").trim().split("\n").filter(Boolean);
   if (lines.length < 1) return { headers: [], rows: [] };
-  const headers = lines[0].trim().split(/\s{2,}/);
+  const headers = lines[0].trim().split(/\s{2,}/).map(h =>
+    h.replace(/-/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+  );
   const rows = lines.slice(1).map(l => l.trim().split(/\s{2,}/));
   return { headers, rows };
 }

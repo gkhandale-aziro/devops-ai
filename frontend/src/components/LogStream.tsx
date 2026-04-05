@@ -129,15 +129,16 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
 
         <button
           onClick={() => setPaused(p => !p)}
+          title={paused ? "Resume auto-scroll" : "Freeze scroll (logs still stream)"}
           style={{
-            background: paused ? "#f59e0b22" : "#22c55e22",
-            border: `1px solid ${paused ? "#f59e0b" : "#22c55e"}`,
-            color: paused ? "#f59e0b" : "#22c55e",
+            background: paused ? "#f59e0b22" : "transparent",
+            border: `1px solid ${paused ? "#f59e0b" : "#2d3555"}`,
+            color: paused ? "#f59e0b" : "#64748b",
             borderRadius: 5, padding: "3px 8px", fontSize: 10,
             fontWeight: 700, cursor: "pointer",
           }}
         >
-          {paused ? "▶ Resume" : "⏸ Pause"}
+          {paused ? "▶ Resume scroll" : "⏸ Scroll lock"}
         </button>
 
         <button
