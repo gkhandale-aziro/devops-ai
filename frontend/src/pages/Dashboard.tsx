@@ -44,13 +44,7 @@ export function Dashboard({ target }: Props) {
   }, [target?.id, activeTab, reloadKey]);
 
   if (!target) {
-    return (
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, color: "#64748b" }}>
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2d3148" strokeWidth="1.2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        <div style={{ fontSize: 18, color: "#94a3b8", fontWeight: 600 }}>Aziro Ops</div>
-        <div style={{ fontSize: 13 }}>Select a connection from the sidebar to get started.</div>
-      </div>
-    );
+    return <NoTargetEmptyState />;
   }
 
   const tabs = TABS_BY_TYPE[target.type];
@@ -97,6 +91,8 @@ export function Dashboard({ target }: Props) {
           )}
         </div>
       </div>
+
+      <ContextualHint id="cmd-k">Press Cmd+K (or Ctrl+K) to search across all resources instantly.</ContextualHint>
 
       {/* Tab bar */}
       <div role="tablist" aria-label="Dashboard sections" style={{ display: "flex", background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, padding: "0 12px", overflowX: "auto" }}>
@@ -165,12 +161,15 @@ export function Dashboard({ target }: Props) {
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
           {activeTab === "__chat" ? (
-            <ChatPanel
-              messages={messages}
-              loading={chatLoading}
-              onSend={send}
-              placeholder={`Ask about ${target.name}…`}
-            />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <ContextualHint id="chat-intro">Ask anything — "which pods are failing?", "show me memory usage", "why is nginx crashing?"</ContextualHint>
+              <ChatPanel
+                messages={messages}
+                loading={chatLoading}
+                onSend={send}
+                placeholder={`Ask about ${target.name}…`}
+              />
+            </div>
           ) : activeTab === "__topology" ? (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
               <div style={{ padding: "8px 16px", borderBottom: "1px solid #1e2235", display: "flex", alignItems: "center", gap: 8, background: "#0b0d14", flexShrink: 0 }}>
@@ -182,6 +181,7 @@ export function Dashboard({ target }: Props) {
                   style={{ background: "#161b27", border: "1px solid #2d3555", color: "#e2e8f0", borderRadius: 5, padding: "3px 8px", fontSize: 11, width: 180 }}
                 />
               </div>
+              <ContextualHint id="topology-click">Click any node to inspect its details, logs, and run an AI diagnosis.</ContextualHint>
               <ResourceGraph target={target} namespace={topoNamespace} />
             </div>
           ) : (
@@ -262,7 +262,12 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
 
   // Pods — clickable table
   if (tabId === "pods") {
-    return <PodTable raw={data.pods ?? data.output ?? ""} target={target} onStreamLogs={onStreamLogs} />;
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <ContextualHint id="pods-diagnose">Unhealthy pods show a ✦ Diagnose button — click it for an instant AI diagnosis without opening chat.</ContextualHint>
+        <PodTable raw={data.pods ?? data.output ?? ""} target={target} onStreamLogs={onStreamLogs} />
+      </div>
+    );
   }
 
   // Logs — colorized
@@ -1010,6 +1015,84 @@ function Card({ title, hint, children, defaultOpen = true }: { title: string; hi
         <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{open ? "▼" : "▶"}</span>
       </div>
       {open && <div role="region" aria-labelledby={headerId} style={{ padding: "12px 14px" }}>{children}</div>}
+    </div>
+  );
+}
+
+// ── No-target empty state (onboarding-ux) ────────────────────────────────────
+
+const FEATURE_HINTS = [
+  { icon: "⌘K", label: "Command Palette", desc: "Jump to any resource instantly — press Cmd+K" },
+  { icon: "✦",  label: "AI Chat",         desc: "Ask your cluster anything in plain English" },
+  { icon: "◎",  label: "Topology",        desc: "Visualize Ingress → Service → Pod relationships" },
+  { icon: "▶",  label: "Live Logs",       desc: "Stream pod logs in real time with auto-scroll" },
+];
+
+function NoTargetEmptyState() {
+  return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 0, padding: 40 }}>
+      <div style={{ textAlign: "center", maxWidth: 480 }}>
+        {/* Icon */}
+        <div style={{ width: 56, height: 56, borderRadius: 14, background: "linear-gradient(135deg,#6366f1,#818cf8)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", boxShadow: "0 0 32px #6366f133" }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
+          </svg>
+        </div>
+
+        {/* Headline */}
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "#e2e8f0", marginBottom: 8, letterSpacing: "-.3px" }}>
+          Connect your first target
+        </h2>
+        <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.7, marginBottom: 28 }}>
+          Add a Kubernetes cluster, SSH server, Docker host, or cloud account from the sidebar to start monitoring and managing your infrastructure with AI.
+        </p>
+
+        {/* Getting started steps */}
+        <div style={{ background: "#0f1219", border: "1px solid #1e2235", borderRadius: 10, padding: "16px 20px", textAlign: "left", marginBottom: 24 }}>
+          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 700, marginBottom: 12 }}>Getting started</div>
+          {[
+            "Click + in the sidebar to add a connection",
+            "Choose the target type — Kubernetes, SSH, Docker, AWS…",
+            "Explore resources, stream logs, and ask AI anything",
+          ].map((step, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: i < 2 ? 10 : 0 }}>
+              <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#1e2240", border: "1px solid #2d3555", color: "#818cf8", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+              <span style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>{step}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Feature hints */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {FEATURE_HINTS.map(f => (
+            <div key={f.label} style={{ background: "#0b0d14", border: "1px solid #1e2235", borderRadius: 8, padding: "10px 12px", textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <span style={{ fontSize: 14, width: 20, flexShrink: 0, color: "#6366f1", fontWeight: 700 }}>{f.icon}</span>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 2 }}>{f.label}</div>
+                <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.4 }}>{f.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Contextual hint (dismissable, stored in localStorage) ─────────────────────
+
+function ContextualHint({ id, children }: { id: string; children: ReactNode }) {
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(`hint-${id}`) === "1");
+  if (dismissed) return null;
+  return (
+    <div style={{ margin: "8px 16px 0", background: "#0f1a2e", border: "1px solid #1e3a5f", borderRadius: 6, padding: "7px 12px", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7dd3fc", flexShrink: 0 }}>
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span style={{ flex: 1 }}>{children}</span>
+      <button onClick={() => { localStorage.setItem(`hint-${id}`, "1"); setDismissed(true); }}
+        aria-label="Dismiss tip"
+        style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 14, padding: 2, display: "flex", alignItems: "center" }}>
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
   );
 }
