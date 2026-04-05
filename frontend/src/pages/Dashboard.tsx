@@ -84,12 +84,12 @@ export function Dashboard({ target }: Props) {
             </span>
           )}
           {!tabLoading && activeTab && activeTab !== "__chat" && activeTab !== "__topology" && (
-            <button onClick={reloadTab} title="Refresh" style={{
+            <button onClick={reloadTab} aria-label="Refresh tab data" title="Refresh" style={{
               background: "none", border: "1px solid #2d3148", borderRadius: 5,
               color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center",
               gap: 5, padding: "4px 8px", fontSize: 11,
             }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
               </svg>
               Refresh
@@ -99,12 +99,14 @@ export function Dashboard({ target }: Props) {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: "flex", background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, padding: "0 12px", overflowX: "auto" }}>
+      <div role="tablist" aria-label="Dashboard sections" style={{ display: "flex", background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, padding: "0 12px", overflowX: "auto" }}>
         {tabs.map(t => {
           const active = activeTab === t.id;
           return (
             <button
               key={t.id}
+              role="tab"
+              aria-selected={active}
               onClick={() => setActiveTab(t.id)}
               style={{
                 padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
@@ -119,6 +121,8 @@ export function Dashboard({ target }: Props) {
           );
         })}
         <button
+          role="tab"
+          aria-selected={activeTab === "__chat"}
           onClick={() => setActiveTab("__chat")}
           style={{
             padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
@@ -129,13 +133,15 @@ export function Dashboard({ target }: Props) {
             display: "flex", alignItems: "center", gap: 5,
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
           AI Chat
         </button>
         {(target.type === "kubernetes" || target.type === "ssh" || target.type === "local") && (
           <button
+            role="tab"
+            aria-selected={activeTab === "__topology"}
             onClick={() => setActiveTab("__topology")}
             style={{
               padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
@@ -146,7 +152,7 @@ export function Dashboard({ target }: Props) {
               display: "flex", alignItems: "center", gap: 5,
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/>
               <line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/>
             </svg>
@@ -652,16 +658,17 @@ function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
   return (
     <div style={{ position: "fixed", inset: 0, background: "#00000088", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
          onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, width: 740, maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="modal-title"
+           style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, width: 740, maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid #2d3148", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ background: "#4f46e533", color: "#7c8cf8", border: "1px solid #4f46e5", borderRadius: 4, padding: "2px 7px", fontSize: 11 }}>
             {loading ? "…" : resource?.kind}
           </span>
-          <strong style={{ fontSize: 14 }}>{resource?.name}</strong>
+          <strong id="modal-title" style={{ fontSize: 14 }}>{resource?.name}</strong>
           {resource?.ns && <span style={{ fontSize: 12, color: "#64748b" }}>· {resource.ns}</span>}
           <span style={{ marginLeft: "auto", fontSize: 10, color: "#334155" }}>Esc to close</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         {!loading && resource && (
@@ -782,18 +789,20 @@ function KubectlTable({ raw, colorFn, onRowClick }: {
   if (!headers.length) return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>No data</div>;
 
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+    <table role="grid" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
       <thead>
         <tr style={{ background: "#0d1117" }}>
           {headers.map(h => (
-            <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", borderBottom: "1px solid #2d3148", whiteSpace: "nowrap" }}>{h}</th>
+            <th key={h} scope="col" style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", borderBottom: "1px solid #2d3148", whiteSpace: "nowrap" }}>{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         {rows.map((cols, i) => (
           <tr key={i}
+            tabIndex={onRowClick ? 0 : undefined}
             onClick={() => onRowClick?.(cols, headers)}
+            onKeyDown={e => { if (onRowClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick(cols, headers); } }}
             style={{ borderBottom: "1px solid #1a1f2e", cursor: onRowClick ? "pointer" : "default", background: i % 2 === 1 ? "#0c0e16" : "transparent", transition: "background .1s" }}
             onMouseEnter={ev => { if (onRowClick) ev.currentTarget.style.background = "#1a1d27"; }}
             onMouseLeave={ev => { ev.currentTarget.style.background = i % 2 === 1 ? "#0c0e16" : "transparent"; }}
@@ -976,21 +985,27 @@ function DockerContainersTab({ data }: { data: Record<string, string> }) {
 
 function Card({ title, hint, children, defaultOpen = true }: { title: string; hint?: string; children: ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+  const headerId = `card-${title.replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 8, overflow: "hidden" }}>
       <div
+        id={headerId}
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
         onClick={() => setOpen(o => !o)}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(o => !o); } }}
         style={{ padding: "10px 14px", borderBottom: open ? "1px solid #2d3148" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#64748b" strokeWidth="1.5"
+        <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#64748b" strokeWidth="1.5"
           style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .15s", flexShrink: 0 }}>
           <polyline points="3,1 7,5 3,9" />
         </svg>
         {title}
         {hint && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>· {hint}</span>}
-        <span style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{open ? "▼" : "▶"}</span>
+        <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{open ? "▼" : "▶"}</span>
       </div>
-      {open && <div style={{ padding: "12px 14px" }}>{children}</div>}
+      {open && <div role="region" aria-labelledby={headerId} style={{ padding: "12px 14px" }}>{children}</div>}
     </div>
   );
 }
@@ -1005,8 +1020,8 @@ function Pre({ children }: { children: ReactNode }) {
 
 function LoadingSpinner() {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, color: "#64748b", fontSize: 13 }}>
-      <span style={{ display: "inline-block", width: 16, height: 16, border: "2px solid #2d3148", borderTopColor: "#7c8cf8", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+    <div role="status" aria-live="polite" aria-label="Loading" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, color: "#64748b", fontSize: 13 }}>
+      <span aria-hidden="true" style={{ display: "inline-block", width: 16, height: 16, border: "2px solid #2d3148", borderTopColor: "#7c8cf8", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
       Loading…
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
