@@ -25,7 +25,7 @@ class TestRunCommand:
         assert out  # returns something (exit code or error message)
 
     def test_timeout(self):
-        out = run_command("sleep 10", timeout=1)
+        out = run_command(f"{PYTHON} -c \"import time; time.sleep(10)\"", timeout=1)
         assert "TIMEOUT" in out
 
     def test_output_truncated(self):

@@ -127,6 +127,7 @@ export type TabId =
   | "overview" | "kubernetes" | "logs" | "network" | "storage"  // ssh/local
   | "nodes" | "pods" | "deployments" | "services" | "events"    // kubernetes
   | "workloads" | "k8s_storage" | "ingress"                     // kubernetes extra
+  | "__chat" | "__topology"                                      // virtual tabs
   | "containers" | "images" | "networks" | "volumes" | "stats"  // docker
   | "account" | "ec2" | "s3" | "eks" | "rds"                   // aws
   | "compute" | "gke" | "iam"                                   // gcp
@@ -154,9 +155,9 @@ export const TABS_BY_TYPE: Record<TargetType, Tab[]> = {
     { id: "storage",    label: "Storage"    },
   ],
   kubernetes: [
+    { id: "workloads",    label: "Workloads"   },
     { id: "nodes",        label: "Nodes"       },
     { id: "pods",         label: "Pods"        },
-    { id: "workloads",    label: "Workloads"   },
     { id: "services",     label: "Services"    },
     { id: "ingress",      label: "Ingress"     },
     { id: "k8s_storage",  label: "Storage"     },

@@ -3,9 +3,12 @@ app.py — web server entry point.
 All routes live in ui/web.py. This file only starts the server.
 Run: python3 app.py
 """
-from ui.web import app, _llm
+from ui.web import app, _llm, _targets
 
 if __name__ == "__main__":
+    # Migrate any plaintext secrets in targets.json to encrypted form
+    _targets.migrate_plaintext()
+
     print("Aziro Ops — Web")
     print(f"  Tool model:   {_llm.tool_model}")
     print(f"  Answer model: {_llm.answer_model}")

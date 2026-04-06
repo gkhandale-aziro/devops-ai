@@ -13,8 +13,13 @@ import socket
 import platform
 import queue as _queue
 import threading
+import time
 import os
+import secrets
+import hmac
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, Response
 
 from providers import LLMClient
@@ -24,6 +29,8 @@ from targets   import TargetManager
 from agent     import needs_tools, AgentSession, Agent
 from monitor   import EventWatcher, Triage
 from store     import EventStore
+from sandbox.redact import StreamRedactor
+from tools.kubectl  import setup_kubeconfig, check_cloud_auth
 
 # ── singletons ───────────────────────────────────────────────────────────────
 # One instance of each class for the lifetime of the web server.
@@ -40,10 +47,79 @@ _store    = EventStore()
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
 
+# ── API authentication ────────────────────────────────────────────────────────
+# Set AZIRO_API_KEY env var to require Bearer token auth on all /api/ routes.
+# When unset, auth is disabled (dev mode).
+
+_API_KEY = os.environ.get("AZIRO_API_KEY", "").strip()
+
+
+def _check_auth():
+    """Validate Bearer token. Returns error response or None if OK."""
+    if not _API_KEY:
+        return None  # auth disabled
+
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return jsonify({"error": "Missing Authorization header"}), 401
+
+    token = auth[7:]
+    if not hmac.compare_digest(token, _API_KEY):
+        return jsonify({"error": "Invalid API key"}), 401
+
+    return None
+
+
+@app.before_request
+def _auth_middleware():
+    """Enforce auth on all /api/ endpoints."""
+    if not request.path.startswith("/api/"):
+        return None  # static files — no auth
+    return _check_auth()
+
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+# Simple in-memory sliding window per IP. Prevents brute force / abuse.
+# Configurable via AZIRO_RATE_LIMIT (requests per minute, default 120).
+
+_RATE_LIMIT   = int(os.environ.get("AZIRO_RATE_LIMIT", "120"))
+_RATE_WINDOW  = 60  # seconds
+_rate_buckets = defaultdict(list)  # ip → [timestamp, ...]
+_rate_lock    = threading.Lock()
+
+
+def _is_rate_limited(ip: str) -> bool:
+    """Check if IP has exceeded the rate limit. Thread-safe."""
+    now = time.time()
+    cutoff = now - _RATE_WINDOW
+    with _rate_lock:
+        bucket = _rate_buckets[ip]
+        # Prune old entries
+        _rate_buckets[ip] = [t for t in bucket if t > cutoff]
+        if len(_rate_buckets[ip]) >= _RATE_LIMIT:
+            return True
+        _rate_buckets[ip].append(now)
+    return False
+
+
+@app.before_request
+def _rate_limit_middleware():
+    """Enforce rate limiting on /api/ endpoints."""
+    if not request.path.startswith("/api/"):
+        return None
+    ip = request.remote_addr or "unknown"
+    if _is_rate_limited(ip):
+        return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
+
 
 @app.after_request
-def _add_api_version_header(response):
+def _add_security_headers(response):
     response.headers["X-API-Version"] = "1"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if response.content_type and "json" in response.content_type:
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 MAX_HISTORY = 20
@@ -116,23 +192,28 @@ def api_add():
     valid_types = {"ssh", "kubernetes", "docker", "aws", "gcp", "azure", "terraform", "local"}
     if ttype not in valid_types:
         return jsonify({"error": f"invalid type: {ttype}"}), 400
-    return jsonify(_targets.add(name, ttype, d.get("config", {})))
+    target = _targets.add(name, ttype, d.get("config", {}))
+    # Never return raw secrets to the frontend
+    target["config"] = _targets.mask_config(target.get("config", {}))
+    return jsonify(target)
 
 
 @app.route("/api/v1/targets/<tid>", methods=["DELETE"])
 def api_delete(tid):
+    if not _targets.get(tid):
+        return jsonify({"error": "not found"}), 404
     _targets.remove(tid)
     _session.remove(tid)
     return jsonify({"ok": True})
 
 
 _TEST_COMMANDS = {
-    "kubernetes": "kubectl cluster-info 2>&1 | head -5",
-    "docker":     "docker info --format '{{.ServerVersion}}' 2>&1",
+    "kubernetes": "kubectl cluster-info 2>&1",
+    "docker":     "docker info --format {{.ServerVersion}} 2>&1",
     "aws":        "aws sts get-caller-identity 2>&1",
     "gcp":        "gcloud config get-value project 2>&1",
     "azure":      "az account show --query name -o tsv 2>&1",
-    "terraform":  "terraform version 2>&1 | head -2",
+    "terraform":  "terraform version 2>&1",
 }
 
 @app.route("/api/v1/targets/<tid>/test", methods=["GET"])
@@ -141,6 +222,16 @@ def api_test(tid):
     if not target:
         return jsonify({"status": "error", "message": "Target not found"}), 404
     ttype = target.get("type", "ssh")
+
+    # For kubernetes targets with a cloud provider, run kubeconfig setup first
+    if ttype == "kubernetes":
+        provider = target.get("config", {}).get("provider", "local")
+        if provider in ("eks", "gke", "aks"):
+            ok, setup_msg = setup_kubeconfig(target.get("config", {}))
+            if not ok:
+                _targets.update_status(tid, "offline")
+                return jsonify({"status": "offline", "message": f"Setup failed: {setup_msg}"})
+
     cmd   = _TEST_COMMANDS.get(ttype, "echo OK && uname -a && uptime")
     out   = _tools.execute(target, cmd)
     # treat empty output or known error markers as offline
@@ -151,6 +242,31 @@ def api_test(tid):
     status = "offline" if failed else "online"
     _targets.update_status(tid, status)
     return jsonify({"status": status, "message": out})
+
+
+@app.route("/api/v1/targets/<tid>/setup", methods=["POST"])
+def api_setup(tid):
+    """Run provider-specific kubeconfig setup (EKS/GKE/AKS) without a full test."""
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
+    if target.get("type") != "kubernetes":
+        return jsonify({"error": "setup only applies to kubernetes targets"}), 400
+    ok, msg = setup_kubeconfig(target.get("config", {}))
+    return jsonify({"ok": ok, "message": msg})
+
+
+@app.route("/api/v1/cloud/check/<provider>", methods=["POST"])
+def api_cloud_check(provider):
+    """Check if a cloud CLI is installed and the user is authenticated.
+    Body (optional): { "profile": "..." } for AWS profile-specific checks.
+    """
+    valid = {"local", "eks", "gke", "aks"}
+    if provider not in valid:
+        return jsonify({"error": f"unknown provider: {provider}"}), 400
+    config = request.json or {}
+    result = check_cloud_auth(provider, config)
+    return jsonify(result)
 
 
 # ── tab commands (dashboard quick-view panels) ────────────────────────────────
@@ -167,7 +283,7 @@ TAB_COMMANDS = {
                        "pods": "kubectl get pods -A -o wide",
                        "deployments": "kubectl get deployments -A",
                        "services": "kubectl get svc -A",
-                       "events": "kubectl get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -20"},
+                       "events": "kubectl get events -A --sort-by=.lastTimestamp 2>&1"},
         "logs":       {"logs": "journalctl -n 100 --no-pager 2>/dev/null"},
         "network":    {"ports": "ss -tlnp", "routes": "ip route show",
                        "dns": "cat /etc/resolv.conf",
@@ -180,22 +296,22 @@ TAB_COMMANDS = {
         "nodes":       {"output": "kubectl get nodes -o wide"},
         "pods":        {"pods": "kubectl get pods -A -o wide"},
         "workloads":   {"deployments": "kubectl get deployments -A",
-                        "replicasets": "kubectl get rs -A 2>/dev/null",
-                        "statefulsets": "kubectl get statefulsets -A 2>/dev/null",
-                        "daemonsets": "kubectl get daemonsets -A 2>/dev/null",
-                        "jobs": "kubectl get jobs -A 2>/dev/null",
-                        "cronjobs": "kubectl get cronjobs -A 2>/dev/null"},
+                        "replicasets": "kubectl get rs -A 2>&1",
+                        "statefulsets": "kubectl get statefulsets -A 2>&1",
+                        "daemonsets": "kubectl get daemonsets -A 2>&1",
+                        "jobs": "kubectl get jobs -A 2>&1",
+                        "cronjobs": "kubectl get cronjobs -A 2>&1"},
         "services":    {"services": "kubectl get svc -A"},
-        "ingress":     {"ingresses": "kubectl get ingress -A 2>/dev/null",
-                        "ingressclasses": "kubectl get ingressclass 2>/dev/null"},
-        "k8s_storage": {"pvcs": "kubectl get pvc -A 2>/dev/null",
-                        "pvs": "kubectl get pv 2>/dev/null",
-                        "storageclasses": "kubectl get storageclass 2>/dev/null"},
+        "ingress":     {"ingresses": "kubectl get ingress -A 2>&1",
+                        "ingressclasses": "kubectl get ingressclass 2>&1"},
+        "k8s_storage": {"pvcs": "kubectl get pvc -A 2>&1",
+                        "pvs": "kubectl get pv 2>&1",
+                        "storageclasses": "kubectl get storageclass 2>&1"},
         "network":     {"services": "kubectl get svc -A",
-                        "ingresses": "kubectl get ingress -A 2>/dev/null",
-                        "netpolicies": "kubectl get networkpolicy -A 2>/dev/null",
-                        "endpoints": "kubectl get endpoints -A 2>/dev/null | head -40"},
-        "events":      {"output": "kubectl get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -30"},
+                        "ingresses": "kubectl get ingress -A 2>&1",
+                        "netpolicies": "kubectl get networkpolicy -A 2>&1",
+                        "endpoints": "kubectl get endpoints -A 2>&1"},
+        "events":      {"output": "kubectl get events -A --sort-by=.lastTimestamp 2>&1"},
     },
     "docker": {
         "containers": {"output": "docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'"},
@@ -327,11 +443,32 @@ def api_tab(tid, tab):
             lines = max(1, min(int(request.args.get("lines", "100")), 5000))
         except (ValueError, TypeError):
             lines = 100
+        if unit and not _SAFE_NAME_RE.match(unit):
+            return jsonify({"error": "invalid unit name"}), 400
         cmd   = (f"journalctl -u {unit} -n {lines} --no-pager 2>/dev/null"
                  if unit else f"journalctl -n {lines} --no-pager 2>/dev/null")
         return jsonify({"logs": _tools.execute(target, cmd)})
 
+    # Kubernetes namespace filtering: replace -A with -n <ns> when ?ns= is provided
+    ns = request.args.get("ns", "").strip()
+    if ttype == "kubernetes" and ns and _SAFE_NAME_RE.match(ns):
+        cmds = {k: v.replace(" -A ", f" -n {ns} ").replace(" -A", f" -n {ns}")
+                for k, v in cmds.items()}
+
     return jsonify(_run_many(target, cmds))
+
+
+@app.route("/api/v1/namespaces/<tid>")
+def api_namespaces(tid):
+    """Return list of namespaces for a Kubernetes target."""
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
+    if target.get("type") not in ("kubernetes", "ssh", "local"):
+        return jsonify({"error": "not a kubernetes target"}), 400
+    raw = _tools.execute(target, "kubectl get namespaces -o jsonpath='{.items[*].metadata.name}' 2>&1")
+    namespaces = sorted(raw.strip().strip("'").split())
+    return jsonify(namespaces)
 
 
 # ── AI chat — target-specific streaming ──────────────────────────────────────
@@ -367,7 +504,8 @@ def api_chat_stream(tid):
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
             yield "data: [DONE]\n\n"
 
-    return Response(generate(), mimetype="text/event-stream",
+    redactor = StreamRedactor()
+    return Response(redactor.redact_stream(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
@@ -387,7 +525,8 @@ def api_analyze_stream():
         return jsonify({"error": "empty prompt"}), 400
     messages = [{"role": "system", "content": _ANALYSIS_SYSTEM},
                 {"role": "user",   "content": prompt}]
-    return Response(_agent.stream(messages), mimetype="text/event-stream",
+    redactor = StreamRedactor()
+    return Response(redactor.redact_stream(_agent.stream(messages)), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
@@ -531,18 +670,24 @@ def api_sessions_create():
 
 @app.route("/api/v1/sessions/<sid>", methods=["DELETE"])
 def api_sessions_delete(sid):
+    if not any(s["id"] == sid for s in _sessions.load()):
+        return jsonify({"error": "not found"}), 404
     _sessions.delete(sid)
     return jsonify({"ok": True})
 
 
 @app.route("/api/v1/sessions/<sid>/messages", methods=["GET"])
 def api_sessions_messages(sid):
+    if not any(s["id"] == sid for s in _sessions.load()):
+        return jsonify({"error": "not found"}), 404
     msgs = _sessions.get_messages(sid)
     return jsonify([m for m in msgs if m["role"] != "system"])
 
 
 @app.route("/api/v1/sessions/<sid>/chat/stream", methods=["POST"])
 def api_sessions_chat_stream(sid):
+    if not any(s["id"] == sid for s in _sessions.load()):
+        return jsonify({"error": "not found"}), 404
     user_msg = (request.json or {}).get("message", "").strip()
     if not user_msg:
         return jsonify({"error": "empty message"}), 400
@@ -561,18 +706,28 @@ def api_sessions_chat_stream(sid):
         _sessions.set_messages(sid, msgs)
         yield "data: [DONE]\n\n"
 
-    return Response(generate(), mimetype="text/event-stream",
+    redactor = StreamRedactor()
+    return Response(redactor.redact_stream(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # ── Event history API ─────────────────────────────────────────────────────────
 
+_VALID_LEVELS = {"SEV1", "SEV2", "SEV3"}
+
 @app.route("/api/v1/events", methods=["GET"])
 def api_events():
     """List events. Filter: ?level=SEV1  ?object=nginx  ?limit=50"""
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 500))
+    except (ValueError, TypeError):
+        limit = 50
+    level = request.args.get("level")
+    if level and level not in _VALID_LEVELS:
+        return jsonify({"error": "invalid level"}), 400
     return jsonify(_store.get_events(
-        limit       = int(request.args.get("limit", 50)),
-        level       = request.args.get("level"),
+        limit       = limit,
+        level       = level,
         object_name = request.args.get("object"),
     ))
 
@@ -589,6 +744,8 @@ def api_event_detail(event_id):
 @app.route("/api/v1/events/<int:event_id>", methods=["PATCH"])
 def api_event_update(event_id):
     """Update event status: open | acknowledged | resolved"""
+    if not _store.get_event(event_id):
+        return jsonify({"error": "not found"}), 404
     status = (request.json or {}).get("status", "").strip()
     if not _store.update_event_status(event_id, status):
         return jsonify({"error": "invalid status"}), 400
@@ -598,9 +755,11 @@ def api_event_update(event_id):
 @app.route("/api/v1/events/object/<path:name>", methods=["GET"])
 def api_events_by_object(name):
     """Full incident history for one pod or node."""
-    return jsonify(_store.get_object_history(
-        name, limit=int(request.args.get("limit", 20))
-    ))
+    try:
+        limit = max(1, min(int(request.args.get("limit", 20)), 200))
+    except (ValueError, TypeError):
+        limit = 20
+    return jsonify(_store.get_object_history(name, limit=limit))
 
 
 @app.route("/api/v1/stats", methods=["GET"])
@@ -743,11 +902,17 @@ def api_search(tid):
     if not q or len(q) < 2:
         return jsonify({"results": []})
 
+    # Validate search query to prevent shell injection via grep
+    import shlex
+    if not re.match(r'^[a-zA-Z0-9._\-]+$', q):
+        return jsonify({"results": [], "error": "invalid query"}), 400
+
+    safe_q = shlex.quote(q)
     try:
         raw = _run_many(target, {
-            "pods":  f"kubectl get pods -A --no-headers 2>/dev/null | grep -i {q} | head -10",
-            "nodes": f"kubectl get nodes --no-headers 2>/dev/null | grep -i {q} | head -5",
-            "deps":  f"kubectl get deployments -A --no-headers 2>/dev/null | grep -i {q} | head -5",
+            "pods":  f"kubectl get pods -A --no-headers 2>/dev/null | grep -i -- {safe_q} | head -10",
+            "nodes": f"kubectl get nodes --no-headers 2>/dev/null | grep -i -- {safe_q} | head -5",
+            "deps":  f"kubectl get deployments -A --no-headers 2>/dev/null | grep -i -- {safe_q} | head -5",
         })
         results = []
         for line in (raw.get("pods") or "").strip().split("\n"):

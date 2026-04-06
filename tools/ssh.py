@@ -11,17 +11,18 @@ def _truncate(text):
 
 
 def run_ssh(config, command):
-    """SSH into a remote server and run a command. Supports password and key auth."""
+    """SSH into a remote server and run a command. Supports password, key, and key+passphrase auth."""
     try:
         import paramiko
     except ImportError:
         return "[ERROR] paramiko not installed. Run: pip3 install paramiko"
 
-    host     = config.get("host", "")
-    user     = config.get("user", "root")
-    port     = int(config.get("port", 22))
-    password = config.get("password", "")
-    key_path = config.get("key_path", "")
+    host           = config.get("host", "")
+    user           = config.get("user", "root")
+    port           = int(config.get("port", 22))
+    password       = config.get("password", "")
+    key_path       = config.get("key_path", "")
+    key_passphrase = config.get("key_passphrase", "")
 
     if not host:
         return "[ERROR] No host configured"
@@ -35,6 +36,8 @@ def run_ssh(config, command):
         connect_kwargs["look_for_keys"] = False
     elif key_path:
         connect_kwargs["key_filename"] = key_path
+        if key_passphrase:
+            connect_kwargs["passphrase"] = key_passphrase
     else:
         connect_kwargs["look_for_keys"] = True
 

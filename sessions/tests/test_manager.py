@@ -6,77 +6,82 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import pytest
 from unittest.mock import patch
+from sessions.manager import SessionManager
 
 
 class TestSessionManager:
     def setup_method(self):
-        # Point sessions file to a temp file for each test
+        # Point sessions + messages files to temp files for each test
         self.tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
         self.tmp.write("[]")
         self.tmp.close()
+        self.tmp_msgs = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+        self.tmp_msgs.write("{}")
+        self.tmp_msgs.close()
 
-        import sessions.manager as m
-        m.SESSIONS_FILE = self.tmp.name
-        m._messages = {}
-        self.m = m
+        self.m = SessionManager()
+        self.m._file = self.tmp.name
+        self.m._msg_file = self.tmp_msgs.name
+        self.m._messages = {}
 
     def teardown_method(self):
         os.unlink(self.tmp.name)
+        os.unlink(self.tmp_msgs.name)
 
     def test_create_session_returns_id(self):
-        s = self.m.create_session("My Chat")
+        s = self.m.create("My Chat")
         assert "id" in s
         assert s["title"] == "My Chat"
 
     def test_load_sessions_returns_created(self):
-        self.m.create_session("Test")
-        sessions = self.m.load_sessions()
+        self.m.create("Test")
+        sessions = self.m.load()
         assert len(sessions) == 1
         assert sessions[0]["title"] == "Test"
 
     def test_delete_session_removes_it(self):
-        s = self.m.create_session("ToDelete")
-        self.m.delete_session(s["id"])
-        sessions = self.m.load_sessions()
+        s = self.m.create("ToDelete")
+        self.m.delete(s["id"])
+        sessions = self.m.load()
         assert all(x["id"] != s["id"] for x in sessions)
 
     def test_get_session_messages_default_system(self):
-        s = self.m.create_session()
-        msgs = self.m.get_session_messages(s["id"])
+        s = self.m.create()
+        msgs = self.m.get_messages(s["id"])
         assert msgs[0]["role"] == "system"
         assert "Aziro Ops" in msgs[0]["content"]
 
     def test_set_session_messages(self):
-        s   = self.m.create_session()
+        s   = self.m.create()
         new = [{"role": "system", "content": "x"}, {"role": "user", "content": "hi"}]
-        self.m.set_session_messages(s["id"], new)
-        assert self.m.get_session_messages(s["id"]) == new
+        self.m.set_messages(s["id"], new)
+        assert self.m.get_messages(s["id"]) == new
 
     def test_update_session_title_from_new_chat(self):
-        s = self.m.create_session("New Chat")
-        self.m.update_session_title(s["id"], "Why is my pod crashing?")
-        sessions = self.m.load_sessions()
+        s = self.m.create("New Chat")
+        self.m.update_title(s["id"], "Why is my pod crashing?")
+        sessions = self.m.load()
         updated = next(x for x in sessions if x["id"] == s["id"])
         assert updated["title"] == "Why is my pod crashing?"
 
     def test_update_session_title_truncated(self):
-        s     = self.m.create_session("New Chat")
+        s     = self.m.create("New Chat")
         title = "a" * 60
-        self.m.update_session_title(s["id"], title)
-        sessions = self.m.load_sessions()
+        self.m.update_title(s["id"], title)
+        sessions = self.m.load()
         updated  = next(x for x in sessions if x["id"] == s["id"])
         assert updated["title"].endswith("...")
         assert len(updated["title"]) <= 53
 
     def test_update_session_title_skips_non_new(self):
-        s = self.m.create_session("My Custom Title")
-        self.m.update_session_title(s["id"], "Something else")
-        sessions = self.m.load_sessions()
+        s = self.m.create("My Custom Title")
+        self.m.update_title(s["id"], "Something else")
+        sessions = self.m.load()
         updated  = next(x for x in sessions if x["id"] == s["id"])
         assert updated["title"] == "My Custom Title"
 
     def test_multiple_sessions_ordered_newest_first(self):
-        s1 = self.m.create_session("First")
-        s2 = self.m.create_session("Second")
-        sessions = self.m.load_sessions()
+        s1 = self.m.create("First")
+        s2 = self.m.create("Second")
+        sessions = self.m.load()
         assert sessions[0]["id"] == s2["id"]

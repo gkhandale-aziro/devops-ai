@@ -11,6 +11,7 @@ import { Chat }       from "./pages/Chat";
 import { AddTargetModal } from "./components/AddTargetModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeProvider }  from "./components/ThemeContext";
+import { GLOBAL_KEYFRAMES } from "./utils/animations";
 
 export default function App() {
   const [targets,       setTargets]       = useState<Target[]>([]);
@@ -64,6 +65,7 @@ export default function App() {
   return (
     <ThemeProvider>
     <BrowserRouter>
+      <style>{GLOBAL_KEYFRAMES}</style>
       <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--c-bg-base, #0d1117)", color: "var(--c-text-primary, #e2e8f0)" }}>
         <Sidebar
           targets={targets}

@@ -7,6 +7,7 @@ import { ChatPanel } from "../components/ChatPanel";
 import { LogStream } from "../components/LogStream";
 import { ResourceGraph } from "../components/ResourceGraph";
 import { parseKubectl } from "../utils/parseKubectl";
+import { BTN_TRANSITION, btnHoverStyle, btnActiveStyle, TAB_TRANSITION, tabHoverStyle, fadeInStyle, skeletonStyle } from "../utils/animations";
 
 interface Props {
   target: Target | null;
@@ -24,12 +25,30 @@ export function Dashboard({ target }: Props) {
   const [topoNamespace, setTopoNamespace] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
+  // ── Namespace selector state (K8s targets only) ────────────────────────────
+  const [nsFilter,    setNsFilter]    = useState("");       // "" = all namespaces
+  const [namespaces,  setNamespaces]  = useState<string[]>([]);
+  const [nsLoading,   setNsLoading]   = useState(false);
+
+  const isK8s = target?.type === "kubernetes";
+
+  // Fetch namespaces when target changes
+  useEffect(() => {
+    if (!target || !isK8s) { setNamespaces([]); return; }
+    setNsLoading(true);
+    api.namespaces(target.id)
+      .then(ns => setNamespaces(ns))
+      .catch(() => setNamespaces([]))
+      .finally(() => setNsLoading(false));
+  }, [target?.id, isK8s]);
+
   // Reset tab when target changes
   useEffect(() => {
     if (!target) { setActiveTab(null); return; }
     const tabs = TABS_BY_TYPE[target.type];
     setActiveTab(tabs[0].id);
     setLastRefreshed(null);
+    setNsFilter("");
     clear();
   }, [target?.id, clear]);
 
@@ -38,11 +57,13 @@ export function Dashboard({ target }: Props) {
     if (!target || !activeTab || activeTab === "__chat" || activeTab === "__topology") return;
     setTabLoading(true);
     setTabData({});
-    api.tab(target.id, activeTab)
+    const params: Record<string, string> = {};
+    if (isK8s && nsFilter) params.ns = nsFilter;
+    api.tab(target.id, activeTab, Object.keys(params).length ? params : undefined)
       .then(d => { setTabData(d); setLastRefreshed(new Date()); })
       .catch(() => setTabData({ error: `Could not load ${activeTab} data — check kubectl access and cluster connectivity.` }))
       .finally(() => setTabLoading(false));
-  }, [target?.id, activeTab, reloadKey]);
+  }, [target?.id, activeTab, reloadKey, nsFilter, isK8s]);
 
   if (!target) {
     return <NoTargetEmptyState />;
@@ -71,6 +92,28 @@ export function Dashboard({ target }: Props) {
         <strong style={{ fontSize: 15 }}>{target.name}</strong>
         <span style={{ fontSize: 12, color: "#64748b", background: "#1a1d27", padding: "2px 8px", borderRadius: 4 }}>{target.type}</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Namespace selector for K8s targets */}
+          {isK8s && activeTab !== "__chat" && activeTab !== "__topology" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2">
+                <rect x="2" y="2" width="20" height="20" rx="4"/>
+                <path d="M8 2v20"/><path d="M16 2v20"/>
+              </svg>
+              <select
+                value={nsFilter}
+                onChange={e => setNsFilter(e.target.value)}
+                disabled={nsLoading}
+                style={{
+                  background: "#0d1117", border: "1px solid #2d3148", color: nsFilter ? "#818cf8" : "#94a3b8",
+                  borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer",
+                  minWidth: 140, fontWeight: nsFilter ? 600 : 400,
+                }}
+              >
+                <option value="">All namespaces</option>
+                {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
+              </select>
+            </div>
+          )}
           {lastRefreshed && (
             <span style={{ fontSize: 11, color: "#475569" }}>
               Refreshed {Math.round((Date.now() - lastRefreshed.getTime()) / 60000) < 1
@@ -79,10 +122,15 @@ export function Dashboard({ target }: Props) {
             </span>
           )}
           {!tabLoading && activeTab && activeTab !== "__chat" && activeTab !== "__topology" && (
-            <button onClick={reloadTab} aria-label="Refresh tab data" title="Refresh" style={{
+            <button onClick={reloadTab} aria-label="Refresh tab data" title="Refresh"
+            onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+            onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
+            onMouseDown={e => Object.assign(e.currentTarget.style, btnActiveStyle)}
+            onMouseUp={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+            style={{
               background: "none", border: "1px solid #2d3148", borderRadius: 5,
               color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center",
-              gap: 5, padding: "4px 8px", fontSize: 11,
+              gap: 5, padding: "4px 8px", fontSize: 11, transition: BTN_TRANSITION,
             }}>
               <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
@@ -105,12 +153,14 @@ export function Dashboard({ target }: Props) {
               role="tab"
               aria-selected={active}
               onClick={() => setActiveTab(t.id)}
+              onMouseEnter={e => { if (!active) Object.assign(e.currentTarget.style, tabHoverStyle); }}
+              onMouseLeave={e => { if (!active) { e.currentTarget.style.color = "#64748b"; e.currentTarget.style.background = "transparent"; } }}
               style={{
                 padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
                 color: active ? "#818cf8" : "#64748b",
                 borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
                 cursor: "pointer", whiteSpace: "nowrap", fontWeight: active ? 600 : 400,
-                transition: "color .15s",
+                transition: TAB_TRANSITION,
               }}
             >
               {t.label}
@@ -121,6 +171,8 @@ export function Dashboard({ target }: Props) {
           role="tab"
           aria-selected={activeTab === "__chat"}
           onClick={() => setActiveTab("__chat")}
+          onMouseEnter={e => { if (activeTab !== "__chat") Object.assign(e.currentTarget.style, tabHoverStyle); }}
+          onMouseLeave={e => { if (activeTab !== "__chat") { e.currentTarget.style.color = "#64748b"; e.currentTarget.style.background = "transparent"; } }}
           style={{
             padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
             color: activeTab === "__chat" ? "#818cf8" : "#64748b",
@@ -128,6 +180,7 @@ export function Dashboard({ target }: Props) {
             cursor: "pointer", whiteSpace: "nowrap",
             fontWeight: activeTab === "__chat" ? 600 : 400,
             display: "flex", alignItems: "center", gap: 5,
+            transition: TAB_TRANSITION,
           }}
         >
           <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -140,6 +193,8 @@ export function Dashboard({ target }: Props) {
             role="tab"
             aria-selected={activeTab === "__topology"}
             onClick={() => setActiveTab("__topology")}
+            onMouseEnter={e => { if (activeTab !== "__topology") Object.assign(e.currentTarget.style, tabHoverStyle); }}
+            onMouseLeave={e => { if (activeTab !== "__topology") { e.currentTarget.style.color = "#64748b"; e.currentTarget.style.background = "transparent"; } }}
             style={{
               padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
               color: activeTab === "__topology" ? "#818cf8" : "#64748b",
@@ -147,6 +202,7 @@ export function Dashboard({ target }: Props) {
               cursor: "pointer", whiteSpace: "nowrap",
               fontWeight: activeTab === "__topology" ? 600 : 400,
               display: "flex", alignItems: "center", gap: 5,
+              transition: TAB_TRANSITION,
             }}
           >
             <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -162,7 +218,7 @@ export function Dashboard({ target }: Props) {
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
           {activeTab === "__chat" ? (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div key="__chat" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", ...fadeInStyle }}>
               <ContextualHint id="chat-intro">Ask anything — "which pods are failing?", "show me memory usage", "why is nginx crashing?"</ContextualHint>
               <ChatPanel
                 messages={messages}
@@ -172,7 +228,7 @@ export function Dashboard({ target }: Props) {
               />
             </div>
           ) : activeTab === "__topology" ? (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div key="__topology" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", ...fadeInStyle }}>
               <div style={{ padding: "8px 16px", borderBottom: "1px solid #1e2235", display: "flex", alignItems: "center", gap: 8, background: "#0b0d14", flexShrink: 0 }}>
                 <label style={{ fontSize: 11, color: "#64748b" }}>Namespace</label>
                 <input
@@ -186,6 +242,7 @@ export function Dashboard({ target }: Props) {
               <ResourceGraph target={target} namespace={topoNamespace} />
             </div>
           ) : (
+            <div key={activeTab} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", ...fadeInStyle }}>
             <TabContent
               tabId={activeTab}
               data={tabData}
@@ -194,6 +251,7 @@ export function Dashboard({ target }: Props) {
               onStreamLogs={(pod, namespace) => setLogStream({ pod, namespace })}
               onRetry={reloadTab}
             />
+            </div>
           )}
         </div>
 
@@ -223,21 +281,26 @@ interface TabContentProps {
 }
 
 function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: TabContentProps) {
-  if (loading) return <LoadingSpinner />;
+  if (loading) return <SkeletonLoader />;
   if (!tabId)  return null;
 
   if (data.error) {
     return (
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, ...fadeInStyle }}>
         <div style={{ background: "#2a0011", border: "1px solid #f43f5e", borderRadius: 8, padding: "14px 20px", fontSize: 13, color: "#fb7185", maxWidth: 480, textAlign: "center" }}>
           {data.error}
         </div>
         {onRetry && (
-          <button onClick={onRetry} style={{
+          <button onClick={onRetry}
+          onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+          onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
+          onMouseDown={e => Object.assign(e.currentTarget.style, btnActiveStyle)}
+          onMouseUp={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+          style={{
             display: "flex", alignItems: "center", gap: 6,
             background: "#1a1d27", border: "1px solid #2d3148",
             color: "#94a3b8", borderRadius: 6, padding: "6px 14px",
-            fontSize: 12, cursor: "pointer",
+            fontSize: 12, cursor: "pointer", transition: BTN_TRANSITION,
           }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
@@ -286,6 +349,9 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
 
   // Docker rich tabs
   if (tabId === "containers")  return <DockerContainersTab data={data} />;
+  if (tabId === "volumes")     return <DockerVolumesTab data={data} />;
+  if (tabId === "images")      return <DockerImagesTab data={data} />;
+  if (tabId === "stats")       return <DockerStatsTab data={data} />;
 
   // Generic — card-per-key
   return <GenericTab data={data} />;
@@ -328,23 +394,26 @@ function OverviewTab({ data }: { data: Record<string, string> }) {
 
   return (
     <div style={{ overflowY: "auto", padding: 16, flex: 1 }}>
-      {/* metric cards */}
+      {/* metric cards — Skill #6: SVG ring charts instead of flat bars */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
         {[
-          { label: "CPU Usage",  val: `${cpuPct}%`,     sub: `Load avg: ${load}`,       pct: cpuPct },
-          { label: "Memory",     val: `${memUsed}G`,    sub: `of ${memTotal}G (${memPct}%)`, pct: memPct },
-          { label: "Disk",       val: diskUsed,          sub: `of ${diskTotal} (${diskPct}%)`, pct: diskPct },
-          { label: "Uptime",     val: uptimeStr,         sub: os, pct: -1 },
+          { label: "CPU Usage",  val: `${cpuPct}%`,  sub: `Load avg: ${load}`,            pct: cpuPct  },
+          { label: "Memory",     val: `${memUsed}G`, sub: `of ${memTotal}G (${memPct}%)`, pct: memPct  },
+          { label: "Disk",       val: diskUsed,       sub: `of ${diskTotal} (${diskPct}%)`, pct: diskPct },
+          { label: "Uptime",     val: uptimeStr,      sub: os,                              pct: -1      },
         ].map(card => (
-          <div key={card.label} style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, padding: 16, boxShadow: "0 4px 16px rgba(0,0,0,.35)" }}>
-            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>{card.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: card.pct >= 0 ? pctColor(card.pct) : "#7c8cf8" }}>{card.val}</div>
-            <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{card.sub}</div>
-            {card.pct >= 0 && (
-              <div style={{ height: 4, background: "#2d3148", borderRadius: 2, marginTop: 10 }}>
-                <div style={{ height: "100%", width: `${card.pct}%`, background: fillColor(card.pct), borderRadius: 2, transition: "width .5s" }} />
-              </div>
-            )}
+          <div key={card.label} style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, padding: 16, boxShadow: "0 4px 16px rgba(0,0,0,.35)", display: "flex", alignItems: "center", gap: 14 }}>
+            {card.pct >= 0
+              ? <RingChart pct={card.pct} color={fillColor(card.pct)} size={52} />
+              : <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#6366f118", border: "2px solid #6366f133", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+            }
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>{card.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: card.pct >= 0 ? pctColor(card.pct) : "#7c8cf8", lineHeight: 1 }}>{card.val}</div>
+              <div style={{ fontSize: 10, color: "#64748b", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.sub}</div>
+            </div>
           </div>
         ))}
       </div>
@@ -502,8 +571,25 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
   }
   if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
+  // Skill #6: count pods by status for summary bar
+  const podCounts = useMemo(() => {
+    const counts = { running: 0, pending: 0, bad: 0, total: 0 };
+    allLines.slice(1).forEach(line => {
+      const c = line.trim().split(/\s+/);
+      if (c.length < 4) return;
+      const status = c[3];
+      counts.total++;
+      if (status === "Running")                      counts.running++;
+      else if (status === "Pending")                 counts.pending++;
+      else if (POD_BAD_STATUSES.has(status))         counts.bad++;
+    });
+    return counts;
+  }, [allLines]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+      {/* Skill #6: Pod status summary bar */}
+      {podCounts.total > 0 && <PodSummaryBar counts={podCounts} />}
       {/* filter bar */}
       <div style={{ padding: "8px 16px", background: "#0d1017", display: "flex", gap: 8, flexShrink: 0 }}>
         <select
@@ -837,8 +923,49 @@ function EventsTab({ data }: { data: Record<string, string> }) {
     }
     return null;
   };
+
+  const counts = useMemo(() => {
+    let warning = 0, normal = 0;
+    if (raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT")) {
+      for (const line of raw.split("\n").slice(1)) {
+        if (/\bWarning\b/.test(line)) warning++;
+        else if (/\bNormal\b/.test(line)) normal++;
+      }
+    }
+    return { warning, normal, total: warning + normal };
+  }, [raw]);
+
   return (
-    <div style={{ overflowY: "auto", flex: 1 }}>
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* summary bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 16, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{counts.total} Events</span>
+        <div style={{ width: 1, height: 20, background: "#2d3148" }} />
+        {counts.warning > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b", animation: "pulse 2s ease-in-out infinite" }} />
+            <span style={{ fontSize: 12, color: "#f59e0b", fontWeight: 600 }}>{counts.warning}</span>
+            <span style={{ fontSize: 11, color: "#64748b" }}>Warning</span>
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e" }} />
+          <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>{counts.normal}</span>
+          <span style={{ fontSize: 11, color: "#64748b" }}>Normal</span>
+        </div>
+        {counts.total > 0 && (
+          <>
+            <div style={{ flex: 1 }} />
+            <div style={{ width: 80, height: 5, borderRadius: 3, background: "#1e2235", overflow: "hidden", display: "flex" }}>
+              <div style={{ width: `${counts.normal / counts.total * 100}%`, background: "#22c55e" }} />
+              <div style={{ width: `${counts.warning / counts.total * 100}%`, background: "#f59e0b" }} />
+            </div>
+          </>
+        )}
+      </div>
       <KubectlTable raw={raw} colorFn={colorFn} />
     </div>
   );
@@ -847,22 +974,107 @@ function EventsTab({ data }: { data: Record<string, string> }) {
 // ── Services tab ──────────────────────────────────────────────────────────────
 
 function ServicesTab({ data }: { data: Record<string, string> }) {
+  const raw = data.services ?? "";
   const colorFn: ColorFn = (val, col) => {
     if (col.toUpperCase() === "TYPE") {
       if (val === "LoadBalancer") return "#818cf8";
       if (val === "NodePort")     return "#06b6d4";
       if (val === "ClusterIP")    return "#64748b";
+      if (val === "ExternalName") return "#f59e0b";
     }
     return null;
   };
+
+  const counts = useMemo(() => {
+    const c = { lb: 0, np: 0, cip: 0, ext: 0, total: 0 };
+    if (raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT")) {
+      for (const line of raw.split("\n").slice(1)) {
+        if (!line.trim()) continue;
+        c.total++;
+        if (/\bLoadBalancer\b/.test(line)) c.lb++;
+        else if (/\bNodePort\b/.test(line)) c.np++;
+        else if (/\bExternalName\b/.test(line)) c.ext++;
+        else c.cip++;
+      }
+    }
+    return c;
+  }, [raw]);
+
+  const pills = [
+    { label: "LoadBalancer", count: counts.lb,  color: "#818cf8", icon: "🌐" },
+    { label: "NodePort",     count: counts.np,  color: "#06b6d4", icon: "🔗" },
+    { label: "ClusterIP",    count: counts.cip, color: "#64748b", icon: "🔒" },
+    { label: "ExternalName", count: counts.ext, color: "#f59e0b", icon: "↗" },
+  ];
+
   return (
-    <div style={{ overflowY: "auto", flex: 1 }}>
-      <KubectlTable raw={data.services ?? ""} colorFn={colorFn} />
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* summary */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, flexWrap: "wrap",
+      }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{counts.total} Services</span>
+        <div style={{ width: 1, height: 20, background: "#2d3148" }} />
+        {pills.map(p => p.count > 0 && (
+          <div key={p.label} style={{
+            display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
+            background: p.color + "15", border: `1px solid ${p.color}33`, borderRadius: 6,
+          }}>
+            <span style={{ fontSize: 11 }}>{p.icon}</span>
+            <span style={{ fontSize: 12, color: p.color, fontWeight: 600 }}>{p.count}</span>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>{p.label}</span>
+          </div>
+        ))}
+      </div>
+      <KubectlTable raw={raw} colorFn={colorFn} />
     </div>
   );
 }
 
-// ── Workloads tab ─────────────────────────────────────────────────────────────
+// ── Workloads tab — visual overview with count cards + detail tables ──────────
+
+interface WorkloadCounts {
+  label:    string;
+  key:      string;
+  icon:     string;
+  color:    string;
+  total:    number;
+  ready:    number;
+  notReady: number;
+}
+
+function parseWorkloadCounts(raw: string, label: string): { total: number; ready: number; notReady: number } {
+  if (!raw || raw.includes("No resources") || raw.includes("[TIMEOUT") || raw.includes("error"))
+    return { total: 0, ready: 0, notReady: 0 };
+  const lines = raw.trim().split("\n").slice(1); // skip header
+  let total = 0, ready = 0, notReady = 0;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    total++;
+    const cols = line.trim().split(/\s+/);
+    // Deployments: NAMESPACE NAME READY UP-TO-DATE AVAILABLE AGE — READY is col[2]
+    // StatefulSets: NAMESPACE NAME READY AGE — READY is col[2]
+    // DaemonSets: NAMESPACE NAME DESIRED CURRENT READY ...
+    // Jobs: NAMESPACE NAME COMPLETIONS DURATION AGE — COMPLETIONS is col[2]
+    const readyCol = cols[2] ?? "";
+    if (readyCol.includes("/")) {
+      const [cur, max] = readyCol.split("/").map(Number);
+      if (cur >= max && max > 0) ready++;
+      else notReady++;
+    } else if (label === "DaemonSets") {
+      // DESIRED CURRENT READY — compare col[2] desired to col[4] ready
+      const desired = parseInt(cols[2] ?? "0");
+      const rdy     = parseInt(cols[4] ?? "0");
+      if (rdy >= desired && desired > 0) ready++;
+      else if (desired > 0) notReady++;
+      else ready++;
+    } else {
+      ready++; // can't parse ready state, assume ok
+    }
+  }
+  return { total, ready, notReady };
+}
 
 function WorkloadsTab({ data }: { data: Record<string, string> }) {
   const readyColor: ColorFn = (val, col) => {
@@ -872,28 +1084,141 @@ function WorkloadsTab({ data }: { data: Record<string, string> }) {
     return null;
   };
 
-  const sections: { label: string; key: string }[] = [
-    { label: "Deployments",  key: "deployments"  },
-    { label: "StatefulSets", key: "statefulsets" },
-    { label: "DaemonSets",   key: "daemonsets"   },
-    { label: "Jobs",         key: "jobs"         },
-    { label: "CronJobs",     key: "cronjobs"     },
-  ];
+  const sections: WorkloadCounts[] = useMemo(() => [
+    { label: "Deployments",  key: "deployments",  icon: "🚀", color: "#818cf8", ...parseWorkloadCounts(data.deployments  ?? "", "Deployments")  },
+    { label: "StatefulSets", key: "statefulsets", icon: "🗄",  color: "#06b6d4", ...parseWorkloadCounts(data.statefulsets ?? "", "StatefulSets") },
+    { label: "DaemonSets",   key: "daemonsets",   icon: "🔁", color: "#a78bfa", ...parseWorkloadCounts(data.daemonsets   ?? "", "DaemonSets")   },
+    { label: "ReplicaSets",  key: "replicasets",  icon: "📋", color: "#64748b", ...parseWorkloadCounts(data.replicasets  ?? "", "ReplicaSets")  },
+    { label: "Jobs",         key: "jobs",         icon: "⚡", color: "#f59e0b", ...parseWorkloadCounts(data.jobs         ?? "", "Jobs")         },
+    { label: "CronJobs",     key: "cronjobs",     icon: "🕐", color: "#22d3ee", ...parseWorkloadCounts(data.cronjobs     ?? "", "CronJobs")     },
+  ], [data]);
+
+  const totalAll  = sections.reduce((s, w) => s + w.total, 0);
+  const readyAll  = sections.reduce((s, w) => s + w.ready, 0);
+  const failedAll = sections.reduce((s, w) => s + w.notReady, 0);
+
+  const [expanded, setExpanded] = useState<string>("deployments");
 
   return (
-    <div style={{ overflowY: "auto", flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-      {sections.map(s => {
+    <div style={{ overflowY: "auto", flex: 1, padding: 16 }}>
+      {/* ── Summary bar ────────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", marginBottom: 16,
+        background: "#0d1117", border: "1px solid #1e2235", borderRadius: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 22, fontWeight: 800, color: "#e2e8f0" }}>{totalAll}</span>
+          <span style={{ fontSize: 12, color: "#64748b" }}>Total Workloads</span>
+        </div>
+        <div style={{ width: 1, height: 24, background: "#2d3148" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e88" }} />
+          <span style={{ fontSize: 13, color: "#22c55e", fontWeight: 700 }}>{readyAll}</span>
+          <span style={{ fontSize: 11, color: "#64748b" }}>Ready</span>
+        </div>
+        {failedAll > 0 && (
+          <>
+            <div style={{ width: 1, height: 24, background: "#2d3148" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 6px #ef444488", animation: "pulse 2s ease-in-out infinite" }} />
+              <span style={{ fontSize: 13, color: "#ef4444", fontWeight: 700 }}>{failedAll}</span>
+              <span style={{ fontSize: 11, color: "#64748b" }}>Not Ready</span>
+            </div>
+          </>
+        )}
+        {/* health bar */}
+        <div style={{ flex: 1 }} />
+        <div style={{ width: 120, height: 6, borderRadius: 3, background: "#1e2235", overflow: "hidden", display: "flex" }}>
+          {totalAll > 0 && (
+            <>
+              <div style={{ width: `${readyAll / totalAll * 100}%`, background: "#22c55e", transition: "width .5s" }} />
+              <div style={{ width: `${failedAll / totalAll * 100}%`, background: "#ef4444", transition: "width .5s" }} />
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Resource type cards ────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+        {sections.map(s => {
+          const isActive = expanded === s.key;
+          const pct = s.total > 0 ? Math.round(s.ready / s.total * 100) : 100;
+          const pctColor = s.notReady > 0 ? "#ef4444" : "#22c55e";
+          return (
+            <div
+              key={s.key}
+              onClick={() => setExpanded(isActive ? "" : s.key)}
+              style={{
+                background: isActive ? "#12162a" : "#1a1d27",
+                border: `1px solid ${isActive ? s.color + "66" : "#2d3148"}`,
+                borderRadius: 10, padding: "14px 16px", cursor: "pointer",
+                transition: "all .15s", position: "relative", overflow: "hidden",
+                boxShadow: isActive ? `0 0 20px ${s.color}15` : "none",
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.borderColor = s.color + "44"; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = "#2d3148"; }}
+            >
+              {/* top accent line */}
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.total > 0 ? s.color : "#2d3148" }} />
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <span style={{ fontSize: 18 }}>{s.icon}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{s.label}</span>
+                <span style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{isActive ? "▼" : "▶"}</span>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 28, fontWeight: 800, color: s.total > 0 ? s.color : "#475569", lineHeight: 1 }}>
+                  {s.total}
+                </span>
+                {s.total > 0 && (
+                  <div style={{ display: "flex", gap: 8, fontSize: 11 }}>
+                    <span style={{ color: "#22c55e" }}>✓ {s.ready}</span>
+                    {s.notReady > 0 && <span style={{ color: "#ef4444" }}>✗ {s.notReady}</span>}
+                  </div>
+                )}
+              </div>
+
+              {/* mini progress bar */}
+              <div style={{ height: 3, borderRadius: 2, background: "#2d3148", overflow: "hidden" }}>
+                {s.total > 0 && (
+                  <div style={{ width: `${pct}%`, height: "100%", background: pctColor, transition: "width .4s" }} />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Expanded detail table ──────────────────────────────────────── */}
+      {expanded && (() => {
+        const s = sections.find(s => s.key === expanded);
+        if (!s) return null;
         const raw = data[s.key] ?? "";
         const hasData = raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT");
         return (
-          <Card key={s.key} title={s.label} defaultOpen={s.key === "deployments"}>
-            {hasData
-              ? <div style={{ overflowX: "auto" }}><KubectlTable raw={raw} colorFn={readyColor} /></div>
-              : <div style={{ color: "#475569", fontSize: 13 }}>No {s.label.toLowerCase()} found</div>
-            }
-          </Card>
+          <div style={{
+            background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10,
+            overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,.3)",
+          }}>
+            <div style={{
+              padding: "10px 16px", borderBottom: "1px solid #2d3148",
+              display: "flex", alignItems: "center", gap: 8,
+              background: "#12141f",
+            }}>
+              <span style={{ fontSize: 14 }}>{s.icon}</span>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{s.label}</span>
+              <span style={{ fontSize: 11, color: "#64748b" }}>· {s.total} resource{s.total !== 1 ? "s" : ""}</span>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              {hasData
+                ? <KubectlTable raw={raw} colorFn={readyColor} />
+                : <div style={{ padding: 20, color: "#475569", fontSize: 13 }}>No {s.label.toLowerCase()} found</div>
+              }
+            </div>
+          </div>
         );
-      })}
+      })()}
     </div>
   );
 }
@@ -910,17 +1235,80 @@ function K8sStorageTab({ data }: { data: Record<string, string> }) {
     return null;
   };
 
+  const counts = useMemo(() => {
+    const c = { bound: 0, pending: 0, lost: 0, pvcs: 0, pvs: 0, sc: 0 };
+    const pvcRaw = data.pvcs ?? "";
+    if (pvcRaw && !pvcRaw.includes("No resources")) {
+      for (const line of pvcRaw.split("\n").slice(1)) {
+        if (!line.trim()) continue;
+        c.pvcs++;
+        if (/\bBound\b/.test(line)) c.bound++;
+        else if (/\bPending\b/.test(line)) c.pending++;
+        else if (/\bLost\b/.test(line)) c.lost++;
+      }
+    }
+    const pvRaw = data.pvs ?? "";
+    if (pvRaw && !pvRaw.includes("No resources"))
+      c.pvs = pvRaw.split("\n").slice(1).filter(l => l.trim()).length;
+    const scRaw = data.storageclasses ?? "";
+    if (scRaw && !scRaw.includes("No resources"))
+      c.sc = scRaw.split("\n").slice(1).filter(l => l.trim()).length;
+    return c;
+  }, [data]);
+
+  const pills = [
+    { label: "PVCs",    count: counts.pvcs, color: "#818cf8", icon: "📦" },
+    { label: "PVs",     count: counts.pvs,  color: "#06b6d4", icon: "💾" },
+    { label: "Classes", count: counts.sc,   color: "#64748b", icon: "🏷" },
+  ];
+
+  const statusPills = [
+    { label: "Bound",   count: counts.bound,   color: "#22c55e" },
+    { label: "Pending", count: counts.pending,  color: "#f59e0b" },
+    { label: "Lost",    count: counts.lost,     color: "#ef4444" },
+  ];
+
   return (
-    <div style={{ overflowY: "auto", flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-      <Card title="Persistent Volume Claims" defaultOpen={true}>
-        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvcColor} /></div>
-      </Card>
-      <Card title="Persistent Volumes" defaultOpen={false}>
-        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvcColor} /></div>
-      </Card>
-      <Card title="Storage Classes" defaultOpen={false}>
-        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.storageclasses ?? ""} /></div>
-      </Card>
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* summary */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, flexWrap: "wrap",
+      }}>
+        {pills.map(p => (
+          <div key={p.label} style={{
+            display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
+            background: p.color + "15", border: `1px solid ${p.color}33`, borderRadius: 6,
+          }}>
+            <span style={{ fontSize: 11 }}>{p.icon}</span>
+            <span style={{ fontSize: 12, color: p.color, fontWeight: 600 }}>{p.count}</span>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>{p.label}</span>
+          </div>
+        ))}
+        {counts.pvcs > 0 && (
+          <>
+            <div style={{ width: 1, height: 20, background: "#2d3148" }} />
+            {statusPills.map(s => s.count > 0 && (
+              <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.color }} />
+                <span style={{ fontSize: 11, color: s.color, fontWeight: 600 }}>{s.count}</span>
+                <span style={{ fontSize: 10, color: "#64748b" }}>{s.label}</span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        <Card title="Persistent Volume Claims" hint={`${counts.pvcs}`} defaultOpen={true}>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvcColor} /></div>
+        </Card>
+        <Card title="Persistent Volumes" hint={`${counts.pvs}`} defaultOpen={false}>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvcColor} /></div>
+        </Card>
+        <Card title="Storage Classes" hint={`${counts.sc}`} defaultOpen={false}>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.storageclasses ?? ""} /></div>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -928,14 +1316,49 @@ function K8sStorageTab({ data }: { data: Record<string, string> }) {
 // ── Ingress tab ───────────────────────────────────────────────────────────────
 
 function IngressTab({ data }: { data: Record<string, string> }) {
+  const counts = useMemo(() => {
+    let ingresses = 0, classes = 0;
+    const ingRaw = data.ingresses ?? "";
+    if (ingRaw && !ingRaw.includes("No resources"))
+      ingresses = ingRaw.split("\n").slice(1).filter(l => l.trim()).length;
+    const clsRaw = data.ingressclasses ?? "";
+    if (clsRaw && !clsRaw.includes("No resources"))
+      classes = clsRaw.split("\n").slice(1).filter(l => l.trim()).length;
+    return { ingresses, classes };
+  }, [data]);
+
   return (
-    <div style={{ overflowY: "auto", flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-      <Card title="Ingresses" defaultOpen={true}>
-        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses ?? ""} /></div>
-      </Card>
-      <Card title="Ingress Classes" defaultOpen={false}>
-        <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingressclasses ?? ""} /></div>
-      </Card>
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* summary */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+      }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
+          background: "#818cf815", border: "1px solid #818cf833", borderRadius: 6,
+        }}>
+          <span style={{ fontSize: 11 }}>🌐</span>
+          <span style={{ fontSize: 12, color: "#818cf8", fontWeight: 600 }}>{counts.ingresses}</span>
+          <span style={{ fontSize: 11, color: "#94a3b8" }}>Ingresses</span>
+        </div>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
+          background: "#64748b15", border: "1px solid #64748b33", borderRadius: 6,
+        }}>
+          <span style={{ fontSize: 11 }}>🏷</span>
+          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{counts.classes}</span>
+          <span style={{ fontSize: 11, color: "#94a3b8" }}>Classes</span>
+        </div>
+      </div>
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        <Card title="Ingresses" hint={`${counts.ingresses}`} defaultOpen={true}>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses ?? ""} /></div>
+        </Card>
+        <Card title="Ingress Classes" hint={`${counts.classes}`} defaultOpen={false}>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingressclasses ?? ""} /></div>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -950,16 +1373,56 @@ function NetworkTab({ data }: { data: Record<string, string> }) {
     }
     return null;
   };
+
+  const countLines = (raw?: string) => {
+    if (!raw || raw.includes("No resources") || raw.includes("[TIMEOUT")) return 0;
+    return raw.split("\n").slice(1).filter(l => l.trim()).length;
+  };
+
+  const sections = useMemo(() => [
+    { key: "services",    label: "Services",         icon: "🔗", color: "#818cf8", count: countLines(data.services),    colorFn: svcColor, defaultOpen: true  },
+    { key: "ingresses",   label: "Ingresses",        icon: "🌐", color: "#06b6d4", count: countLines(data.ingresses),   defaultOpen: false },
+    { key: "netpolicies", label: "Network Policies",  icon: "🛡", color: "#a78bfa", count: countLines(data.netpolicies), defaultOpen: false },
+    { key: "endpoints",   label: "Endpoints",         icon: "📍", color: "#64748b", count: countLines(data.endpoints),   defaultOpen: false },
+  ].filter(s => data[s.key]), [data]);
+
+  const preItems = useMemo(() => [
+    { key: "ports",      label: "Listening Ports", icon: "🔌" },
+    { key: "routes",     label: "Routes",          icon: "🗺" },
+    { key: "interfaces", label: "Interfaces",      icon: "📡" },
+    { key: "dns",        label: "DNS",             icon: "🔎" },
+  ].filter(p => data[p.key]), [data]);
+
   return (
-    <div style={{ overflowY: "auto", flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-      {data.services    && <Card title="Services"         defaultOpen={true} ><div style={{ overflowX: "auto" }}><KubectlTable raw={data.services}    colorFn={svcColor} /></div></Card>}
-      {data.ingresses   && <Card title="Ingresses"        defaultOpen={false}><div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses}   /></div></Card>}
-      {data.netpolicies && <Card title="Network Policies" defaultOpen={false}><div style={{ overflowX: "auto" }}><KubectlTable raw={data.netpolicies} /></div></Card>}
-      {data.endpoints   && <Card title="Endpoints"        defaultOpen={false}><div style={{ overflowX: "auto" }}><KubectlTable raw={data.endpoints}   /></div></Card>}
-      {data.ports       && <Card title="Listening Ports"  defaultOpen={true} ><Pre>{data.ports}</Pre></Card>}
-      {data.routes      && <Card title="Routes"           defaultOpen={false}><Pre>{data.routes}</Pre></Card>}
-      {data.interfaces  && <Card title="Interfaces"       defaultOpen={false}><Pre>{data.interfaces}</Pre></Card>}
-      {data.dns         && <Card title="DNS"              defaultOpen={false}><Pre>{data.dns}</Pre></Card>}
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* summary */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, flexWrap: "wrap",
+      }}>
+        {sections.map(s => (
+          <div key={s.key} style={{
+            display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
+            background: s.color + "15", border: `1px solid ${s.color}33`, borderRadius: 6,
+          }}>
+            <span style={{ fontSize: 11 }}>{s.icon}</span>
+            <span style={{ fontSize: 12, color: s.color, fontWeight: 600 }}>{s.count}</span>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        {sections.map(s => (
+          <Card key={s.key} title={s.label} hint={`${s.count}`} defaultOpen={s.defaultOpen}>
+            <div style={{ overflowX: "auto" }}><KubectlTable raw={data[s.key] ?? ""} colorFn={s.colorFn} /></div>
+          </Card>
+        ))}
+        {preItems.map(p => (
+          <Card key={p.key} title={`${p.icon} ${p.label}`} defaultOpen={p.key === "ports"}>
+            <Pre>{data[p.key]}</Pre>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -967,17 +1430,193 @@ function NetworkTab({ data }: { data: Record<string, string> }) {
 // ── Docker tabs ───────────────────────────────────────────────────────────────
 
 function DockerContainersTab({ data }: { data: Record<string, string> }) {
+  const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {
     if (col.toUpperCase() === "STATUS") {
-      if (/^Up/i.test(val))   return "#22c55e";
+      if (/^Up/i.test(val))    return "#22c55e";
       if (/Exited/i.test(val)) return "#ef4444";
       if (/Paused/i.test(val)) return "#f59e0b";
     }
     return null;
   };
+  const counts = useMemo(() => {
+    let up = 0, exited = 0, paused = 0, total = 0;
+    if (raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT")) {
+      for (const line of raw.split("\n").slice(1)) {
+        if (!line.trim()) continue;
+        total++;
+        if (/\bUp\b/i.test(line)) up++;
+        else if (/Exited/i.test(line)) exited++;
+        else if (/Paused/i.test(line)) paused++;
+      }
+    }
+    return { up, exited, paused, total };
+  }, [raw]);
   return (
-    <div style={{ overflowY: "auto", flex: 1 }}>
-      <KubectlTable raw={data.output ?? ""} colorFn={colorFn} />
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{counts.total} Containers</span>
+        <div style={{ width: 1, height: 20, background: "#2d3148" }} />
+        {counts.up > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e" }} />
+          <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>{counts.up}</span>
+          <span style={{ fontSize: 11, color: "#64748b" }}>Running</span>
+        </div>}
+        {counts.exited > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", animation: "pulse 2s ease-in-out infinite" }} />
+          <span style={{ fontSize: 12, color: "#ef4444", fontWeight: 600 }}>{counts.exited}</span>
+          <span style={{ fontSize: 11, color: "#64748b" }}>Exited</span>
+        </div>}
+        {counts.paused > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} />
+          <span style={{ fontSize: 12, color: "#f59e0b", fontWeight: 600 }}>{counts.paused}</span>
+          <span style={{ fontSize: 11, color: "#64748b" }}>Paused</span>
+        </div>}
+      </div>
+      <KubectlTable raw={raw} colorFn={colorFn} />
+    </div>
+  );
+}
+
+function DockerVolumesTab({ data }: { data: Record<string, string> }) {
+  const raw = data.output ?? "";
+  const count = useMemo(() => {
+    if (!raw || raw.includes("[TIMEOUT")) return 0;
+    return raw.split("\n").slice(1).filter(l => l.trim()).length;
+  }, [raw]);
+  return (
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+      }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
+          background: "#818cf815", border: "1px solid #818cf833", borderRadius: 6,
+        }}>
+          <span style={{ fontSize: 11 }}>💾</span>
+          <span style={{ fontSize: 12, color: "#818cf8", fontWeight: 600 }}>{count}</span>
+          <span style={{ fontSize: 11, color: "#94a3b8" }}>Volumes</span>
+        </div>
+      </div>
+      <KubectlTable raw={raw} />
+    </div>
+  );
+}
+
+function DockerImagesTab({ data }: { data: Record<string, string> }) {
+  const raw = data.output ?? "";
+  const count = useMemo(() => {
+    if (!raw || raw.includes("[TIMEOUT")) return 0;
+    return raw.split("\n").slice(1).filter(l => l.trim()).length;
+  }, [raw]);
+  return (
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+      }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
+          background: "#06b6d415", border: "1px solid #06b6d433", borderRadius: 6,
+        }}>
+          <span style={{ fontSize: 11 }}>📦</span>
+          <span style={{ fontSize: 12, color: "#06b6d4", fontWeight: 600 }}>{count}</span>
+          <span style={{ fontSize: 11, color: "#94a3b8" }}>Images</span>
+        </div>
+      </div>
+      <KubectlTable raw={raw} />
+    </div>
+  );
+}
+
+function DockerStatsTab({ data }: { data: Record<string, string> }) {
+  const raw = data.output ?? "";
+  const colorFn: ColorFn = (val, col) => {
+    const upper = col.toUpperCase();
+    if (upper === "CPU %" || upper === "MEM %") {
+      const pct = parseFloat(val);
+      if (pct > 80) return "#ef4444";
+      if (pct > 50) return "#f59e0b";
+      if (pct > 0)  return "#22c55e";
+    }
+    return null;
+  };
+  return (
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>📊 Container Stats</span>
+        <span style={{ fontSize: 11, color: "#475569" }}>CPU & memory usage (live snapshot)</span>
+      </div>
+      <KubectlTable raw={raw} colorFn={colorFn} />
+    </div>
+  );
+}
+
+// ── Skill #6: RingChart — SVG donut ring for metric cards ────────────────────
+
+function RingChart({ pct, color, size = 52 }: { pct: number; color: string; size?: number }) {
+  const r = (size - 8) / 2;
+  const circ = 2 * Math.PI * r;
+  const filled = Math.min(Math.max(pct, 0), 100) / 100 * circ;
+  return (
+    <svg width={size} height={size} style={{ flexShrink: 0, transform: "rotate(-90deg)" }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#2d3148" strokeWidth={5} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke={color} strokeWidth={5}
+        strokeDasharray={`${filled} ${circ}`}
+        strokeLinecap="round"
+        style={{ transition: "stroke-dasharray 0.6s cubic-bezier(0.25,0.46,0.45,0.94)" }}
+      />
+      <text x={size / 2} y={size / 2 + 4}
+        textAnchor="middle" fill={color}
+        fontSize={10} fontWeight={700}
+        style={{ transform: "rotate(90deg)", transformOrigin: `${size / 2}px ${size / 2}px` }}>
+        {pct}%
+      </text>
+    </svg>
+  );
+}
+
+// ── Skill #6: PodSummaryBar — status breakdown above pod table ────────────────
+
+function PodSummaryBar({ counts }: { counts: { running: number; pending: number; bad: number; total: number } }) {
+  const other = counts.total - counts.running - counts.pending - counts.bad;
+  const segments = [
+    { label: "Running", count: counts.running, color: "#22c55e" },
+    { label: "Pending", count: counts.pending, color: "#f59e0b" },
+    { label: "Failed",  count: counts.bad,     color: "#ef4444" },
+    ...(other > 0 ? [{ label: "Other", count: other, color: "#64748b" }] : []),
+  ];
+  return (
+    <div style={{ padding: "8px 16px", background: "#0b0d14", borderBottom: "1px solid #1e2235", display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+      {/* stacked bar */}
+      <div style={{ flex: 1, height: 6, borderRadius: 3, background: "#1e2235", display: "flex", overflow: "hidden" }}>
+        {segments.map(seg => seg.count > 0 && (
+          <div key={seg.label} style={{
+            width: `${seg.count / counts.total * 100}%`,
+            background: seg.color,
+            transition: "width 0.5s cubic-bezier(0.25,0.46,0.45,0.94)",
+          }} />
+        ))}
+      </div>
+      {/* legend pills */}
+      <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+        {segments.map(seg => (
+          <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: seg.color, display: "inline-block", boxShadow: seg.label === "Running" ? `0 0 5px ${seg.color}88` : "none" }} />
+            <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>{seg.count} {seg.label}</span>
+          </div>
+        ))}
+        <span style={{ fontSize: 11, color: "#475569" }}>/ {counts.total} total</span>
+      </div>
     </div>
   );
 }
@@ -1103,6 +1742,26 @@ function LoadingSpinner() {
       <span aria-hidden="true" style={{ display: "inline-block", width: 16, height: 16, border: "2px solid #2d3148", borderTopColor: "#7c8cf8", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
       Loading…
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
+
+function SkeletonLoader() {
+  return (
+    <div role="status" aria-live="polite" aria-label="Loading content" style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column", gap: 12, ...fadeInStyle }}>
+      {/* Header skeleton */}
+      <div style={{ display: "flex", gap: 12 }}>
+        {[1,2,3,4].map(i => (
+          <div key={i} style={{ ...skeletonStyle, height: 72, flex: 1 }} />
+        ))}
+      </div>
+      {/* Table header skeleton */}
+      <div style={{ ...skeletonStyle, height: 14, width: "35%", marginTop: 8 }} />
+      {/* Table rows */}
+      {[1,2,3,4,5].map(i => (
+        <div key={i} style={{ ...skeletonStyle, height: 36, width: `${100 - i * 3}%` }} />
+      ))}
+      <span className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}>Loading content…</span>
     </div>
   );
 }

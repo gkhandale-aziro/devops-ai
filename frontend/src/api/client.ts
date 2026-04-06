@@ -31,6 +31,20 @@ export const api = {
       req<{ status: string; message: string }>(`/api/v1/targets/${id}/test`),
   },
 
+  // ── Cloud auth check ──────────────────────────────────────────────────────
+
+  cloud: {
+    check: (provider: string, config?: Record<string, string>) =>
+      req<{ cli_installed: boolean; authenticated: boolean; identity: string; error: string }>(
+        `/api/v1/cloud/check/${provider}`,
+        {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify(config ?? {}),
+        },
+      ),
+  },
+
   // ── Server info ───────────────────────────────────────────────────────────
 
   info: () => req<{ tool_model: string; answer_model: string }>("/api/v1/info"),
@@ -41,6 +55,11 @@ export const api = {
     const qs = params ? "?" + new URLSearchParams(params) : "";
     return req<Record<string, string>>(`/api/v1/tab/${targetId}/${tab}${qs}`);
   },
+
+  // ── Namespace list ─────────────────────────────────────────────────────────
+
+  namespaces: (targetId: string) =>
+    req<string[]>(`/api/v1/namespaces/${targetId}`),
 
   // ── Resource detail ────────────────────────────────────────────────────────
 

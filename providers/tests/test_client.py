@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import json
 from unittest.mock import patch, MagicMock
+from providers.client import LLMClient
 
 
 def _make_response(content=None, tool_call_cmd=None):
@@ -32,25 +33,24 @@ def _make_response(content=None, tool_call_cmd=None):
 
 
 class TestChat:
+    def setup_method(self):
+        self.client = LLMClient()
+
     def test_direct_answer(self):
-        from providers.client import chat
         with patch("providers.client.litellm.completion", return_value=_make_response("All pods running.")):
-            reply, command, tool_call_id = chat([{"role": "user", "content": "status?"}], use_tools=False)
+            reply, command, tool_call_id = self.client.chat([{"role": "user", "content": "status?"}], use_tools=False)
         assert reply == "All pods running."
         assert command is None
         assert tool_call_id is None
 
     def test_tool_call_returned(self):
-        from providers.client import chat
         with patch("providers.client.litellm.completion", return_value=_make_response(tool_call_cmd="kubectl get pods -A")):
-            reply, command, tool_call_id = chat([{"role": "user", "content": "show pods"}], use_tools=True)
+            reply, command, tool_call_id = self.client.chat([{"role": "user", "content": "show pods"}], use_tools=True)
         assert command == "kubectl get pods -A"
         assert tool_call_id == "tc-123"
 
     def test_use_tools_false_uses_answer_model(self):
-        from providers import client as c
-        original = c.ANSWER_MODEL
-        c.ANSWER_MODEL = "ollama/answer-model"
+        self.client.answer_model = "ollama/answer-model"
         called_with = {}
 
         def mock_completion(**kwargs):
@@ -58,15 +58,12 @@ class TestChat:
             return _make_response("answer")
 
         with patch("providers.client.litellm.completion", side_effect=mock_completion):
-            c.chat([{"role": "user", "content": "hi"}], use_tools=False)
+            self.client.chat([{"role": "user", "content": "hi"}], use_tools=False)
 
         assert called_with["model"] == "ollama/answer-model"
-        c.ANSWER_MODEL = original
 
     def test_use_tools_true_uses_tool_model(self):
-        from providers import client as c
-        original = c.TOOL_MODEL
-        c.TOOL_MODEL = "ollama/tool-model"
+        self.client.tool_model = "ollama/tool-model"
         called_with = {}
 
         def mock_completion(**kwargs):
@@ -74,13 +71,15 @@ class TestChat:
             return _make_response("answer")
 
         with patch("providers.client.litellm.completion", side_effect=mock_completion):
-            c.chat([{"role": "user", "content": "hi"}], use_tools=True)
+            self.client.chat([{"role": "user", "content": "hi"}], use_tools=True)
 
         assert called_with["model"] == "ollama/tool-model"
-        c.TOOL_MODEL = original
 
 
 class TestChatStream:
+    def setup_method(self):
+        self.client = LLMClient()
+
     def _make_chunks(self, words):
         chunks = []
         for w in words:
@@ -90,18 +89,16 @@ class TestChatStream:
         return chunks
 
     def test_yields_tokens(self):
-        from providers.client import chat_stream
         chunks = self._make_chunks(["Hello", " world", "!"])
         with patch("providers.client.litellm.completion", return_value=chunks):
-            result = list(chat_stream([{"role": "user", "content": "hi"}]))
+            result = list(self.client.chat_stream([{"role": "user", "content": "hi"}]))
         assert result == ["Hello", " world", "!"]
 
     def test_skips_empty_delta(self):
-        from providers.client import chat_stream
         chunk_with_none = MagicMock()
         chunk_with_none.choices[0].delta.content = None
         chunk_with_text = MagicMock()
         chunk_with_text.choices[0].delta.content = "hi"
         with patch("providers.client.litellm.completion", return_value=[chunk_with_none, chunk_with_text]):
-            result = list(chat_stream([{"role": "user", "content": "test"}]))
+            result = list(self.client.chat_stream([{"role": "user", "content": "test"}]))
         assert result == ["hi"]
