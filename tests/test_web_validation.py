@@ -164,53 +164,53 @@ class TestApiResourceValidation:
     def test_unknown_target_returns_404(self, client):
         c, mock_targets, _ = client
         mock_targets.get.return_value = None
-        r = c.get("/api/resource/t1?kind=pod&name=nginx&ns=default")
+        r = c.get("/api/v1/resource/t1?kind=pod&name=nginx&ns=default")
         assert r.status_code == 404
 
     def test_invalid_kind_rejected(self, client):
         c, mock_targets, _ = client
         mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
-        r = c.get("/api/resource/t1?kind=secret&name=nginx&ns=default")
+        r = c.get("/api/v1/resource/t1?kind=secret&name=nginx&ns=default")
         assert r.status_code == 400
         assert b"invalid kind" in r.data
 
     def test_injected_kind_rejected(self, client):
         c, mock_targets, _ = client
         mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
-        r = c.get("/api/resource/t1?kind=pod%3Brm&name=nginx&ns=default")
+        r = c.get("/api/v1/resource/t1?kind=pod%3Brm&name=nginx&ns=default")
         assert r.status_code == 400
 
     def test_empty_name_rejected(self, client):
         c, mock_targets, _ = client
         mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
-        r = c.get("/api/resource/t1?kind=pod&name=&ns=default")
+        r = c.get("/api/v1/resource/t1?kind=pod&name=&ns=default")
         assert r.status_code == 400
         assert b"invalid name" in r.data
 
     def test_injected_name_rejected(self, client):
         c, mock_targets, _ = client
         mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
-        r = c.get("/api/resource/t1?kind=pod&name=nginx%3Brm+-rf+%2F&ns=default")
+        r = c.get("/api/v1/resource/t1?kind=pod&name=nginx%3Brm+-rf+%2F&ns=default")
         assert r.status_code == 400
 
     def test_injected_namespace_rejected(self, client):
         c, mock_targets, _ = client
         mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
-        r = c.get("/api/resource/t1?kind=pod&name=nginx&ns=default%26%26id")
+        r = c.get("/api/v1/resource/t1?kind=pod&name=nginx&ns=default%26%26id")
         assert r.status_code == 400
 
     def test_valid_request_calls_tools(self, client):
         c, mock_targets, mock_tools = client
         mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
         mock_tools.execute.return_value = "NAME  STATUS\nnginx  Running"
-        r = c.get("/api/resource/t1?kind=pod&name=nginx&ns=default")
+        r = c.get("/api/v1/resource/t1?kind=pod&name=nginx&ns=default")
         assert r.status_code == 200
 
 
 class TestApiTargetsValidation:
     def test_add_without_name_returns_400(self, client):
         c, mock_targets, _ = client
-        r = c.post("/api/targets",
+        r = c.post("/api/v1/targets",
                    json={"type": "kubernetes", "config": {}},
                    content_type="application/json")
         assert r.status_code == 400
@@ -218,7 +218,7 @@ class TestApiTargetsValidation:
 
     def test_add_with_invalid_type_returns_400(self, client):
         c, mock_targets, _ = client
-        r = c.post("/api/targets",
+        r = c.post("/api/v1/targets",
                    json={"name": "prod", "type": "notreal", "config": {}},
                    content_type="application/json")
         assert r.status_code == 400
@@ -227,13 +227,13 @@ class TestApiTargetsValidation:
     def test_add_without_content_type_does_not_crash(self, client):
         c, mock_targets, _ = client
         # No Content-Type — request.json will be None, should return 400 not 500
-        r = c.post("/api/targets", data=b"garbage")
+        r = c.post("/api/v1/targets", data=b"garbage")
         assert r.status_code in (400, 415)  # bad request or unsupported media type
 
     def test_chat_stream_without_content_type_does_not_crash(self, client):
         c, mock_targets, _ = client
         mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
-        r = c.post("/api/chat/t1/stream", data=b"garbage")
+        r = c.post("/api/v1/chat/t1/stream", data=b"garbage")
         assert r.status_code in (400, 415)
 
 

@@ -40,6 +40,12 @@ _store    = EventStore()
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
 
+
+@app.after_request
+def _add_api_version_header(response):
+    response.headers["X-API-Version"] = "1"
+    return response
+
 MAX_HISTORY = 20
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -71,7 +77,7 @@ def _run_many(target, cmds):
 
 # ── server info ──────────────────────────────────────────────────────────────
 
-@app.route("/api/info", methods=["GET"])
+@app.route("/api/v1/info", methods=["GET"])
 def api_info():
     return jsonify({
         "tool_model":   _llm.tool_model,
@@ -95,12 +101,12 @@ def serve_react(path: str):
 
 # ── targets ───────────────────────────────────────────────────────────────────
 
-@app.route("/api/targets", methods=["GET"])
+@app.route("/api/v1/targets", methods=["GET"])
 def api_list():
     return jsonify(_targets.load_safe())
 
 
-@app.route("/api/targets", methods=["POST"])
+@app.route("/api/v1/targets", methods=["POST"])
 def api_add():
     d = request.json or {}
     name = (d.get("name") or "").strip()
@@ -113,7 +119,7 @@ def api_add():
     return jsonify(_targets.add(name, ttype, d.get("config", {})))
 
 
-@app.route("/api/targets/<tid>", methods=["DELETE"])
+@app.route("/api/v1/targets/<tid>", methods=["DELETE"])
 def api_delete(tid):
     _targets.remove(tid)
     _session.remove(tid)
@@ -129,7 +135,7 @@ _TEST_COMMANDS = {
     "terraform":  "terraform version 2>&1 | head -2",
 }
 
-@app.route("/api/targets/<tid>/test", methods=["GET"])
+@app.route("/api/v1/targets/<tid>/test", methods=["GET"])
 def api_test(tid):
     target = _targets.get(tid)
     if not target:
@@ -277,7 +283,7 @@ _SAFE_KINDS   = {
 _SAFE_NAME_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.\-]*$')
 
 
-@app.route("/api/resource/<tid>", methods=["GET"])
+@app.route("/api/v1/resource/<tid>", methods=["GET"])
 def api_resource(tid):
     target = _targets.get(tid)
     if not target:
@@ -304,7 +310,7 @@ def api_resource(tid):
     return jsonify(result)
 
 
-@app.route("/api/tab/<tid>/<tab>")
+@app.route("/api/v1/tab/<tid>/<tab>")
 def api_tab(tid, tab):
     target = _targets.get(tid)
     if not target:
@@ -330,7 +336,7 @@ def api_tab(tid, tab):
 
 # ── AI chat — target-specific streaming ──────────────────────────────────────
 
-@app.route("/api/chat/<tid>/stream", methods=["POST"])
+@app.route("/api/v1/chat/<tid>/stream", methods=["POST"])
 def api_chat_stream(tid):
     target = _targets.get(tid)
     if not target:
@@ -374,7 +380,7 @@ _ANALYSIS_SYSTEM = (
 )
 
 
-@app.route("/api/analyze/stream", methods=["POST"])
+@app.route("/api/v1/analyze/stream", methods=["POST"])
 def api_analyze_stream():
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
@@ -385,7 +391,7 @@ def api_analyze_stream():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@app.route("/api/analyze", methods=["POST"])
+@app.route("/api/v1/analyze", methods=["POST"])
 def api_analyze():
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
@@ -448,9 +454,9 @@ def _web_triage_handle(raw_event):
     })
 
 
-@app.route("/api/monitor/start/<tid>", methods=["POST"])
+@app.route("/api/v1/monitor/<tid>", methods=["POST"])
 def api_monitor_start(tid):
-    """Start monitoring a target. Broadcasts alerts to all /api/monitor/stream subscribers."""
+    """Start monitoring a target. Broadcasts alerts to all /api/v1/monitor/stream subscribers."""
     global _web_watcher
     target = _targets.get(tid)
     if not target:
@@ -470,7 +476,7 @@ def api_monitor_start(tid):
     return jsonify({"ok": True, "monitoring": tid})
 
 
-@app.route("/api/monitor/stop", methods=["POST"])
+@app.route("/api/v1/monitor", methods=["DELETE"])
 def api_monitor_stop():
     """Stop the active watcher."""
     global _web_watcher
@@ -481,12 +487,12 @@ def api_monitor_stop():
     return jsonify({"ok": True})
 
 
-@app.route("/api/monitor/status", methods=["GET"])
+@app.route("/api/v1/monitor/status", methods=["GET"])
 def api_monitor_status():
     return jsonify({"active": _web_watcher is not None})
 
 
-@app.route("/api/monitor/stream")
+@app.route("/api/v1/monitor/stream")
 def api_monitor_stream():
     """
     SSE endpoint — each browser tab subscribes here to receive live alerts.
@@ -513,29 +519,29 @@ def api_monitor_stream():
 
 # ── general chat sessions ─────────────────────────────────────────────────────
 
-@app.route("/api/sessions", methods=["GET"])
+@app.route("/api/v1/sessions", methods=["GET"])
 def api_sessions_list():
     return jsonify(_sessions.load())
 
 
-@app.route("/api/sessions", methods=["POST"])
+@app.route("/api/v1/sessions", methods=["POST"])
 def api_sessions_create():
     return jsonify(_sessions.create((request.json or {}).get("title", "New Chat")))
 
 
-@app.route("/api/sessions/<sid>", methods=["DELETE"])
+@app.route("/api/v1/sessions/<sid>", methods=["DELETE"])
 def api_sessions_delete(sid):
     _sessions.delete(sid)
     return jsonify({"ok": True})
 
 
-@app.route("/api/sessions/<sid>/messages", methods=["GET"])
+@app.route("/api/v1/sessions/<sid>/messages", methods=["GET"])
 def api_sessions_messages(sid):
     msgs = _sessions.get_messages(sid)
     return jsonify([m for m in msgs if m["role"] != "system"])
 
 
-@app.route("/api/sessions/<sid>/chat/stream", methods=["POST"])
+@app.route("/api/v1/sessions/<sid>/chat/stream", methods=["POST"])
 def api_sessions_chat_stream(sid):
     user_msg = (request.json or {}).get("message", "").strip()
     if not user_msg:
@@ -561,7 +567,7 @@ def api_sessions_chat_stream(sid):
 
 # ── Event history API ─────────────────────────────────────────────────────────
 
-@app.route("/api/events", methods=["GET"])
+@app.route("/api/v1/events", methods=["GET"])
 def api_events():
     """List events. Filter: ?level=SEV1  ?object=nginx  ?limit=50"""
     return jsonify(_store.get_events(
@@ -571,7 +577,7 @@ def api_events():
     ))
 
 
-@app.route("/api/events/<int:event_id>", methods=["GET"])
+@app.route("/api/v1/events/<int:event_id>", methods=["GET"])
 def api_event_detail(event_id):
     """One event with its snapshots + AI analyses."""
     event = _store.get_event(event_id)
@@ -580,7 +586,7 @@ def api_event_detail(event_id):
     return jsonify(event)
 
 
-@app.route("/api/events/<int:event_id>", methods=["PATCH"])
+@app.route("/api/v1/events/<int:event_id>", methods=["PATCH"])
 def api_event_update(event_id):
     """Update event status: open | acknowledged | resolved"""
     status = (request.json or {}).get("status", "").strip()
@@ -589,7 +595,7 @@ def api_event_update(event_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/events/object/<path:name>", methods=["GET"])
+@app.route("/api/v1/events/object/<path:name>", methods=["GET"])
 def api_events_by_object(name):
     """Full incident history for one pod or node."""
     return jsonify(_store.get_object_history(
@@ -597,7 +603,7 @@ def api_events_by_object(name):
     ))
 
 
-@app.route("/api/stats", methods=["GET"])
+@app.route("/api/v1/stats", methods=["GET"])
 def api_stats():
     """Cluster incident stats: counts by level, top failing objects."""
     return jsonify(_store.get_stats())
@@ -605,7 +611,7 @@ def api_stats():
 
 # ── Topology API ──────────────────────────────────────────────────────────────
 
-@app.route("/api/topology/<tid>", methods=["GET"])
+@app.route("/api/v1/topology/<tid>", methods=["GET"])
 def api_topology(tid):
     """
     Return structured K8s resource graph for a namespace.
@@ -670,7 +676,7 @@ def api_topology(tid):
 
 _SAFE_POD_RE = re.compile(r'^[a-z0-9][a-z0-9.\-]*$', re.IGNORECASE)
 
-@app.route("/api/logs/<tid>/stream")
+@app.route("/api/v1/logs/<tid>/stream")
 def api_logs_stream(tid):
     """
     SSE stream of kubectl logs -f for a pod.
@@ -723,7 +729,7 @@ def api_logs_stream(tid):
 
 # ── Search / Cmd+K API ────────────────────────────────────────────────────────
 
-@app.route("/api/search/<tid>")
+@app.route("/api/v1/search/<tid>")
 def api_search(tid):
     """
     Quick search for Cmd+K palette.

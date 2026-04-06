@@ -18,42 +18,42 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   targets: {
-    list: ()                         => req<Target[]>("/api/targets"),
+    list: ()                         => req<Target[]>("/api/v1/targets"),
     add:  (name: string, type: TargetType, config: Record<string, string>) =>
-      req<Target>("/api/targets", {
+      req<Target>("/api/v1/targets", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ name, type, config }),
       }),
     remove: (id: string) =>
-      req<{ ok: boolean }>(`/api/targets/${id}`, { method: "DELETE" }),
+      req<{ ok: boolean }>(`/api/v1/targets/${id}`, { method: "DELETE" }),
     test: (id: string) =>
-      req<{ status: string; message: string }>(`/api/targets/${id}/test`),
+      req<{ status: string; message: string }>(`/api/v1/targets/${id}/test`),
   },
 
   // ── Server info ───────────────────────────────────────────────────────────
 
-  info: () => req<{ tool_model: string; answer_model: string }>("/api/info"),
+  info: () => req<{ tool_model: string; answer_model: string }>("/api/v1/info"),
 
   // ── Tab data ───────────────────────────────────────────────────────────────
 
   tab: (targetId: string, tab: string, params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params) : "";
-    return req<Record<string, string>>(`/api/tab/${targetId}/${tab}${qs}`);
+    return req<Record<string, string>>(`/api/v1/tab/${targetId}/${tab}${qs}`);
   },
 
   // ── Resource detail ────────────────────────────────────────────────────────
 
   resource: (targetId: string, kind: string, name: string, ns: string) =>
     req<Record<string, string>>(
-      `/api/resource/${targetId}?${new URLSearchParams({ kind, name, ns })}`
+      `/api/v1/resource/${targetId}?${new URLSearchParams({ kind, name, ns })}`
     ),
 
   // ── Chat (target-scoped) ───────────────────────────────────────────────────
 
   /** Returns a ReadableStream of SSE data — caller reads chunks */
   chatStream: (targetId: string, message: string, signal?: AbortSignal) =>
-    fetch(`/api/chat/${targetId}/stream`, {
+    fetch(`/api/v1/chat/${targetId}/stream`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ message }),
@@ -63,7 +63,7 @@ export const api = {
   // ── AI analysis ───────────────────────────────────────────────────────────
 
   analyzeStream: (prompt: string) =>
-    fetch("/api/analyze/stream", {
+    fetch("/api/v1/analyze/stream", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ prompt }),
@@ -72,19 +72,19 @@ export const api = {
   // ── General chat sessions ──────────────────────────────────────────────────
 
   sessions: {
-    list:   () => req<ChatSession[]>("/api/sessions"),
+    list:   () => req<ChatSession[]>("/api/v1/sessions"),
     create: (title: string) =>
-      req<ChatSession>("/api/sessions", {
+      req<ChatSession>("/api/v1/sessions", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ title }),
       }),
     remove:  (id: string) =>
-      req<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" }),
+      req<{ ok: boolean }>(`/api/v1/sessions/${id}`, { method: "DELETE" }),
     messages: (id: string) =>
-      req<Array<{ role: string; content: string }>>(`/api/sessions/${id}/messages`),
+      req<Array<{ role: string; content: string }>>(`/api/v1/sessions/${id}/messages`),
     chatStream: (id: string, message: string, signal?: AbortSignal) =>
-      fetch(`/api/sessions/${id}/chat/stream`, {
+      fetch(`/api/v1/sessions/${id}/chat/stream`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ message }),
@@ -96,33 +96,33 @@ export const api = {
 
   monitor: {
     start:  (targetId: string) =>
-      req<{ ok: boolean; monitoring: string }>(`/api/monitor/start/${targetId}`, { method: "POST" }),
-    stop:   () => req<{ ok: boolean }>("/api/monitor/stop", { method: "POST" }),
-    status: () => req<{ active: boolean }>("/api/monitor/status"),
+      req<{ ok: boolean; monitoring: string }>(`/api/v1/monitor/${targetId}`, { method: "POST" }),
+    stop:   () => req<{ ok: boolean }>("/api/v1/monitor", { method: "DELETE" }),
+    status: () => req<{ active: boolean }>("/api/v1/monitor/status"),
   },
 
   // ── Event history (DB) ────────────────────────────────────────────────────
 
   events: {
     list: (params?: { level?: TriageLevel; object?: string; limit?: number }) =>
-      req<StoredEvent[]>(`/api/events?${new URLSearchParams(
+      req<StoredEvent[]>(`/api/v1/events?${new URLSearchParams(
         Object.fromEntries(
           Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
         )
       )}`),
     get: (id: number) =>
-      req<StoredEvent>(`/api/events/${id}`),
+      req<StoredEvent>(`/api/v1/events/${id}`),
     byObject: (name: string, limit = 20) =>
-      req<StoredEvent[]>(`/api/events/object/${encodeURIComponent(name)}?limit=${limit}`),
+      req<StoredEvent[]>(`/api/v1/events/object/${encodeURIComponent(name)}?limit=${limit}`),
     updateStatus: (id: number, status: string) =>
-      req<{ ok: boolean }>(`/api/events/${id}`, {
+      req<{ ok: boolean }>(`/api/v1/events/${id}`, {
         method:  "PATCH",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ status }),
       }),
   },
 
-  stats: () => req<Stats>("/api/stats"),
+  stats: () => req<Stats>("/api/v1/stats"),
 
   // ── Topology ──────────────────────────────────────────────────────────────
   topology: (targetId: string, namespace?: string) => {
@@ -132,20 +132,20 @@ export const api = {
       pods:        Array<{ namespace: string; name: string; ready: string; status: string; restarts: string }>;
       services:    Array<{ namespace: string; name: string; type: string; port: string }>;
       ingresses:   Array<{ namespace: string; name: string; hosts: string }>;
-    }>(`/api/topology/${targetId}${qs}`);
+    }>(`/api/v1/topology/${targetId}${qs}`);
   },
 
   // ── Search ────────────────────────────────────────────────────────────────
   search: (targetId: string, q: string) =>
     req<{ results: Array<{ kind: string; namespace: string; name: string; status: string }> }>(
-      `/api/search/${targetId}?q=${encodeURIComponent(q)}`
+      `/api/v1/search/${targetId}?q=${encodeURIComponent(q)}`
     ),
 
   // ── Log stream ────────────────────────────────────────────────────────────
   logStreamUrl: (targetId: string, pod: string, namespace: string, container?: string) => {
     const params = new URLSearchParams({ pod, namespace });
     if (container) params.set("container", container);
-    return `/api/logs/${targetId}/stream?${params}`;
+    return `/api/v1/logs/${targetId}/stream?${params}`;
   },
 };
 
