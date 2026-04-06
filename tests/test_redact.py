@@ -131,7 +131,8 @@ class TestMidChunkSecretDetection:
 
     def test_google_api_key(self):
         r = StreamRedactor()
-        gkey = "AIzaSyB55quqd9SUITHEdUoFe3lukGshnPnFnnI"
+        # Fake key that matches AIzaSy pattern but is not a real credential
+        gkey = "AIzaSy" + "A" * 33
         chunks = _collect(r.redact_stream(_make_sse([f"key={gkey}"])))
         text = _extract_text(chunks)
         assert gkey not in text
