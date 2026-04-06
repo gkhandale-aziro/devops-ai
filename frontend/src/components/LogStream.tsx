@@ -7,6 +7,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { Target } from "../types";
 import { api } from "../api/client";
 
+const MAX_RETRIES  = 5;
+const BASE_DELAY_MS = 1500;
+
 interface Props {
   target: Target;
   pod:    string;
@@ -28,24 +31,27 @@ function highlightLine(line: string): string {
 }
 
 export function LogStream({ target, pod, namespace, container, onClose }: Props) {
-  const [lines, setLines]       = useState<string[]>([]);
-  const [paused, setPaused]     = useState(false);
-  const [search, setSearch]     = useState("");
+  const [lines, setLines]         = useState<string[]>([]);
+  const [paused, setPaused]       = useState(false);
+  const [search, setSearch]       = useState("");
   const [connected, setConnected] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const esRef     = useRef<EventSource | null>(null);
-  const pausedRef = useRef(false);
+  const bottomRef  = useRef<HTMLDivElement>(null);
+  const esRef      = useRef<EventSource | null>(null);
+  const pausedRef  = useRef(false);
+  const retryRef   = useRef(0);
+  const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   pausedRef.current = paused;
 
   const connect = useCallback(() => {
     esRef.current?.close();
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     setLines([]);
     setConnected(false);
 
     const url = api.logStreamUrl(target.id, pod, namespace, container);
     const es = new EventSource(url);
 
-    es.onopen = () => setConnected(true);
+    es.onopen = () => { setConnected(true); retryRef.current = 0; };
 
     es.onmessage = (ev) => {
       try {
@@ -65,6 +71,16 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
     es.onerror = () => {
       es.close();
       setConnected(false);
+      if (retryRef.current >= MAX_RETRIES) return;
+      const delay = BASE_DELAY_MS * Math.pow(2, retryRef.current);
+      retryRef.current += 1;
+      timerRef.current = setTimeout(() => {
+        const next = new EventSource(api.logStreamUrl(target.id, pod, namespace, container));
+        esRef.current = next;
+        next.onopen    = es.onopen;
+        next.onmessage = es.onmessage;
+        next.onerror   = es.onerror;
+      }, delay);
     };
 
     esRef.current = es;
@@ -72,7 +88,10 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
 
   useEffect(() => {
     connect();
-    return () => { esRef.current?.close(); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      esRef.current?.close();
+    };
   }, [connect]);
 
   // Auto-scroll when not paused

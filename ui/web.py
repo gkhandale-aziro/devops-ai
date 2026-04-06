@@ -317,7 +317,10 @@ def api_tab(tid, tab):
 
     if ttype == "ssh" and tab == "logs":
         unit  = request.args.get("unit", "")
-        lines = request.args.get("lines", "100")
+        try:
+            lines = max(1, min(int(request.args.get("lines", "100")), 5000))
+        except (ValueError, TypeError):
+            lines = 100
         cmd   = (f"journalctl -u {unit} -n {lines} --no-pager 2>/dev/null"
                  if unit else f"journalctl -n {lines} --no-pager 2>/dev/null")
         return jsonify({"logs": _tools.execute(target, cmd)})
@@ -333,7 +336,7 @@ def api_chat_stream(tid):
     if not target:
         return jsonify({"error": "not found"}), 404
 
-    user_msg = request.json.get("message", "").strip()
+    user_msg = (request.json or {}).get("message", "").strip()
     if not user_msg:
         return jsonify({"error": "empty message"}), 400
 
@@ -373,7 +376,7 @@ _ANALYSIS_SYSTEM = (
 
 @app.route("/api/analyze/stream", methods=["POST"])
 def api_analyze_stream():
-    prompt = request.json.get("prompt", "").strip()
+    prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
     messages = [{"role": "system", "content": _ANALYSIS_SYSTEM},
@@ -384,7 +387,7 @@ def api_analyze_stream():
 
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
-    prompt = request.json.get("prompt", "").strip()
+    prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
     messages = [{"role": "system", "content": _ANALYSIS_SYSTEM},
@@ -517,7 +520,7 @@ def api_sessions_list():
 
 @app.route("/api/sessions", methods=["POST"])
 def api_sessions_create():
-    return jsonify(_sessions.create(request.json.get("title", "New Chat")))
+    return jsonify(_sessions.create((request.json or {}).get("title", "New Chat")))
 
 
 @app.route("/api/sessions/<sid>", methods=["DELETE"])
@@ -534,7 +537,7 @@ def api_sessions_messages(sid):
 
 @app.route("/api/sessions/<sid>/chat/stream", methods=["POST"])
 def api_sessions_chat_stream(sid):
-    user_msg = request.json.get("message", "").strip()
+    user_msg = (request.json or {}).get("message", "").strip()
     if not user_msg:
         return jsonify({"error": "empty message"}), 400
 

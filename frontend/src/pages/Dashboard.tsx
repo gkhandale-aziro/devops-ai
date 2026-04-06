@@ -31,7 +31,7 @@ export function Dashboard({ target }: Props) {
     setActiveTab(tabs[0].id);
     setLastRefreshed(null);
     clear();
-  }, [target?.id]);
+  }, [target?.id, clear]);
 
   // Load tab data when tab changes (skip for chat/topology tabs)
   useEffect(() => {
@@ -653,7 +653,7 @@ function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
     }
   }, [resource]);
 
-  useEffect(() => { if (tab === "ai" && resource && !aiText && !aiLoading) runAI(); }, [tab]);
+  useEffect(() => { if (tab === "ai" && resource && !aiText && !aiLoading) runAI(); }, [tab, resource, aiText, aiLoading, runAI]);
 
   // Escape key closes modal
   useEffect(() => {

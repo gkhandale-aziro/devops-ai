@@ -30,7 +30,7 @@ export default function App() {
     try {
       const ts = await api.targets.list();
       setTargets(ts);
-      if (!activeTarget && ts.length > 0) setActiveTarget(ts[0]);
+      setActiveTarget(prev => prev ?? (ts.length > 0 ? ts[0] : null));
     } catch { /* backend not ready */ }
   }
 
@@ -106,8 +106,8 @@ export default function App() {
 
         {/* Inline confirm dialog — replaces window.confirm() */}
         {confirmRemove && (
-          <div style={{ position: "fixed", inset: 0, background: "#00000088", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, padding: 24, width: 340, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 12, padding: 24, width: 340, display: "flex", flexDirection: "column", gap: 16, boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)" }}>
               <div style={{ fontSize: 15, fontWeight: 600 }}>Remove connection?</div>
               <div style={{ fontSize: 13, color: "#94a3b8" }}>
                 Remove <strong style={{ color: "#e2e8f0" }}>{targetName}</strong>? This cannot be undone.

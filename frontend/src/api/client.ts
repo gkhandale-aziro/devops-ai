@@ -6,7 +6,11 @@ const BASE = "";  // same origin — Vite proxy handles /api in dev
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, init);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    let detail = "";
+    try { const b = await res.json(); detail = b?.error ?? b?.message ?? ""; } catch { /* ignore */ }
+    throw new Error(detail || `${res.status} ${res.statusText}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -48,11 +52,12 @@ export const api = {
   // ── Chat (target-scoped) ───────────────────────────────────────────────────
 
   /** Returns a ReadableStream of SSE data — caller reads chunks */
-  chatStream: (targetId: string, message: string) =>
+  chatStream: (targetId: string, message: string, signal?: AbortSignal) =>
     fetch(`/api/chat/${targetId}/stream`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ message }),
+      signal,
     }),
 
   // ── AI analysis ───────────────────────────────────────────────────────────
@@ -78,11 +83,12 @@ export const api = {
       req<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" }),
     messages: (id: string) =>
       req<Array<{ role: string; content: string }>>(`/api/sessions/${id}/messages`),
-    chatStream: (id: string, message: string) =>
+    chatStream: (id: string, message: string, signal?: AbortSignal) =>
       fetch(`/api/sessions/${id}/chat/stream`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ message }),
+        signal,
       }),
   },
 
@@ -148,7 +154,8 @@ export const api = {
 export async function* readSSE(
   res: Response
 ): AsyncGenerator<Record<string, unknown>> {
-  const reader  = res.body!.getReader();
+  if (!res.body) return;
+  const reader  = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
 

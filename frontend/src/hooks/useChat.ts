@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { api, readSSE } from "../api/client";
 
 export interface ChatMsg {
@@ -10,9 +10,15 @@ export interface ChatMsg {
 export function useTargetChat(targetId: string | null) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loading,  setLoading]  = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(async (text: string) => {
     if (!targetId || !text.trim()) return;
+
+    // Cancel any in-flight request before starting a new one
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
 
     setMessages((prev: ChatMsg[]) => [...prev, { role: "user", content: text }]);
     setLoading(true);
@@ -21,12 +27,13 @@ export function useTargetChat(targetId: string | null) {
     setMessages((prev: ChatMsg[]) => [...prev, placeholder]);
 
     try {
-      const res = await api.chatStream(targetId, text);
+      const res = await api.chatStream(targetId, text, signal);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       let full = "";
       const cmds: string[] = [];
 
       for await (const evt of readSSE(res)) {
+        if (signal.aborted) break;
         if (typeof evt.error === "string") {
           setMessages((prev: ChatMsg[]) => {
             const next = [...prev];
@@ -53,6 +60,7 @@ export function useTargetChat(targetId: string | null) {
         }
       }
     } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
       setMessages((prev: ChatMsg[]) => {
         if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
         const next = [...prev];
@@ -64,7 +72,10 @@ export function useTargetChat(targetId: string | null) {
     }
   }, [targetId]);
 
-  const clear = useCallback(() => setMessages([]), []);
+  const clear = useCallback(() => {
+    abortRef.current?.abort();
+    setMessages([]);
+  }, []);
 
   return { messages, loading, send, clear };
 }
@@ -72,9 +83,14 @@ export function useTargetChat(targetId: string | null) {
 export function useSessionChat(sessionId: string | null) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loading,  setLoading]  = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(async (text: string) => {
     if (!sessionId || !text.trim()) return;
+
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
 
     setMessages(prev => [...prev, { role: "user", content: text }]);
     setLoading(true);
@@ -83,11 +99,12 @@ export function useSessionChat(sessionId: string | null) {
     setMessages(prev => [...prev, placeholder]);
 
     try {
-      const res = await api.sessions.chatStream(sessionId, text);
+      const res = await api.sessions.chatStream(sessionId, text, signal);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       let full = "";
 
       for await (const evt of readSSE(res)) {
+        if (signal.aborted) break;
         if (typeof evt.error === "string") {
           setMessages(prev => {
             const next = [...prev];
@@ -106,6 +123,7 @@ export function useSessionChat(sessionId: string | null) {
         }
       }
     } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
       setMessages(prev => {
         if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
         const next = [...prev];
@@ -117,7 +135,10 @@ export function useSessionChat(sessionId: string | null) {
     }
   }, [sessionId]);
 
-  const clear = useCallback(() => setMessages([]), []);
+  const clear = useCallback(() => {
+    abortRef.current?.abort();
+    setMessages([]);
+  }, []);
 
   return { messages, loading, send, clear };
 }
