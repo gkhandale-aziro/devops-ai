@@ -117,6 +117,7 @@ export function Dashboard({ target }: Props) {
                 value={nsFilter}
                 onChange={e => setNsFilter(e.target.value)}
                 disabled={nsLoading}
+                aria-label="Filter by namespace"
                 style={{
                   background: "#0d1117", border: "1px solid #2d3148", color: nsFilter ? "#818cf8" : "#94a3b8",
                   borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer",

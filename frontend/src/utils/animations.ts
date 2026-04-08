@@ -91,6 +91,14 @@ export const GLOBAL_KEYFRAMES = `
     transition-duration: 0.01ms !important;
   }
 }
+/* Keyboard-visible focus ring — applied globally to any interactive element
+   that doesn't already set its own outline. Mouse clicks don't trigger this,
+   so it only appears for tab/arrow-key navigation. */
+:focus-visible {
+  outline: 2px solid #818cf8 !important;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 `;
 
 /** FadeIn wrapper style for tab content */

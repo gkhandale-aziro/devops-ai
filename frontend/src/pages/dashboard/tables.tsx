@@ -12,7 +12,7 @@
  * the page shell and lets each piece be tested in isolation.
  */
 import {
-  useState, useEffect, useCallback, useMemo, useDeferredValue,
+  useState, useEffect, useCallback, useMemo, useRef, useDeferredValue,
   type MouseEvent,
 } from "react";
 import type { Target } from "../../types";
@@ -222,7 +222,18 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
                   tabIndex={0}
                   role="button"
                   aria-label={`View pod ${name} in ${ns}`}
-                  onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openResource("pod", name, ns); } }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openResource("pod", name, ns); }
+                    else if (ev.key === "ArrowDown") {
+                      ev.preventDefault();
+                      const next = ev.currentTarget.nextElementSibling as HTMLElement | null;
+                      next?.focus?.();
+                    } else if (ev.key === "ArrowUp") {
+                      ev.preventDefault();
+                      const prev = ev.currentTarget.previousElementSibling as HTMLElement | null;
+                      prev?.focus?.();
+                    }
+                  }}
                   style={{ cursor: "pointer", transition: "background .1s" }}
                   onMouseEnter={ev => (ev.currentTarget.style.background = "#1a1d27")}
                   onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
@@ -314,6 +325,16 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
   const [tab, setTab] = useState<"describe" | "logs" | "previous" | "ai">("describe");
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const dialogRef  = useRef<HTMLDivElement>(null);
+  const openerRef  = useRef<HTMLElement | null>(null);
+
+  // Remember what was focused when the modal mounted, restore on unmount,
+  // and move initial focus into the dialog for keyboard users.
+  useEffect(() => {
+    openerRef.current = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => { openerRef.current?.focus?.(); };
+  }, []);
 
   const runAI = useCallback(async () => {
     if (!resource) return;
@@ -344,8 +365,20 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
          onClick={e => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-labelledby="modal-title"
-           style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 12, width: 740, maxHeight: "82vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)" }}>
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="modal-title"
+           onKeyDown={e => {
+             // Simple focus trap — keep Tab inside the dialog subtree.
+             if (e.key !== "Tab" || !dialogRef.current) return;
+             const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+               'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+             );
+             if (!focusables.length) return;
+             const first = focusables[0];
+             const last  = focusables[focusables.length - 1];
+             if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+             else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+           }}
+           style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 12, width: 740, maxHeight: "82vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)", outline: "none" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid #2d3148", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ background: "#4f46e533", color: "#7c8cf8", border: "1px solid #4f46e5", borderRadius: 4, padding: "2px 7px", fontSize: 11 }}>
             {loading ? "…" : resource?.kind}

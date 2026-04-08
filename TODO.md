@@ -14,12 +14,12 @@ should ship as a standalone commit. Pick top-down unless a theme makes
 sense to batch.
 
 ### Accessibility
-- [ ] Escape key closes ResourceModal (currently only the ✕ button)
-- [ ] Focus trap in ResourceModal + return focus to originating row on close
-- [ ] Keyboard nav for PodTable rows (↑/↓ to move, Enter to open)
-- [ ] Visible focus ring on all clickable Cards/rows (`:focus-visible` outline)
-- [ ] ContextualHint dismiss button — ensure visible focus ring
-- [ ] Namespace `<select>` in Dashboard header — add `aria-label="Filter by namespace"`
+- [x] Escape key closes ResourceModal (already present — tables.tsx:335)
+- [x] Focus trap in ResourceModal + return focus to originating row on close
+- [x] Keyboard nav for PodTable rows (↑/↓ to move, Enter to open)
+- [x] Visible focus ring on all clickable Cards/rows (global `:focus-visible` outline)
+- [x] ContextualHint dismiss button — covered by global focus ring
+- [x] Namespace `<select>` in Dashboard header — added `aria-label="Filter by namespace"`
 
 ### Loading / error UX
 - [ ] Refresh button shows spinner while tab refetches (currently silent reload)
