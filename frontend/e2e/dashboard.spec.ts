@@ -62,6 +62,24 @@ test.describe("Dashboard — kubernetes target", () => {
     await expect(page.getByText("LoadBalancer").first()).toBeVisible();
     await expect(page).toHaveScreenshot("k8s-services.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
   });
+
+  test("ingress tab", async ({ page }) => {
+    await openTab(page, "Ingress");
+    await expect(page.getByText("web-ing").first()).toBeVisible();
+    await expect(page).toHaveScreenshot("k8s-ingress.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
+  });
+
+  test("storage tab", async ({ page }) => {
+    await openTab(page, "Storage");
+    await expect(page.getByText("Persistent Volume Claims").first()).toBeVisible();
+    await expect(page).toHaveScreenshot("k8s-storage.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
+  });
+
+  test("network tab", async ({ page }) => {
+    await openTab(page, "Network");
+    await expect(page.getByText("Services").first()).toBeVisible();
+    await expect(page).toHaveScreenshot("k8s-network.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
+  });
 });
 
 test.describe("Dashboard — ssh target", () => {
@@ -76,12 +94,48 @@ test.describe("Dashboard — ssh target", () => {
 });
 
 test.describe("Dashboard — docker target", () => {
-  test("containers tab", async ({ page }) => {
+  test.beforeEach(async ({ page }) => {
     await mockApi(page, "docker");
     await page.goto("/dashboard");
     await expect(page.getByText("local-docker").first()).toBeVisible();
+  });
+
+  test("containers tab", async ({ page }) => {
     await openTab(page, "Containers");
     await expect(page.getByText(/Containers/).first()).toBeVisible();
     await expect(page).toHaveScreenshot("docker-containers.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
+  });
+
+  test("volumes tab", async ({ page }) => {
+    await openTab(page, "Volumes");
+    await expect(page.getByText("data-vol").first()).toBeVisible();
+    await expect(page).toHaveScreenshot("docker-volumes.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
+  });
+
+  test("images tab", async ({ page }) => {
+    await openTab(page, "Images");
+    await expect(page.getByText("nginx").first()).toBeVisible();
+    await expect(page).toHaveScreenshot("docker-images.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
+  });
+
+  test("stats tab", async ({ page }) => {
+    await openTab(page, "Stats");
+    await expect(page.getByText("Container Stats").first()).toBeVisible();
+    await expect(page).toHaveScreenshot("docker-stats.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
+  });
+});
+
+// ── error state ──────────────────────────────────────────────────────────────
+
+test.describe("Dashboard — error state", () => {
+  test("shows error banner + retry when tab fetch fails", async ({ page }) => {
+    // Install a base mock, then override /tab/ to 500.
+    await mockApi(page, "kubernetes");
+    await page.route("**/api/v1/tab/**", route =>
+      route.fulfill({ status: 500, json: { error: "boom" } }),
+    );
+    await page.goto("/dashboard");
+    await expect(page.getByRole("button", { name: /Retry/i })).toBeVisible();
+    await expect(page).toHaveScreenshot("error-state.png", { mask: DYNAMIC_MASKS.map(r => page.getByText(r)) });
   });
 });

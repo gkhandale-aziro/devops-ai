@@ -96,6 +96,24 @@ abc123def456   nginx:latest   "nginx"       3 days ago    Up 3 days      80/tcp 
 def456abc789   redis:7        "redis"       2 days ago    Up 2 days      6379/tcp      cache
 789abc123def   postgres:15    "postgres"    1 week ago    Exited (0) 1h  5432/tcp      db-old`,
   },
+  volumes: {
+    output: `DRIVER    VOLUME NAME
+local     data-vol
+local     cache-vol
+local     logs-vol`,
+  },
+  images: {
+    output: `REPOSITORY   TAG       IMAGE ID       CREATED       SIZE
+nginx        latest    abc123def456   3 days ago    142MB
+redis        7         def456abc789   5 days ago    113MB
+postgres     15        789abc123def   1 week ago    379MB`,
+  },
+  stats: {
+    output: `CONTAINER     CPU %    MEM USAGE / LIMIT   MEM %    NET I/O       BLOCK I/O
+web           1.20%    45MiB / 2GiB        2.25%    1.2kB/800B    0B/0B
+cache         82.50%   120MiB / 2GiB       6.00%    3.4kB/2.1kB   0B/0B
+db-old        55.00%   380MiB / 2GiB       19.00%   0B/0B         0B/0B`,
+  },
 };
 
 // ── helper used by specs to install routes ─────────────────────────────────
