@@ -85,6 +85,13 @@ class EventWatcher:
             except Exception:
                 pass
 
+    def _prune_dedup(self, cache):
+        """Drop dedup entries older than 2x TTL so the cache cannot grow
+        unbounded on long-running watchers with high pod churn."""
+        cutoff = time.time() - (self._DEDUP_TTL * 2)
+        for key in [k for k, ts in cache.items() if ts < cutoff]:
+            cache.pop(key, None)
+
     # ── kubernetes events poll ────────────────────────────────────────────────
 
     def _poll_k8s_events(self):
@@ -195,6 +202,7 @@ class EventWatcher:
             except Exception:
                 pass
 
+            self._prune_dedup(self._pod_seen)
             self._sleep(_POLL_INTERVAL)
 
     # ── node status poll ──────────────────────────────────────────────────────
@@ -234,6 +242,7 @@ class EventWatcher:
             except Exception:
                 pass
 
+            self._prune_dedup(self._node_seen)
             self._sleep(_POLL_INTERVAL)
 
     # ── helper ────────────────────────────────────────────────────────────────

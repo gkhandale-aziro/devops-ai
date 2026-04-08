@@ -45,13 +45,23 @@ class TargetManager:
         return targets
 
     def _save(self, targets):
-        """Save targets with sensitive values encrypted."""
+        """Save targets with sensitive values encrypted. Writes atomically
+        via a temp file + os.replace so a crash mid-write cannot corrupt
+        the canonical file.
+        """
         encrypted = []
         for t in targets:
             copy = {**t, "config": self._encrypt_config(t.get("config", {}))}
             encrypted.append(copy)
-        with open(self._file, "w") as f:
+        tmp = self._file + ".tmp"
+        with open(tmp, "w") as f:
             json.dump(encrypted, f, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except (OSError, AttributeError):
+                pass
+        os.replace(tmp, self._file)
 
     # ── encryption helpers ───────────────────────────────────────────────────
 

@@ -5,7 +5,14 @@ import type {
 const BASE = "";  // same origin — Vite proxy handles /api in dev
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, init);
+  let res: Response;
+  try {
+    res = await fetch(BASE + path, init);
+  } catch (e) {
+    // fetch() throws TypeError on network failure (server down, DNS, offline,
+    // CORS). Surface a clearer message than the default "Failed to fetch".
+    throw new Error(`Network error — could not reach server (${(e as Error)?.message || "offline"})`);
+  }
   if (!res.ok) {
     let detail = "";
     try { const b = await res.json(); detail = b?.error ?? b?.message ?? ""; } catch { /* ignore */ }
@@ -178,17 +185,24 @@ export async function* readSSE(
   const decoder = new TextDecoder();
   let buf = "";
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const raw = line.slice(5).trim();
-      if (raw === "[DONE]") return;
-      try { yield JSON.parse(raw); } catch { /* skip malformed */ }
+  // try/finally guarantees we release the reader lock if the consumer
+  // breaks early or throws — otherwise the underlying connection stays
+  // pinned until GC, which can leak fetch sockets across aborts.
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const raw = line.slice(5).trim();
+        if (raw === "[DONE]") return;
+        try { yield JSON.parse(raw); } catch { /* skip malformed */ }
+      }
     }
+  } finally {
+    try { await reader.cancel(); } catch { /* ignore */ }
   }
 }

@@ -47,6 +47,11 @@ _store    = EventStore()
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
 
+# Cap request body size (1 MB). Prevents memory exhaustion from clients
+# posting arbitrarily large JSON. Override via AZIRO_MAX_BODY_MB env var.
+_MAX_BODY_MB = int(os.environ.get("AZIRO_MAX_BODY_MB", "1"))
+app.config["MAX_CONTENT_LENGTH"] = _MAX_BODY_MB * 1024 * 1024
+
 # ── API authentication ────────────────────────────────────────────────────────
 # Set AZIRO_API_KEY env var to require Bearer token auth on all /api/ routes.
 # When unset, auth is disabled (dev mode).
@@ -101,14 +106,33 @@ _rate_buckets = defaultdict(list)  # ip → [timestamp, ...]
 _rate_lock    = threading.Lock()
 
 
+_RATE_LAST_PRUNE = [0.0]  # one-element list for mutable closure
+
 def _is_rate_limited(ip: str) -> bool:
-    """Check if IP has exceeded the rate limit. Thread-safe."""
+    """Check if IP has exceeded the rate limit. Thread-safe.
+
+    Also periodically drops stale IP entries so the bucket dict cannot
+    grow without bound on public-facing deployments.
+    """
     now = time.time()
     cutoff = now - _RATE_WINDOW
     with _rate_lock:
         bucket = _rate_buckets[ip]
-        # Prune old entries
-        _rate_buckets[ip] = [t for t in bucket if t > cutoff]
+        # Prune old entries for this bucket
+        pruned = [t for t in bucket if t > cutoff]
+        if pruned:
+            _rate_buckets[ip] = pruned
+        else:
+            _rate_buckets.pop(ip, None)
+            _rate_buckets[ip] = []
+
+        # Every 60 s, sweep the whole dict and drop IPs with empty buckets.
+        if now - _RATE_LAST_PRUNE[0] > 60:
+            _RATE_LAST_PRUNE[0] = now
+            for stale_ip in [k for k, v in _rate_buckets.items()
+                             if not v or all(t <= cutoff for t in v)]:
+                _rate_buckets.pop(stale_ip, None)
+
         if len(_rate_buckets[ip]) >= _RATE_LIMIT:
             return True
         _rate_buckets[ip].append(now)
@@ -496,10 +520,13 @@ def api_chat_stream(tid):
     if not user_msg:
         return jsonify({"error": "empty message"}), 400
 
-    messages = _session.get(tid)
-    messages.append({"role": "user", "content": user_msg})
-    messages = _trim(messages)
-    _session.set(tid, messages)
+    # Serialize concurrent chat requests for the same target so the
+    # get → append → set sequence cannot interleave across threads.
+    with _get_session_lock(tid):
+        messages = _session.get(tid)
+        messages.append({"role": "user", "content": user_msg})
+        messages = _trim(messages)
+        _session.set(tid, messages)
 
     def generate():
         try:
@@ -558,12 +585,26 @@ def api_analyze():
 
 
 # ── Event monitoring ──────────────────────────────────────────────────────────
-# One watcher per server — browsers subscribe via SSE.
-# Each browser tab gets its own queue via /api/monitor/stream.
+# Watchers are now keyed by target id so multiple users can monitor different
+# clusters simultaneously. Each browser tab gets its own SSE queue.
 
-_monitor_subs  = {}          # sub_id → queue.Queue
-_monitor_lock  = threading.Lock()
-_web_watcher   = None        # EventWatcher | None
+_monitor_subs     = {}          # sub_id → queue.Queue
+_monitor_lock     = threading.Lock()
+_web_watchers     = {}          # target_id → EventWatcher
+
+# Per-target session lock so concurrent chat requests to the same tid cannot
+# interleave append()/set() calls and corrupt the message list.
+_session_locks        = {}          # target_id → threading.Lock
+_session_locks_lock   = threading.Lock()
+
+
+def _get_session_lock(tid: str) -> threading.Lock:
+    with _session_locks_lock:
+        lock = _session_locks.get(tid)
+        if lock is None:
+            lock = threading.Lock()
+            _session_locks[tid] = lock
+        return lock
 
 
 def _broadcast_alert(event):
@@ -609,7 +650,6 @@ def _web_triage_handle(raw_event):
 @app.route("/api/v1/monitor/<tid>", methods=["POST"])
 def api_monitor_start(tid):
     """Start monitoring a target. Broadcasts alerts to all /api/v1/monitor/stream subscribers."""
-    global _web_watcher
     target = _targets.get(tid)
     if not target:
         return jsonify({"error": "not found"}), 404
@@ -617,31 +657,43 @@ def api_monitor_start(tid):
     executor = lambda cmd: _tools.execute(target, cmd)
 
     with _monitor_lock:
-        if _web_watcher:
-            _web_watcher.stop()
-        _web_watcher = EventWatcher(executor)
-        _web_watcher.on_event(_web_triage_handle)
+        # Stop any existing watcher for this specific target (idempotent restart).
+        existing = _web_watchers.pop(tid, None)
+        if existing:
+            existing.stop()
+        watcher = EventWatcher(executor)
+        watcher.on_event(_web_triage_handle)
         # only persist Warning events — Normal events are informational noise
-        _web_watcher.on_event(lambda e: _store.save_event(e, _web_classify(e)) if e.get("type") == "Warning" else None)
-        _web_watcher.watch()
+        watcher.on_event(lambda e: _store.save_event(e, _web_classify(e)) if e.get("type") == "Warning" else None)
+        watcher.watch()
+        _web_watchers[tid] = watcher
 
     return jsonify({"ok": True, "monitoring": tid})
 
 
 @app.route("/api/v1/monitor", methods=["DELETE"])
 def api_monitor_stop():
-    """Stop the active watcher."""
-    global _web_watcher
+    """Stop all active watchers. Optional ?tid= stops a single target."""
+    tid = request.args.get("tid", "").strip()
     with _monitor_lock:
-        if _web_watcher:
-            _web_watcher.stop()
-            _web_watcher = None
+        if tid:
+            w = _web_watchers.pop(tid, None)
+            if w:
+                w.stop()
+        else:
+            for w in _web_watchers.values():
+                w.stop()
+            _web_watchers.clear()
     return jsonify({"ok": True})
 
 
 @app.route("/api/v1/monitor/status", methods=["GET"])
 def api_monitor_status():
-    return jsonify({"active": _web_watcher is not None})
+    with _monitor_lock:
+        return jsonify({
+            "active": len(_web_watchers) > 0,
+            "targets": list(_web_watchers.keys()),
+        })
 
 
 @app.route("/api/v1/monitor/stream")

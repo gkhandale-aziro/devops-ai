@@ -125,6 +125,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
         }}>
           <textarea
             ref={inputRef}
+            aria-label="Chat message"
             rows={1}
             value={text}
             onChange={onInput}
@@ -141,6 +142,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
           />
           <button
             onClick={submit}
+            aria-label={loading ? "Sending message" : "Send message"}
             disabled={loading || !text.trim()}
             style={{
               background: loading || !text.trim() ? "#1e2235" : "#6366f1",

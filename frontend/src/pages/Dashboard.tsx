@@ -61,7 +61,11 @@ export function Dashboard({ target }: Props) {
     if (isK8s && nsFilter) params.ns = nsFilter;
     api.tab(target.id, activeTab, Object.keys(params).length ? params : undefined)
       .then(d => { setTabData(d); setLastRefreshed(new Date()); })
-      .catch(() => setTabData({ error: `Could not load ${activeTab} data — check kubectl access and cluster connectivity.` }))
+      .catch((e) => {
+        console.error(`[Dashboard] tab "${activeTab}" load failed:`, e);
+        const detail = (e as Error)?.message ? ` (${(e as Error).message})` : "";
+        setTabData({ error: `Could not load ${activeTab} data${detail} — check kubectl access and cluster connectivity.` });
+      })
       .finally(() => setTabLoading(false));
   }, [target?.id, activeTab, reloadKey, nsFilter, isK8s]);
 
@@ -477,6 +481,10 @@ function NodeTable({ raw, target }: { raw: string; target: Target }) {
             const sc = nodeStatusColor(status);
             return (
               <tr key={i} onClick={() => openNode(name)}
+                tabIndex={0}
+                role="button"
+                aria-label={`View node ${name}`}
+                onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openNode(name); } }}
                 style={{ cursor: "pointer", transition: "background .1s" }}
                 onMouseEnter={(ev: MouseEvent<HTMLTableRowElement>) => (ev.currentTarget.style.background = "#1a1d27")}
                 onMouseLeave={(ev: MouseEvent<HTMLTableRowElement>) => (ev.currentTarget.style.background = "transparent")}
@@ -632,6 +640,10 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
               const badgeKey = `${ns}/${name}`;
               return (
                 <tr key={i} onClick={() => openResource("pod", name, ns)}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`View pod ${name} in ${ns}`}
+                  onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openResource("pod", name, ns); } }}
                   style={{ cursor: "pointer", transition: "background .1s" }}
                   onMouseEnter={ev => (ev.currentTarget.style.background = "#1a1d27")}
                   onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
@@ -643,6 +655,7 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
                     {isBad && !aiBadges[badgeKey] && !badgeLoading[badgeKey] && (
                       <button
                         onClick={e => { e.stopPropagation(); fetchAIBadge(name, ns, status); }}
+                        aria-label={`Diagnose pod ${name}`}
                         title="Get AI diagnosis for this pod"
                         style={{
                           marginLeft: 6, background: "#818cf822", border: "1px solid #818cf844",
@@ -680,6 +693,7 @@ function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; 
                     {onStreamLogs && (
                       <button
                         onClick={e => { e.stopPropagation(); onStreamLogs(name, ns); }}
+                        aria-label={`Stream live logs for pod ${name}`}
                         title="Stream live logs"
                         style={{
                           background: "#06b6d422", border: "1px solid #06b6d444",

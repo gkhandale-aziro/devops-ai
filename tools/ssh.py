@@ -27,9 +27,6 @@ def run_ssh(config, command):
     if not host:
         return "[ERROR] No host configured"
 
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
     connect_kwargs = dict(hostname=host, port=port, username=user, timeout=10)
     if password:
         connect_kwargs["password"]      = password
@@ -43,6 +40,8 @@ def run_ssh(config, command):
 
     last_error = None
     for attempt in range(2):  # 1 retry on connection drop
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             ssh.connect(**connect_kwargs)
             _, stdout, stderr = ssh.exec_command(command, timeout=30)
@@ -52,5 +51,12 @@ def run_ssh(config, command):
             return _truncate(output or "[No output]")
         except Exception as e:
             last_error = e
-            ssh.close()
+        finally:
+            # Close on both success and failure — the previous code only
+            # closed in the exception path, leaking file descriptors on every
+            # successful call.
+            try:
+                ssh.close()
+            except Exception:
+                pass
     return f"[SSH ERROR] {last_error}"
