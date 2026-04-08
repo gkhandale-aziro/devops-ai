@@ -77,9 +77,10 @@ def setup_kubeconfig(config):
     provider   = config.get("provider", "local")
     kubeconfig = config.get("kubeconfig", "")
 
-    # Prepend KUBECONFIG env var so credentials are written to the custom path.
-    # Quote the path to prevent shell injection via malicious kubeconfig values.
-    kc_prefix = f"KUBECONFIG={shlex.quote(kubeconfig)} " if kubeconfig else ""
+    # Pass KUBECONFIG via env= dict so the shell never sees the path —
+    # eliminates injection risk for the kubeconfig field even if shlex
+    # quoting were ever bypassed.
+    kc_env = {"KUBECONFIG": kubeconfig} if kubeconfig else None
 
     # All config values are quoted via shlex.quote() below to prevent shell
     # injection. Values originate from user-supplied target configs and flow
@@ -115,7 +116,7 @@ def setup_kubeconfig(config):
             flag = "--region" if zone.count("-") == 1 else "--zone"
             cmd += f" {flag} {shlex.quote(zone)}"
         # gcloud respects KUBECONFIG env var for output path
-        out = run_command(kc_prefix + cmd)
+        out = run_command(cmd, env_overrides=kc_env)
         return "error" not in out.lower(), out
 
     if provider == "aks":
@@ -141,36 +142,34 @@ def setup_kubeconfig(config):
 def run_kubernetes(config, command):
     context    = config.get("context", "")
     kubeconfig = config.get("kubeconfig", "")
-    env_parts  = []
+    env_overrides = {}
 
-    # All config values are shlex.quote()d before interpolation — user-supplied
-    # config fields would otherwise inject shell commands via run_command(shell=True).
+    # Env vars are passed via subprocess env= dict rather than a shell prefix
+    # string, so the shell never sees them and cannot reinterpret quoted values.
+    # The --context flag is still string-substituted but is shlex.quote()d.
 
     if kubeconfig:
-        env_parts.append(f"KUBECONFIG={shlex.quote(kubeconfig)}")
+        env_overrides["KUBECONFIG"] = kubeconfig
 
-    # Inject provider-specific env vars
     provider = config.get("provider", "local")
     if provider == "eks":
         profile = config.get("profile", "")
         region  = config.get("region", "")
         if profile:
-            env_parts.append(f"AWS_PROFILE={shlex.quote(profile)}")
+            env_overrides["AWS_PROFILE"] = profile
         if region:
-            env_parts.append(f"AWS_DEFAULT_REGION={shlex.quote(region)}")
+            env_overrides["AWS_DEFAULT_REGION"] = region
     elif provider == "gke":
         sa_key = config.get("service_account_key_file", "")
         if sa_key:
-            env_parts.append(f"GOOGLE_APPLICATION_CREDENTIALS={shlex.quote(sa_key)}")
+            env_overrides["GOOGLE_APPLICATION_CREDENTIALS"] = sa_key
     elif provider == "aks":
         tenant = config.get("tenant", "")
         if tenant:
-            env_parts.append(f"AZURE_TENANT_ID={shlex.quote(tenant)}")
-
-    prefix = " ".join(env_parts) + " " if env_parts else ""
+            env_overrides["AZURE_TENANT_ID"] = tenant
 
     if context and "kubectl" in command and "--context" not in command:
         command = command.replace(
             "kubectl ", f"kubectl --context={shlex.quote(context)} ", 1
         )
-    return run_command(prefix + command)
+    return run_command(command, env_overrides=env_overrides or None)
