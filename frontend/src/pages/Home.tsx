@@ -75,7 +75,8 @@ export function Home({ targets, monitorActive }: Props) {
     ]).then(([evts, stats]) => {
       setRecent(evts);
       setCounts(stats.counts);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch(e => console.warn("[Home] events/stats load failed:", (e as Error)?.message))
+      .finally(() => setLoading(false));
   }, []);
 
   const online    = targets.filter(t => t.status === "online").length;

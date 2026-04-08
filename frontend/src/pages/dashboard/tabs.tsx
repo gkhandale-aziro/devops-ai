@@ -3,7 +3,7 @@
  */
 import { useState, useMemo } from 'react';
 import { RingChart, Card, Pre } from './primitives';
-import { KubectlTable, type ColorFn } from './tables';
+import { KubectlTable, hasKubectlData, serviceTypeColorFn, pvStatusColorFn, type ColorFn } from './tables';
 
 // ── Overview metric cards ─────────────────────────────────────────────────────
 
@@ -114,7 +114,7 @@ export function EventsTab({ data }: { data: Record<string, string> }) {
 
   const counts = useMemo(() => {
     let warning = 0, normal = 0;
-    if (raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT")) {
+    if (hasKubectlData(raw)) {
       for (const line of raw.split("\n").slice(1)) {
         if (/\bWarning\b/.test(line)) warning++;
         else if (/\bNormal\b/.test(line)) normal++;
@@ -154,7 +154,7 @@ export function EventsTab({ data }: { data: Record<string, string> }) {
           </>
         )}
       </div>
-      <KubectlTable raw={raw} colorFn={colorFn} />
+      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No events in this namespace" />
     </div>
   );
 }
@@ -163,19 +163,11 @@ export function EventsTab({ data }: { data: Record<string, string> }) {
 
 export function ServicesTab({ data }: { data: Record<string, string> }) {
   const raw = data.services ?? "";
-  const colorFn: ColorFn = (val, col) => {
-    if (col.toUpperCase() === "TYPE") {
-      if (val === "LoadBalancer") return "#818cf8";
-      if (val === "NodePort")     return "#06b6d4";
-      if (val === "ClusterIP")    return "#64748b";
-      if (val === "ExternalName") return "#f59e0b";
-    }
-    return null;
-  };
+  const colorFn = serviceTypeColorFn;
 
   const counts = useMemo(() => {
     const c = { lb: 0, np: 0, cip: 0, ext: 0, total: 0 };
-    if (raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT")) {
+    if (hasKubectlData(raw)) {
       for (const line of raw.split("\n").slice(1)) {
         if (!line.trim()) continue;
         c.total++;
@@ -215,7 +207,7 @@ export function ServicesTab({ data }: { data: Record<string, string> }) {
           </div>
         ))}
       </div>
-      <KubectlTable raw={raw} colorFn={colorFn} />
+      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No services found" />
     </div>
   );
 }
@@ -233,8 +225,7 @@ interface WorkloadCounts {
 }
 
 export function parseWorkloadCounts(raw: string, label: string): { total: number; ready: number; notReady: number } {
-  if (!raw || raw.includes("No resources") || raw.includes("[TIMEOUT") || raw.includes("error"))
-    return { total: 0, ready: 0, notReady: 0 };
+  if (!hasKubectlData(raw)) return { total: 0, ready: 0, notReady: 0 };
   const lines = raw.trim().split("\n").slice(1); // skip header
   let total = 0, ready = 0, notReady = 0;
   for (const line of lines) {
@@ -320,7 +311,12 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
           {totalAll > 0 && (
             <>
               <div style={{ width: `${readyAll / totalAll * 100}%`, background: "#22c55e", transition: "width .5s" }} />
-              <div style={{ width: `${failedAll / totalAll * 100}%`, background: "#ef4444", transition: "width .5s" }} />
+              <div style={{
+                width: `${failedAll / totalAll * 100}%`,
+                background: "#ef4444",
+                transition: "width .5s",
+                animation: failedAll > 0 ? "pulse 2s ease-in-out infinite" : undefined,
+              }} />
             </>
           )}
         </div>
@@ -383,7 +379,7 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
         const s = sections.find(s => s.key === expanded);
         if (!s) return null;
         const raw = data[s.key] ?? "";
-        const hasData = raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT");
+        const hasData = hasKubectlData(raw);
         return (
           <div style={{
             background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10,
@@ -414,19 +410,12 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
 // ── K8s Storage tab ───────────────────────────────────────────────────────────
 
 export function K8sStorageTab({ data }: { data: Record<string, string> }) {
-  const pvcColor: ColorFn = (val, col) => {
-    if (col.toUpperCase() === "STATUS") {
-      if (val === "Bound")   return "#22c55e";
-      if (val === "Pending") return "#f59e0b";
-      if (val === "Lost")    return "#ef4444";
-    }
-    return null;
-  };
+  const pvcColor = pvStatusColorFn;
 
   const counts = useMemo(() => {
     const c = { bound: 0, pending: 0, lost: 0, pvcs: 0, pvs: 0, sc: 0 };
     const pvcRaw = data.pvcs ?? "";
-    if (pvcRaw && !pvcRaw.includes("No resources")) {
+    if (hasKubectlData(pvcRaw)) {
       for (const line of pvcRaw.split("\n").slice(1)) {
         if (!line.trim()) continue;
         c.pvcs++;
@@ -436,10 +425,10 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
       }
     }
     const pvRaw = data.pvs ?? "";
-    if (pvRaw && !pvRaw.includes("No resources"))
+    if (hasKubectlData(pvRaw))
       c.pvs = pvRaw.split("\n").slice(1).filter(l => l.trim()).length;
     const scRaw = data.storageclasses ?? "";
-    if (scRaw && !scRaw.includes("No resources"))
+    if (hasKubectlData(scRaw))
       c.sc = scRaw.split("\n").slice(1).filter(l => l.trim()).length;
     return c;
   }, [data]);
@@ -488,13 +477,13 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
       </div>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <Card title="Persistent Volume Claims" hint={`${counts.pvcs}`} defaultOpen={true}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvcColor} /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvcColor} emptyMessage="No persistent volume claims" /></div>
         </Card>
         <Card title="Persistent Volumes" hint={`${counts.pvs}`} defaultOpen={false}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvcColor} /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvcColor} emptyMessage="No persistent volumes" /></div>
         </Card>
         <Card title="Storage Classes" hint={`${counts.sc}`} defaultOpen={false}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.storageclasses ?? ""} /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.storageclasses ?? ""} emptyMessage="No storage classes" /></div>
         </Card>
       </div>
     </div>
@@ -507,10 +496,10 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
   const counts = useMemo(() => {
     let ingresses = 0, classes = 0;
     const ingRaw = data.ingresses ?? "";
-    if (ingRaw && !ingRaw.includes("No resources"))
+    if (hasKubectlData(ingRaw))
       ingresses = ingRaw.split("\n").slice(1).filter(l => l.trim()).length;
     const clsRaw = data.ingressclasses ?? "";
-    if (clsRaw && !clsRaw.includes("No resources"))
+    if (hasKubectlData(clsRaw))
       classes = clsRaw.split("\n").slice(1).filter(l => l.trim()).length;
     return { ingresses, classes };
   }, [data]);
@@ -541,10 +530,10 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
       </div>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <Card title="Ingresses" hint={`${counts.ingresses}`} defaultOpen={true}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses ?? ""} /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses ?? ""} emptyMessage="No ingresses found" /></div>
         </Card>
         <Card title="Ingress Classes" hint={`${counts.classes}`} defaultOpen={false}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingressclasses ?? ""} /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingressclasses ?? ""} emptyMessage="No ingress classes" /></div>
         </Card>
       </div>
     </div>
@@ -554,17 +543,11 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
 // ── Network tab ───────────────────────────────────────────────────────────────
 
 export function NetworkTab({ data }: { data: Record<string, string> }) {
-  const svcColor: ColorFn = (val, col) => {
-    if (col.toUpperCase() === "TYPE") {
-      if (val === "LoadBalancer") return "#818cf8";
-      if (val === "NodePort")     return "#06b6d4";
-    }
-    return null;
-  };
+  const svcColor = serviceTypeColorFn;
 
   const countLines = (raw?: string) => {
-    if (!raw || raw.includes("No resources") || raw.includes("[TIMEOUT")) return 0;
-    return raw.split("\n").slice(1).filter(l => l.trim()).length;
+    if (!hasKubectlData(raw)) return 0;
+    return raw!.split("\n").slice(1).filter(l => l.trim()).length;
   };
 
   const sections = useMemo(() => [
@@ -602,7 +585,7 @@ export function NetworkTab({ data }: { data: Record<string, string> }) {
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         {sections.map(s => (
           <Card key={s.key} title={s.label} hint={`${s.count}`} defaultOpen={s.defaultOpen}>
-            <div style={{ overflowX: "auto" }}><KubectlTable raw={data[s.key] ?? ""} colorFn={s.colorFn} /></div>
+            <div style={{ overflowX: "auto" }}><KubectlTable raw={data[s.key] ?? ""} colorFn={s.colorFn} emptyMessage={`No ${s.label.toLowerCase()}`} /></div>
           </Card>
         ))}
         {preItems.map(p => (
@@ -629,7 +612,7 @@ export function DockerContainersTab({ data }: { data: Record<string, string> }) 
   };
   const counts = useMemo(() => {
     let up = 0, exited = 0, paused = 0, total = 0;
-    if (raw && !raw.includes("No resources") && !raw.includes("[TIMEOUT")) {
+    if (hasKubectlData(raw)) {
       for (const line of raw.split("\n").slice(1)) {
         if (!line.trim()) continue;
         total++;
@@ -664,7 +647,7 @@ export function DockerContainersTab({ data }: { data: Record<string, string> }) 
           <span style={{ fontSize: 11, color: "#64748b" }}>Paused</span>
         </div>}
       </div>
-      <KubectlTable raw={raw} colorFn={colorFn} />
+      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No containers running" />
     </div>
   );
 }
@@ -672,7 +655,7 @@ export function DockerContainersTab({ data }: { data: Record<string, string> }) 
 export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
   const raw = data.output ?? "";
   const count = useMemo(() => {
-    if (!raw || raw.includes("[TIMEOUT")) return 0;
+    if (!hasKubectlData(raw)) return 0;
     return raw.split("\n").slice(1).filter(l => l.trim()).length;
   }, [raw]);
   return (
@@ -690,7 +673,7 @@ export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
           <span style={{ fontSize: 11, color: "#94a3b8" }}>Volumes</span>
         </div>
       </div>
-      <KubectlTable raw={raw} />
+      <KubectlTable raw={raw} emptyMessage="No Docker volumes" />
     </div>
   );
 }
@@ -698,7 +681,7 @@ export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
 export function DockerImagesTab({ data }: { data: Record<string, string> }) {
   const raw = data.output ?? "";
   const count = useMemo(() => {
-    if (!raw || raw.includes("[TIMEOUT")) return 0;
+    if (!hasKubectlData(raw)) return 0;
     return raw.split("\n").slice(1).filter(l => l.trim()).length;
   }, [raw]);
   return (
@@ -716,7 +699,7 @@ export function DockerImagesTab({ data }: { data: Record<string, string> }) {
           <span style={{ fontSize: 11, color: "#94a3b8" }}>Images</span>
         </div>
       </div>
-      <KubectlTable raw={raw} />
+      <KubectlTable raw={raw} emptyMessage="No Docker images" />
     </div>
   );
 }
@@ -742,7 +725,7 @@ export function DockerStatsTab({ data }: { data: Record<string, string> }) {
         <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>📊 Container Stats</span>
         <span style={{ fontSize: 11, color: "#475569" }}>CPU & memory usage (live snapshot)</span>
       </div>
-      <KubectlTable raw={raw} colorFn={colorFn} />
+      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No container stats available" />
     </div>
   );
 }

@@ -308,6 +308,10 @@ def api_cloud_check(provider):
 
 # ── tab commands (dashboard quick-view panels) ────────────────────────────────
 
+# Docker `ps` output format — columns rendered in the Containers tab.
+# Edit here (not inline in TAB_COMMANDS) to change which columns appear.
+DOCKER_PS_FORMAT = "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+
 TAB_COMMANDS = {
     "ssh": {
         "overview":   {"uptime": "uptime", "memory": "free -m", "disk": "df -h /",
@@ -351,7 +355,7 @@ TAB_COMMANDS = {
         "events":      {"output": "kubectl get events -A --sort-by=.lastTimestamp 2>&1"},
     },
     "docker": {
-        "containers": {"output": "docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'"},
+        "containers": {"output": f"docker ps -a --format '{DOCKER_PS_FORMAT}'"},
         "images":     {"output": "docker images"},
         "networks":   {"output": "docker network ls"},
         "volumes":    {"output": "docker volume ls"},

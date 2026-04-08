@@ -19,7 +19,7 @@ export function Chat(_props: Props) {
   useEffect(() => {
     api.sessions.list().then(s => {
       setSessions(s);
-    }).catch(() => {});
+    }).catch(e => console.warn("[Chat] sessions.list failed:", (e as Error)?.message));
   }, []);
 
   const { messages, loading, send, clear } = useSessionChat(activeSession);

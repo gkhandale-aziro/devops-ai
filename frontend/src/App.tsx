@@ -23,8 +23,10 @@ export default function App() {
 
   useEffect(() => {
     loadTargets();
-    api.monitor.status().then(s => setMonitorActive(s.active)).catch(() => {});
-    api.info().then(i => setAiModel(i.answer_model)).catch(() => {});
+    api.monitor.status().then(s => setMonitorActive(s.active))
+      .catch(e => console.warn("[App] monitor.status failed:", (e as Error)?.message));
+    api.info().then(i => setAiModel(i.answer_model))
+      .catch(e => console.warn("[App] info failed:", (e as Error)?.message));
   }, []);
 
   async function loadTargets() {
@@ -32,7 +34,9 @@ export default function App() {
       const ts = await api.targets.list();
       setTargets(ts);
       setActiveTarget(prev => prev ?? (ts.length > 0 ? ts[0] : null));
-    } catch { /* backend not ready */ }
+    } catch (e) {
+      console.warn("[App] targets.list failed — backend may not be ready:", (e as Error)?.message);
+    }
   }
 
   async function handleRemove(id: string) {

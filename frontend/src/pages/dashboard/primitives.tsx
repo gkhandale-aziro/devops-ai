@@ -12,22 +12,25 @@ export function RingChart({ pct, color, size = 52 }: { pct: number; color: strin
   const circ = 2 * Math.PI * r;
   const filled = Math.min(Math.max(pct, 0), 100) / 100 * circ;
   return (
-    <svg width={size} height={size} style={{ flexShrink: 0, transform: "rotate(-90deg)" }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#2d3148" strokeWidth={5} />
-      <circle
-        cx={size / 2} cy={size / 2} r={r} fill="none"
-        stroke={color} strokeWidth={5}
-        strokeDasharray={`${filled} ${circ}`}
-        strokeLinecap="round"
-        style={{ transition: "stroke-dasharray 0.6s cubic-bezier(0.25,0.46,0.45,0.94)" }}
-      />
-      <text x={size / 2} y={size / 2 + 4}
-        textAnchor="middle" fill={color}
-        fontSize={10} fontWeight={700}
-        style={{ transform: "rotate(90deg)", transformOrigin: `${size / 2}px ${size / 2}px` }}>
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#2d3148" strokeWidth={5} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke={color} strokeWidth={5}
+          strokeDasharray={`${filled} ${circ}`}
+          strokeLinecap="round"
+          style={{ transition: "stroke-dasharray 0.6s cubic-bezier(0.25,0.46,0.45,0.94)" }}
+        />
+      </svg>
+      <span style={{
+        position: "absolute", inset: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        color, fontSize: 10, fontWeight: 700, pointerEvents: "none",
+      }}>
         {pct}%
-      </text>
-    </svg>
+      </span>
+    </div>
   );
 }
 
@@ -79,17 +82,29 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(o => !o); } }}
-        style={{ padding: "10px 14px", borderBottom: open ? "1px solid #2d3148" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
+        style={{ padding: "10px 14px", borderBottom: open ? "1px solid #2d3148" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none", transition: "border-bottom-color .25s" }}
       >
         <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#64748b" strokeWidth="1.5"
-          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .15s", flexShrink: 0 }}>
+          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .2s ease", flexShrink: 0 }}>
           <polyline points="3,1 7,5 3,9" />
         </svg>
         {title}
         {hint && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>· {hint}</span>}
         <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{open ? "▼" : "▶"}</span>
       </div>
-      {open && <div role="region" aria-labelledby={headerId} style={{ padding: "14px 16px" }}>{children}</div>}
+      <div
+        role="region"
+        aria-labelledby={headerId}
+        aria-hidden={!open}
+        style={{
+          maxHeight: open ? 2000 : 0,
+          opacity: open ? 1 : 0,
+          overflow: "hidden",
+          transition: "max-height .3s ease, opacity .2s ease",
+        }}
+      >
+        <div style={{ padding: "14px 16px" }}>{children}</div>
+      </div>
     </div>
   );
 }
@@ -183,18 +198,26 @@ export function LoadingSpinner() {
   );
 }
 
-export function SkeletonLoader() {
+export type SkeletonVariant = "cards" | "table" | "mixed";
+
+export function SkeletonLoader({ variant = "mixed" }: { variant?: SkeletonVariant } = {}) {
   return (
     <div role="status" aria-live="polite" aria-label="Loading content" style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column", gap: 12, ...fadeInStyle }}>
-      <div style={{ display: "flex", gap: 12 }}>
-        {[1,2,3,4].map(i => (
-          <div key={i} style={{ ...skeletonStyle, height: 72, flex: 1 }} />
-        ))}
-      </div>
-      <div style={{ ...skeletonStyle, height: 14, width: "35%", marginTop: 8 }} />
-      {[1,2,3,4,5].map(i => (
-        <div key={i} style={{ ...skeletonStyle, height: 36, width: `${100 - i * 3}%` }} />
-      ))}
+      {(variant === "cards" || variant === "mixed") && (
+        <div style={{ display: "flex", gap: 12 }}>
+          {[1,2,3,4].map(i => (
+            <div key={i} style={{ ...skeletonStyle, height: 72, flex: 1 }} />
+          ))}
+        </div>
+      )}
+      {(variant === "table" || variant === "mixed") && (
+        <>
+          <div style={{ ...skeletonStyle, height: 14, width: "35%", marginTop: variant === "mixed" ? 8 : 0 }} />
+          {[1,2,3,4,5,6,7].slice(0, variant === "table" ? 7 : 5).map(i => (
+            <div key={i} style={{ ...skeletonStyle, height: 36, width: `${100 - i * 2}%` }} />
+          ))}
+        </>
+      )}
       <span className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}>Loading content…</span>
     </div>
   );

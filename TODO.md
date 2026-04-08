@@ -22,36 +22,36 @@ sense to batch.
 - [x] Namespace `<select>` in Dashboard header — added `aria-label="Filter by namespace"`
 
 ### Loading / error UX
-- [ ] Refresh button shows spinner while tab refetches (currently silent reload)
-- [ ] Swallowed errors — `App.tsx:26-27`, `Home.tsx:78`, `Chat.tsx:22` use `.catch(() => {})`; surface a toast or sidebar indicator
-- [ ] Per-tab empty-state copy (replace "No data" with specific guidance per tab)
-- [ ] Specialize SkeletonLoader per tab (card grid for Overview, list shape for tables)
-- [ ] Error toast/banner on tab fetch failure in addition to the inline red box
+- [x] Refresh button shows spinner while tab refetches
+- [x] Swallowed errors — App.tsx / Home.tsx / Chat.tsx now `console.warn` on failure
+- [x] Per-tab empty-state copy (KubectlTable `emptyMessage` prop wired through tabs.tsx)
+- [x] Specialize SkeletonLoader per tab (cards/table/mixed variants wired via Dashboard)
+- [x] Error toast/banner on tab fetch failure (auto-dismissing floating toast)
 
 ### Dead code / style hygiene
-- [ ] Extract shared color palette — hex literals repeated across `pages/dashboard/*` (`#2d3148`, `#0b0d14`, `#818cf8`, `#22c55e`, …)
-- [ ] Extract spacing tokens (4/8/12/16) — 250 inline numeric styles in `pages/dashboard/*`
-- [ ] Hoist duplicated ColorFns (`svcColor`, `pvcColor`, pod status) to a shared map in `tables.tsx`
-- [ ] Wrap hot-path `onClick={() => ...}` closures with `useCallback` (PodTable rows, tab bar) — enables memoization
-- [ ] Centralize kubectl empty/error detection into one `isEmptyKubectl(raw)` helper
-- [ ] Deduplicate ANSI stripping between `LogsTab` and `LogStream` component
+- [x] Extract shared color palette → `src/utils/theme.ts` with `C` / `SPACE` / `RADIUS` tokens (adoption ongoing, follow-up sweep across pages/dashboard)
+- [~] Spacing tokens covered by `SPACE` export in `theme.ts` (same adoption follow-up)
+- [x] Hoist duplicated ColorFns — `serviceTypeColorFn`, `pvStatusColorFn` exported from tables.tsx; inline svcColor in NetworkTab + ServicesTab + pvcColor in K8sStorageTab collapsed
+- [~] `useCallback` on PodTable row closures — deferred; row closures capture per-row data, so real memo win requires extracting a `<PodRow>` memo component (bigger refactor, tracked under F3)
+- [x] Centralize kubectl empty/error detection into one `isEmptyKubectl` / `hasKubectlData` helper (tables.tsx)
+- [~] ANSI strip dedup — n/a, no ANSI stripping in either LogsTab or LogStream (audit false positive)
 
 ### State persistence
-- [ ] Namespace selector persists per target in localStorage
-- [ ] Last active tab per target in localStorage
-- [ ] Settings reset for dismissed ContextualHints
+- [x] Namespace selector persists per target (`dashboard-ns-<targetId>`)
+- [x] Last active tab per target (`dashboard-tab-<targetId>`)
+- [x] Restore dismissed ContextualHints — "Restore tips" button in Sidebar footer clears all `hint-*` keys
 
 ### Visual polish
-- [ ] Subtle status-based row tint for unhealthy pods (CrashLoop/Failed/Error)
-- [ ] Extend "Not Ready" pulse animation from Events tab to Workloads health bar
-- [ ] Animate PodSummaryBar segment width changes on namespace filter
-- [ ] RingChart label — use straight `<text>` with counter-rotate instead of CSS rotate hack
-- [ ] Card expand/collapse — add max-height transition
+- [x] Status-based row tint + left accent for unhealthy pods (PodTable)
+- [x] "Not Ready" pulse animation on Workloads health bar (red segment only when failedAll > 0)
+- [x] PodSummaryBar segment width transition (already had cubic-bezier transition — verified)
+- [x] RingChart label — absolutely-positioned HTML span, drops SVG counter-rotate hack
+- [x] Card expand/collapse — max-height + opacity transition; tests updated to assert aria-expanded/aria-hidden
 
 ### Cleanup
-- [ ] Audit for unused re-exports (e.g. `ColorFn` type)
-- [ ] `ui/web.py` TAB_COMMANDS — extract hardcoded docker table format to a constant
-- [ ] Consider moving `frontend_dist/` out of git (CI artifact) — caused VM pull conflict today
+- [x] Unused re-export audit — `tsc --noUnusedLocals --noUnusedParameters` clean; `ColorFn` has 5 legitimate consumers
+- [x] `ui/web.py` → extracted `DOCKER_PS_FORMAT` constant above `TAB_COMMANDS`
+- [ ] Decide: keep `frontend_dist/` in git (simplicity on VM, accept occasional pull conflicts) vs move to CI (cleaner but needs build pipeline) — deferred, needs product decision
 
 ## Backlog
 

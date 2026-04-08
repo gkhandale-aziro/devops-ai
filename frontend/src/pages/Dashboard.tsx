@@ -34,6 +34,14 @@ export function Dashboard({ target }: Props) {
   const reloadTab = useCallback(() => setReloadKey(k => k + 1), []);
   const [topoNamespace, setTopoNamespace] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+
+  // Auto-dismiss error toast after 6 seconds
+  useEffect(() => {
+    if (!errorToast) return;
+    const t = setTimeout(() => setErrorToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [errorToast]);
 
   // ── Namespace selector state (K8s targets only) ────────────────────────────
   const [nsFilter,    setNsFilter]    = useState("");       // "" = all namespaces
@@ -52,15 +60,35 @@ export function Dashboard({ target }: Props) {
       .finally(() => setNsLoading(false));
   }, [target?.id, isK8s]);
 
-  // Reset tab when target changes
+  // Reset tab when target changes — restore persisted tab + namespace per target
   useEffect(() => {
     if (!target) { setActiveTab(null); return; }
     const tabs = TABS_BY_TYPE[target.type];
-    setActiveTab(tabs[0].id);
+    const savedTab = localStorage.getItem(`dashboard-tab-${target.id}`);
+    const validTab = savedTab && (
+      savedTab === "__chat" ||
+      savedTab === "__topology" ||
+      tabs.some(t => t.id === savedTab)
+    );
+    setActiveTab(validTab ? savedTab : tabs[0].id);
     setLastRefreshed(null);
-    setNsFilter("");
+    const savedNs = localStorage.getItem(`dashboard-ns-${target.id}`) ?? "";
+    setNsFilter(savedNs);
     clear();
   }, [target?.id, clear]);
+
+  // Persist active tab per target
+  useEffect(() => {
+    if (!target || !activeTab) return;
+    localStorage.setItem(`dashboard-tab-${target.id}`, activeTab);
+  }, [target?.id, activeTab]);
+
+  // Persist namespace filter per target
+  useEffect(() => {
+    if (!target) return;
+    if (nsFilter) localStorage.setItem(`dashboard-ns-${target.id}`, nsFilter);
+    else localStorage.removeItem(`dashboard-ns-${target.id}`);
+  }, [target?.id, nsFilter]);
 
   // Load tab data when tab changes (skip for chat/topology tabs)
   useEffect(() => {
@@ -75,6 +103,7 @@ export function Dashboard({ target }: Props) {
         console.error(`[Dashboard] tab "${activeTab}" load failed:`, e);
         const detail = (e as Error)?.message ? ` (${(e as Error).message})` : "";
         setTabData({ error: `Could not load ${activeTab} data${detail} — check kubectl access and cluster connectivity.` });
+        setErrorToast(`Failed to load ${activeTab}${detail}`);
       })
       .finally(() => setTabLoading(false));
   }, [target?.id, activeTab, reloadKey, nsFilter, isK8s]);
@@ -136,21 +165,26 @@ export function Dashboard({ target }: Props) {
                 : `${Math.round((Date.now() - lastRefreshed.getTime()) / 60000)}m ago`}
             </span>
           )}
-          {!tabLoading && activeTab && activeTab !== "__chat" && activeTab !== "__topology" && (
-            <button onClick={reloadTab} aria-label="Refresh tab data" title="Refresh"
-            onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+          {activeTab && activeTab !== "__chat" && activeTab !== "__topology" && (
+            <button onClick={reloadTab} disabled={tabLoading}
+            aria-label={tabLoading ? "Refreshing tab data" : "Refresh tab data"}
+            aria-busy={tabLoading}
+            title={tabLoading ? "Refreshing…" : "Refresh"}
+            onMouseEnter={e => { if (!tabLoading) Object.assign(e.currentTarget.style, btnHoverStyle); }}
             onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
-            onMouseDown={e => Object.assign(e.currentTarget.style, btnActiveStyle)}
-            onMouseUp={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+            onMouseDown={e => { if (!tabLoading) Object.assign(e.currentTarget.style, btnActiveStyle); }}
+            onMouseUp={e => { if (!tabLoading) Object.assign(e.currentTarget.style, btnHoverStyle); }}
             style={{
               background: "none", border: "1px solid #2d3148", borderRadius: 5,
-              color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center",
+              color: "#64748b", cursor: tabLoading ? "wait" : "pointer", display: "flex", alignItems: "center",
               gap: 5, padding: "4px 8px", fontSize: 11, transition: BTN_TRANSITION,
+              opacity: tabLoading ? 0.6 : 1,
             }}>
-              <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                style={tabLoading ? { animation: "spin 0.7s linear infinite" } : undefined}>
                 <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
               </svg>
-              Refresh
+              {tabLoading ? "Refreshing…" : "Refresh"}
             </button>
           )}
         </div>
@@ -270,6 +304,33 @@ export function Dashboard({ target }: Props) {
           )}
         </div>
 
+        {/* Error toast (auto-dismiss) */}
+        {errorToast && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            style={{
+              position: "fixed", bottom: 20, right: 20, zIndex: 300,
+              background: "#2a0011", border: "1px solid #f43f5e",
+              borderRadius: 8, padding: "10px 14px", fontSize: 12,
+              color: "#fb7185", maxWidth: 380,
+              boxShadow: "0 12px 32px rgba(0,0,0,.5)",
+              display: "flex", alignItems: "flex-start", gap: 10,
+              animation: "fadeIn .25s ease-out",
+            }}
+          >
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span style={{ flex: 1 }}>{errorToast}</span>
+            <button
+              onClick={() => setErrorToast(null)}
+              aria-label="Dismiss"
+              style={{ background: "none", border: "none", color: "#fb7185", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+            >×</button>
+          </div>
+        )}
+
         {/* Log stream tray (P4) */}
         {logStream && target && (
           <LogStream
@@ -296,7 +357,15 @@ interface TabContentProps {
 }
 
 function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: TabContentProps) {
-  if (loading) return <SkeletonLoader />;
+  if (loading) {
+    const ttype = target.type;
+    const isCardsTab = (ttype === "ssh" || ttype === "local") && tabId === "overview";
+    const isTableTab = tabId === "pods" || tabId === "nodes" || tabId === "services"
+      || tabId === "events" || tabId === "ingress" || tabId === "containers"
+      || tabId === "volumes" || tabId === "images" || tabId === "stats";
+    const variant = isCardsTab ? "cards" : isTableTab ? "table" : "mixed";
+    return <SkeletonLoader variant={variant} />;
+  }
   if (!tabId)  return null;
 
   if (data.error) {

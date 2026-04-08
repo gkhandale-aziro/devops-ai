@@ -54,28 +54,30 @@ describe("Card", () => {
     render(<Card title="Nodes"><div>child-content</div></Card>);
     const header = screen.getByRole("button", { name: /Nodes/ });
     fireEvent.click(header);
-    expect(screen.queryByText("child-content")).not.toBeInTheDocument();
+    // After collapse, region is still in DOM for animation but aria-hidden
+    expect(screen.getByRole("region", { hidden: true })).toHaveAttribute("aria-hidden", "true");
     fireEvent.click(header);
-    expect(screen.getByText("child-content")).toBeInTheDocument();
+    expect(screen.getByRole("region")).toHaveAttribute("aria-hidden", "false");
   });
 
   it("toggles via Enter key (a11y)", () => {
     render(<Card title="Events"><div>child-content</div></Card>);
     const header = screen.getByRole("button", { name: /Events/ });
     fireEvent.keyDown(header, { key: "Enter" });
-    expect(screen.queryByText("child-content")).not.toBeInTheDocument();
+    expect(header).toHaveAttribute("aria-expanded", "false");
   });
 
   it("toggles via Space key (a11y)", () => {
     render(<Card title="Storage"><div>child-content</div></Card>);
     const header = screen.getByRole("button", { name: /Storage/ });
     fireEvent.keyDown(header, { key: " " });
-    expect(screen.queryByText("child-content")).not.toBeInTheDocument();
+    expect(header).toHaveAttribute("aria-expanded", "false");
   });
 
   it("respects defaultOpen=false", () => {
     render(<Card title="Closed" defaultOpen={false}><div>hidden-child</div></Card>);
-    expect(screen.queryByText("hidden-child")).not.toBeInTheDocument();
+    const header = screen.getByRole("button", { name: /Closed/ });
+    expect(header).toHaveAttribute("aria-expanded", "false");
   });
 });
 

@@ -234,9 +234,14 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
                       prev?.focus?.();
                     }
                   }}
-                  style={{ cursor: "pointer", transition: "background .1s" }}
-                  onMouseEnter={ev => (ev.currentTarget.style.background = "#1a1d27")}
-                  onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
+                  style={{
+                    cursor: "pointer",
+                    transition: "background .1s",
+                    background: isBad ? "#ef444410" : "transparent",
+                    borderLeft: isBad ? "2px solid #ef4444" : "2px solid transparent",
+                  }}
+                  onMouseEnter={ev => (ev.currentTarget.style.background = isBad ? "#ef444420" : "#1a1d27")}
+                  onMouseLeave={ev => (ev.currentTarget.style.background = isBad ? "#ef444410" : "transparent")}
                 >
                   <td style={{ padding: "8px 12px", fontSize: 12, color: "#64748b" }}>{ns}</td>
                   <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600 }}>
@@ -469,16 +474,56 @@ export function LogsTab({ raw, target }: { raw: string; target: Target }) {
 
 export type ColorFn = (val: string, col: string) => string | null;
 
-export function KubectlTable({ raw, colorFn, onRowClick }: {
+/** Returns true when kubectl output is empty, timed out, errored, or "No resources". */
+export function isEmptyKubectl(raw: string | undefined | null): boolean {
+  if (!raw) return true;
+  const trimmed = raw.trim();
+  if (!trimmed) return true;
+  return /^\[?(TIMEOUT|ERROR)/i.test(trimmed)
+      || /No resources/i.test(trimmed)
+      || /not found/i.test(trimmed);
+}
+
+/** Inverse of isEmptyKubectl — truthy when there is parseable data. */
+export function hasKubectlData(raw: string | undefined | null): boolean {
+  return !isEmptyKubectl(raw);
+}
+
+// ── Shared ColorFns ─────────────────────────────────────────────────────────
+
+/** Service TYPE column → color (LoadBalancer / NodePort / ClusterIP / ExternalName). */
+export const serviceTypeColorFn: ColorFn = (val, col) => {
+  if (col.toUpperCase() !== "TYPE") return null;
+  if (val === "LoadBalancer") return "#818cf8";
+  if (val === "NodePort")     return "#06b6d4";
+  if (val === "ClusterIP")    return "#64748b";
+  if (val === "ExternalName") return "#f59e0b";
+  return null;
+};
+
+/** PVC/PV STATUS column → color (Bound / Pending / Lost). */
+export const pvStatusColorFn: ColorFn = (val, col) => {
+  if (col.toUpperCase() !== "STATUS") return null;
+  if (val === "Bound")   return "#22c55e";
+  if (val === "Pending") return "#f59e0b";
+  if (val === "Lost")    return "#ef4444";
+  return null;
+};
+
+export function KubectlTable({ raw, colorFn, onRowClick, emptyMessage = "No data" }: {
   raw:        string;
   colorFn?:   ColorFn;
   onRowClick?: (cols: string[], headers: string[]) => void;
+  emptyMessage?: string;
 }) {
-  const noData = !raw || /^\[?(TIMEOUT|ERROR|No resources|not found)/i.test(raw.trim());
-  if (noData) return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>{raw?.trim() || "No data"}</div>;
+  const trimmed = raw?.trim() ?? "";
+  const isError = /^\[?(TIMEOUT|ERROR|not found)/i.test(trimmed);
+  const noData  = !trimmed || /^\[?No resources/i.test(trimmed);
+  if (isError) return <div style={{ padding: "20px 16px", color: "#f59e0b", fontSize: 13 }}>{trimmed}</div>;
+  if (noData)  return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>{emptyMessage}</div>;
 
   const { headers, rows } = parseKubectl(raw);
-  if (!headers.length) return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>No data</div>;
+  if (!headers.length) return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>{emptyMessage}</div>;
 
   return (
     <table role="grid" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>

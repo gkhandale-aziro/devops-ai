@@ -331,6 +331,30 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         )}
         {/* Theme switcher */}
         <ThemeSwitcher />
+        {/* Restore dismissed tips */}
+        <button
+          onClick={() => {
+            let cleared = 0;
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const k = localStorage.key(i);
+              if (k?.startsWith("hint-")) { localStorage.removeItem(k); cleared++; }
+            }
+            alert(cleared > 0 ? `Restored ${cleared} tip${cleared === 1 ? "" : "s"} — refresh to see them again.` : "No dismissed tips to restore.");
+          }}
+          title="Restore dismissed contextual hints"
+          style={{
+            background: "transparent", border: "1px solid var(--c-border,#1a2235)",
+            color: "var(--c-text-muted,#64748b)", borderRadius: 6,
+            padding: "6px 10px", fontSize: 10, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+            textTransform: "uppercase", letterSpacing: ".4px", fontWeight: 600,
+          }}
+        >
+          <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+          </svg>
+          Restore tips
+        </button>
       </div>
     </div>
   );
