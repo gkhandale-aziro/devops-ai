@@ -486,11 +486,41 @@ def api_tab(tid, tab):
                  if unit else f"journalctl -n {lines} --no-pager 2>/dev/null")
         return jsonify({"logs": _tools.execute(target, cmd)})
 
-    # Kubernetes namespace filtering: replace -A with -n <ns> when ?ns= is provided
+    # Kubernetes namespace filtering: replace -A with -n <ns> when ?ns= is provided.
+    #
+    # kubectl without -A drops the NAMESPACE column from its output, which breaks
+    # the frontend tables (PodTable etc. assume col[0] = namespace). To keep the
+    # output shape stable we re-inject the namespace as the first column of each
+    # non-header line after the command runs.
     ns = request.args.get("ns", "").strip()
     if ttype == "kubernetes" and ns and _SAFE_NAME_RE.match(ns):
         cmds = {k: v.replace(" -A ", f" -n {ns} ").replace(" -A", f" -n {ns}")
                 for k, v in cmds.items()}
+        raw = _run_many(target, cmds)
+        # Cluster-scoped resources never had -A to begin with (pv, storageclass,
+        # ingressclass, namespaces, nodes) — skip those keys.
+        CLUSTER_SCOPED = {"pvs", "storageclasses", "ingressclasses", "nodes"}
+        def reinject_ns(text: str) -> str:
+            lines = text.split("\n")
+            if not lines:
+                return text
+            out = []
+            for i, line in enumerate(lines):
+                if not line.strip() or line.startswith("[") or line.lower().startswith("error"):
+                    out.append(line)
+                    continue
+                if i == 0 and "NAMESPACE" not in line.upper():
+                    # header — prepend NAMESPACE column, preserving rough alignment
+                    out.append("NAMESPACE   " + line)
+                elif i == 0:
+                    out.append(line)  # kubectl already included it (shouldn't happen)
+                else:
+                    out.append(f"{ns}   {line}")
+            return "\n".join(out)
+        fixed = {}
+        for k, v in raw.items():
+            fixed[k] = v if k in CLUSTER_SCOPED else reinject_ns(v)
+        return jsonify(fixed)
 
     return jsonify(_run_many(target, cmds))
 
