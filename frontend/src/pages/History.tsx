@@ -4,6 +4,7 @@ import { LEVEL_COLORS, LEVEL_LABELS, levelColor } from "../types";
 import { api } from "../api/client";
 import { LevelBadge }   from "../components/LevelBadge";
 import { AIDrawer }      from "../components/AIDrawer";
+import { skeletonStyle } from "../utils/animations";
 
 const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 
@@ -175,15 +176,20 @@ export function History() {
             >Clear</button>
           )}
 
-          <span style={{ fontSize: 12, color: "#475569" }}>|</span>
+          <div style={{ width: 1, height: 20, background: "#2d3148", flexShrink: 0 }} />
           <span style={{ fontSize: 12, color: "#64748b" }}>
             {loading ? "Loading…" : `${events.length} event${events.length !== 1 ? "s" : ""}`}
           </span>
           <button
             onClick={load}
             title="Refresh"
-            style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: "2px 6px" }}
-          >↺</button>
+            style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -427,10 +433,6 @@ export function History() {
       {/* AI Drawer */}
       <AIDrawer open={aiDrawerOpen} context={aiContext} title={aiTitle} onClose={() => setAiDrawerOpen(false)} />
 
-      <style>{`
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-        @keyframes slideInRight { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-      `}</style>
     </div>
   );
 }
@@ -479,7 +481,7 @@ function Skeleton() {
   return (
     <div>
       {[120, 80, 200, 160].map((w, i) => (
-        <div key={i} style={{ height: 14, width: w, background: "#1e2130", borderRadius: 4, marginBottom: 12, opacity: 0.7 }} />
+        <div key={i} style={{ height: 14, width: w, marginBottom: 12, ...skeletonStyle }} />
       ))}
     </div>
   );

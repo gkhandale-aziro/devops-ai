@@ -120,7 +120,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
             })}
           </div>
 
-          <span style={{ fontSize: 12, color: "#475569" }}>|</span>
+          <div style={{ width: 1, height: 20, background: "#2d3148", flexShrink: 0 }} />
 
           {/* Filter pills */}
           <div style={{ display: "flex", gap: 4 }}>
@@ -133,12 +133,13 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
                   background: filter === f ? (f === "all" ? "#1e2240" : LEVEL_COLORS[f].bg) : "transparent",
                   border: `1px solid ${filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].border) : "#2d3148"}`,
                   color: filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].text) : "#64748b",
+                  transition: "background 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out",
                 }}
               >{f === "all" ? "All" : f}</button>
             ))}
           </div>
 
-          <span style={{ fontSize: 12, color: "#475569" }}>|</span>
+          <div style={{ width: 1, height: 20, background: "#2d3148", flexShrink: 0 }} />
 
           {/* Target selector + start/stop */}
           <select
@@ -215,7 +216,6 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
       {/* AI Drawer */}
       <AIDrawer open={aiOpen} context={aiContext} title={aiTitle} onClose={() => setAiOpen(false)} />
 
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
     </div>
   );
 }
