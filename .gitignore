@@ -12,3 +12,8 @@ build/
 venv/
 .aziro_key
 aziro.db
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/.playwright/
