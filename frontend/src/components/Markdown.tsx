@@ -28,6 +28,21 @@ function escape(s: string) {
     .replace(/>/g, "&gt;");
 }
 
+/**
+ * Only http(s) and mailto URLs are allowed in links. Everything else
+ * (javascript:, data:, vbscript:, file:, etc.) is stripped to prevent XSS
+ * via LLM-generated or event-message-embedded markdown links.
+ */
+function safeUrl(raw: string): string {
+  const url = raw.trim();
+  // Allow relative URLs and fragment links
+  if (url.startsWith("/") || url.startsWith("#") || url.startsWith("?")) return url;
+  // Allowlist schemes
+  if (/^https?:\/\//i.test(url)) return url;
+  if (/^mailto:/i.test(url))     return url;
+  return "#";
+}
+
 function inlineFormat(s: string): string {
   return s
     // code spans (must come before bold/italic to protect backtick content)
@@ -38,8 +53,12 @@ function inlineFormat(s: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     // italic
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-    // links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    // links — URL validated against an allowlist of safe schemes,
+    // and both URL + label are escaped to block attribute injection.
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+      (_, label, url) =>
+        `<a href="${escape(safeUrl(url))}" target="_blank" rel="noopener noreferrer">${escape(label)}</a>`
+    );
 }
 
 function parse(raw: string): string {

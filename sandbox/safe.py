@@ -10,8 +10,13 @@ SAFE_PREFIXES = [
     "helm list", "helm status", "helm history", "helm get",
     "git status", "git log", "git branch", "git diff", "git show",
     "df ", "free ", "ps ", "uptime",
-    "cat /etc/os-release", "cat /etc/hostname", "cat /proc/cpuinfo", "cat /proc/meminfo",
-    "netstat", "ss ", "curl ", "ping ",
+    # /proc and /sys are restricted to a whitelist of files that are safe
+    # to read. Broad "cat /proc/" would allow leaking env vars via
+    # /proc/self/environ or credentials via /proc/<pid>/environ.
+    "cat /etc/os-release", "cat /etc/hostname",
+    "cat /proc/cpuinfo", "cat /proc/meminfo", "cat /proc/loadavg",
+    "cat /proc/version", "cat /proc/uptime", "cat /proc/stat",
+    "netstat", "ss ", "ping ",
     "hostname", "ip addr", "ip a", "ifconfig",
     "systemctl status", "systemctl list-units",
     "terraform show", "terraform state list",
@@ -21,15 +26,18 @@ SAFE_PREFIXES = [
     "journalctl", "dmesg",
     "strace -p", "ltrace",
     "top -b", "htop", "vmstat", "iostat", "sar", "mpstat", "pidstat",
-    "cat /proc/", "cat /sys/",
     "ls ", "ls\t", "find /var/log", "find /tmp",
     "tail ", "head ", "wc ", "grep ", "awk ", "sed ",
     "nslookup", "dig ", "traceroute", "tracepath",
     "nc -z", "telnet",
     "iptables -L", "ip route", "ip link", "nmap -sn",
     "du ", "blkid", "mount", "stat ",
-    "env", "printenv", "which ", "type ",
+    "which ", "type ",
     "id", "whoami", "w ", "who ", "last ", "history",
+    # NOTE: `curl`, `env`, `printenv`, broad `cat /proc/`, and broad `cat /sys/`
+    # are intentionally NOT allowed. They enable credential exfiltration —
+    # curl can reach cloud-metadata endpoints (169.254.169.254) and env dumps
+    # leak AZIRO_API_KEY and injected cloud credentials.
 ]
 
 BLOCKED_KEYWORDS = [

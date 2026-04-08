@@ -53,6 +53,19 @@ app = Flask(__name__, static_folder=None)
 
 _API_KEY = os.environ.get("AZIRO_API_KEY", "").strip()
 
+if not _API_KEY:
+    import sys
+    _warning_banner = (
+        "\n" + "!" * 72 + "\n"
+        "!!  WARNING: AZIRO_API_KEY is NOT set — API authentication is DISABLED.\n"
+        "!!  Every /api/ route is open to anyone who can reach this server.\n"
+        "!!  This is acceptable for local development only.\n"
+        "!!  Before exposing this server to any network, set AZIRO_API_KEY:\n"
+        "!!      export AZIRO_API_KEY=$(python -c 'import secrets;print(secrets.token_urlsafe(32))')\n"
+        + "!" * 72 + "\n"
+    )
+    print(_warning_banner, file=sys.stderr, flush=True)
+
 
 def _check_auth():
     """Validate Bearer token. Returns error response or None if OK."""

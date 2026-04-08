@@ -8,6 +8,7 @@ Supports multiple Kubernetes providers:
   - aks         : Azure AKS (resource_group, cluster, subscription)
 """
 import os
+import shlex
 from .base import run_command
 
 
@@ -76,8 +77,13 @@ def setup_kubeconfig(config):
     provider   = config.get("provider", "local")
     kubeconfig = config.get("kubeconfig", "")
 
-    # Prepend KUBECONFIG env var so credentials are written to the custom path
-    kc_prefix = f"KUBECONFIG={kubeconfig} " if kubeconfig else ""
+    # Prepend KUBECONFIG env var so credentials are written to the custom path.
+    # Quote the path to prevent shell injection via malicious kubeconfig values.
+    kc_prefix = f"KUBECONFIG={shlex.quote(kubeconfig)} " if kubeconfig else ""
+
+    # All config values are quoted via shlex.quote() below to prevent shell
+    # injection. Values originate from user-supplied target configs and flow
+    # into shell=True subprocess calls in tools/base.run_command.
 
     if provider == "eks":
         cluster = config.get("cluster", "")
@@ -85,13 +91,13 @@ def setup_kubeconfig(config):
         profile = config.get("profile", "")
         if not cluster:
             return False, "EKS cluster name is required"
-        cmd = f"aws eks update-kubeconfig --name {cluster}"
+        cmd = f"aws eks update-kubeconfig --name {shlex.quote(cluster)}"
         if region:
-            cmd += f" --region {region}"
+            cmd += f" --region {shlex.quote(region)}"
         if profile:
-            cmd += f" --profile {profile}"
+            cmd += f" --profile {shlex.quote(profile)}"
         if kubeconfig:
-            cmd += f" --kubeconfig {kubeconfig}"
+            cmd += f" --kubeconfig {shlex.quote(kubeconfig)}"
         out = run_command(cmd)
         return "error" not in out.lower(), out
 
@@ -101,13 +107,13 @@ def setup_kubeconfig(config):
         zone    = config.get("zone", "")
         if not cluster:
             return False, "GKE cluster name is required"
-        cmd = f"gcloud container clusters get-credentials {cluster}"
+        cmd = f"gcloud container clusters get-credentials {shlex.quote(cluster)}"
         if project:
-            cmd += f" --project {project}"
+            cmd += f" --project {shlex.quote(project)}"
         if zone:
             # zone can be a region (us-central1) or zone (us-central1-a)
             flag = "--region" if zone.count("-") == 1 else "--zone"
-            cmd += f" {flag} {zone}"
+            cmd += f" {flag} {shlex.quote(zone)}"
         # gcloud respects KUBECONFIG env var for output path
         out = run_command(kc_prefix + cmd)
         return "error" not in out.lower(), out
@@ -118,11 +124,12 @@ def setup_kubeconfig(config):
         subscription   = config.get("subscription", "")
         if not cluster or not resource_group:
             return False, "AKS cluster name and resource group are required"
-        cmd = f"az aks get-credentials --name {cluster} --resource-group {resource_group}"
+        cmd = (f"az aks get-credentials --name {shlex.quote(cluster)} "
+               f"--resource-group {shlex.quote(resource_group)}")
         if subscription:
-            cmd += f" --subscription {subscription}"
+            cmd += f" --subscription {shlex.quote(subscription)}"
         if kubeconfig:
-            cmd += f" --file {kubeconfig}"
+            cmd += f" --file {shlex.quote(kubeconfig)}"
         cmd += " --overwrite-existing"
         out = run_command(cmd)
         return "error" not in out.lower(), out
@@ -136,8 +143,11 @@ def run_kubernetes(config, command):
     kubeconfig = config.get("kubeconfig", "")
     env_parts  = []
 
+    # All config values are shlex.quote()d before interpolation — user-supplied
+    # config fields would otherwise inject shell commands via run_command(shell=True).
+
     if kubeconfig:
-        env_parts.append(f"KUBECONFIG={kubeconfig}")
+        env_parts.append(f"KUBECONFIG={shlex.quote(kubeconfig)}")
 
     # Inject provider-specific env vars
     provider = config.get("provider", "local")
@@ -145,20 +155,22 @@ def run_kubernetes(config, command):
         profile = config.get("profile", "")
         region  = config.get("region", "")
         if profile:
-            env_parts.append(f"AWS_PROFILE={profile}")
+            env_parts.append(f"AWS_PROFILE={shlex.quote(profile)}")
         if region:
-            env_parts.append(f"AWS_DEFAULT_REGION={region}")
+            env_parts.append(f"AWS_DEFAULT_REGION={shlex.quote(region)}")
     elif provider == "gke":
         sa_key = config.get("service_account_key_file", "")
         if sa_key:
-            env_parts.append(f"GOOGLE_APPLICATION_CREDENTIALS={sa_key}")
+            env_parts.append(f"GOOGLE_APPLICATION_CREDENTIALS={shlex.quote(sa_key)}")
     elif provider == "aks":
         tenant = config.get("tenant", "")
         if tenant:
-            env_parts.append(f"AZURE_TENANT_ID={tenant}")
+            env_parts.append(f"AZURE_TENANT_ID={shlex.quote(tenant)}")
 
     prefix = " ".join(env_parts) + " " if env_parts else ""
 
     if context and "kubectl" in command and "--context" not in command:
-        command = command.replace("kubectl ", f"kubectl --context={context} ", 1)
+        command = command.replace(
+            "kubectl ", f"kubectl --context={shlex.quote(context)} ", 1
+        )
     return run_command(prefix + command)
