@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Wifi, X, Plus, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Target } from "../types";
-import { ThemeSwitcher } from "./ThemeContext";
+import { ThemeToggle } from "./ThemeContext";
 
 interface Props {
   targets:       Target[];
@@ -303,7 +303,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           </div>
         )}
         {/* Theme switcher */}
-        <ThemeSwitcher />
+        <ThemeToggle />
         {/* Restore dismissed tips */}
         <button
           onClick={() => {

@@ -59,6 +59,61 @@
   --shadow-glow-accent: 0 0 20px #6366f133, 0 0 40px #6366f111;
 }
 
+/* ===== Day (light) theme — applied via data-theme="day" on <html> ===== */
+[data-theme="day"] {
+  --c-accent:        #6366f1;
+  --c-accent-dim:    #6366f10f;
+  --c-accent-hover:  #4f46e5;
+  --c-accent-glow:   0 0 16px #6366f122, 0 0 32px #6366f10a;
+
+  --c-bg-base:       #f8fafc;
+  --c-bg-surface:    #ffffff;
+  --c-bg-raised:     #f1f5f9;
+  --c-bg-overlay:    #e2e8f0;
+
+  --c-border:        #e2e8f0;
+  --c-border-strong: #cbd5e1;
+
+  --c-text-primary:  #0f172a;
+  --c-text-secondary:#475569;
+  --c-text-muted:    #64748b;
+  --c-text-faint:    #94a3b8;
+
+  --c-sev1:          #dc2626;
+  --c-sev1-bg:       #fef2f2;
+  --c-sev2:          #d97706;
+  --c-sev2-bg:       #fffbeb;
+  --c-sev3:          #0891b2;
+  --c-sev3-bg:       #ecfeff;
+
+  --c-green:         #16a34a;
+  --c-green-bg:      #f0fdf4;
+  --c-red:           #dc2626;
+  --c-yellow:        #d97706;
+
+  --shadow-sm:  0 1px 2px #0000000d;
+  --shadow-md:  0 4px 12px #00000014;
+  --shadow-lg:  0 8px 24px #0000001a;
+  --shadow-glow-accent: 0 0 12px #6366f11a;
+
+  color-scheme: light;
+}
+
+/* Scrollbar for Day theme */
+[data-theme="day"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+[data-theme="day"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Skeleton for Day theme */
+[data-theme="day"] .skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+}
+
+/* Markdown code block for Day theme */
+[data-theme="day"] .md code { background: #f1f5f9; color: #4f46e5; }
+[data-theme="day"] .md pre  { background: #f8fafc; border-color: #e2e8f0; }
+[data-theme="day"] .md pre code { color: #374151; }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
