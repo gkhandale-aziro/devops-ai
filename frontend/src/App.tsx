@@ -14,6 +14,7 @@ import { ThemeProvider }  from "./components/ThemeContext";
 import { GLOBAL_KEYFRAMES } from "./utils/animations";
 import { Toaster } from "sonner";
 import { toast } from "./utils/toast";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export default function App() {
   const [targets,       setTargets]       = useState<Target[]>([]);
@@ -100,17 +101,17 @@ export default function App() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Routes>
-            <Route path="/"          element={<Home targets={targets} monitorActive={monitorActive} />} />
-            <Route path="/dashboard" element={<Dashboard target={activeTarget} />} />
+            <Route path="/"          element={<ErrorBoundary><Home targets={targets} monitorActive={monitorActive} /></ErrorBoundary>} />
+            <Route path="/dashboard" element={<ErrorBoundary><Dashboard target={activeTarget} /></ErrorBoundary>} />
             <Route path="/alerts"    element={
-              <Alerts
+              <ErrorBoundary><Alerts
                 targets={targets}
                 monitorActive={monitorActive}
                 onMonitorChange={setMonitorActive}
-              />
+              /></ErrorBoundary>
             } />
-            <Route path="/history" element={<History />} />
-            <Route path="/chat"    element={<Chat targets={targets} activeTarget={activeTarget} />} />
+            <Route path="/history" element={<ErrorBoundary><History /></ErrorBoundary>} />
+            <Route path="/chat"    element={<ErrorBoundary><Chat targets={targets} activeTarget={activeTarget} /></ErrorBoundary>} />
             <Route path="*"        element={
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "#64748b" }}>
                 <div style={{ fontSize: 48, color: "#2d3148" }}>404</div>
