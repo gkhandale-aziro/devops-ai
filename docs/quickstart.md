@@ -25,11 +25,18 @@ cd devops-ai
 cp .env.example .env
 ```
 
-Edit `.env`:
+Generate an API key and edit `.env`:
 
 ```bash
-# Generate an API key (secures all /api/ routes)
-AZIRO_API_KEY=$(python3 -c "import secrets;print(secrets.token_urlsafe(32))")
+# Run this to generate a secure key:
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Paste the output into `.env` along with your AI provider:
+
+```bash
+# Secures all /api/ routes
+AZIRO_API_KEY=<paste-generated-key-here>
 
 # AI provider — pick one:
 

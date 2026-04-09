@@ -116,8 +116,8 @@ TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 pyth
 
 ```bash
 # Clone and install
-git clone https://github.com/your-org/aziro-ops.git
-cd aziro-ops
+git clone https://github.com/gkhandale-aziro/devops-ai.git
+cd devops-ai
 pip install -r requirements.txt
 
 # Copy the env template
@@ -251,6 +251,8 @@ The Dockerfile uses 8 parallel BuildKit stages — each CLI downloads concurrent
 ```
 
 **Requires:** Docker with BuildKit (`docker-buildx` plugin).
+
+The container runs as a non-root `aziro` user with reduced privileges. Docker Compose enforces resource limits (2 GB RAM, 2 CPUs).
 
 The image does **not** include: Node.js, frontend source, tests, or Ollama. If using Ollama, run it on the host (see below).
 
@@ -413,7 +415,7 @@ devops-ai/
 │   ├── system_prompt.txt    ← Editable without code changes
 │   └── builder.py           ← Injects live pod list at startup
 │
-└── tests/                   ← pytest suite (153 tests passing)
+└── tests/                   ← pytest suite (153 tests) + Vitest (26 component tests)
 ```
 
 ### Request Flow
@@ -495,7 +497,7 @@ curl -X PUT http://127.0.0.1:5000/api/v1/models \
 
 ## System Requirements
 
-- Python 3.8+
+- Python 3.10+ (Docker image uses 3.12)
 - `pip install -r requirements.txt`
 - At least one AI provider (Ollama locally, or any cloud API key)
 - CLI tools as needed: `kubectl`, `docker`, `aws`, `gcloud`, `az`, `terraform`

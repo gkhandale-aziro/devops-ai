@@ -403,7 +403,7 @@ kubectl config view --minify --raw --flatten -o json | \
 
 **Local:** `aws configure` or `~/.aws/credentials`.
 
-**Docker:** Mount: `-v ~/.aws:/root/.aws:ro`. Or use explicit keys (no mount needed).
+**Docker:** Pre-mounted by `docker-run.sh`. Or use explicit keys (no mount needed).
 
 ---
 
@@ -441,7 +441,7 @@ kubectl config view --minify --raw --flatten -o json | \
 
 **Local:** `az login`.
 
-**Docker:** Mount: `-v ~/.azure:/root/.azure:ro`. For headless: service principal login.
+**Docker:** Pre-mounted by `docker-run.sh`. For headless: service principal login.
 
 ---
 
@@ -534,25 +534,27 @@ tar czf aziro-backup.tar.gz targets.json aziro.db chat_*.json .aziro_key
 
 **Requires:** Docker with BuildKit (`docker-buildx` plugin).
 
+**Security:** The container runs as a non-root `aziro` user with reduced privileges. Docker Compose enforces resource limits (2 GB RAM, 2 CPUs).
+
 ### Volume mount architecture
 
 The launcher script (`docker-run.sh`) and `docker-compose.yml` mount everything upfront so you never need to restart the container to add targets:
 
 ```bash
-# Host credentials → mounted read-only at /root/.host-*
-~/.kube           → /root/.host-kube:ro      # Kubernetes kubeconfig
-~/.aws            → /root/.host-aws:ro       # AWS credentials
-~/.config/gcloud  → /root/.host-gcloud:ro    # GCP tokens
-~/.azure          → /root/.host-azure:ro     # Azure tokens
-~/.ssh            → /root/.ssh:ro            # SSH keys
-/var/run/docker.sock → /var/run/docker.sock   # Docker daemon
+# Host credentials → mounted read-only at /home/aziro/.host-*
+~/.kube           → /home/aziro/.host-kube:ro      # Kubernetes kubeconfig
+~/.aws            → /home/aziro/.host-aws:ro       # AWS credentials
+~/.config/gcloud  → /home/aziro/.host-gcloud:ro    # GCP tokens
+~/.azure          → /home/aziro/.host-azure:ro     # Azure tokens
+~/.ssh            → /home/aziro/.ssh:ro            # SSH keys
+/var/run/docker.sock → /var/run/docker.sock         # Docker daemon
 
 # Cloud CLIs pointed to host mounts via env vars:
-KUBECONFIG=/root/.host-kube/config:/app/data/.kube/config
-AWS_SHARED_CREDENTIALS_FILE=/root/.host-aws/credentials
-AWS_CONFIG_FILE=/root/.host-aws/config
-CLOUDSDK_CONFIG=/root/.host-gcloud
-AZURE_CONFIG_DIR=/root/.host-azure
+KUBECONFIG=/home/aziro/.host-kube/config:/app/data/.kube/config
+AWS_SHARED_CREDENTIALS_FILE=/home/aziro/.host-aws/credentials
+AWS_CONFIG_FILE=/home/aziro/.host-aws/config
+CLOUDSDK_CONFIG=/home/aziro/.host-gcloud
+AZURE_CONFIG_DIR=/home/aziro/.host-azure
 ```
 
 **Key design:** Host kubeconfig is read-only. When cloud setup commands (EKS/GKE/AKS) generate new kubeconfig entries, they write to `/app/data/.kube/config` on the data volume. The `KUBECONFIG` env var merges both.
