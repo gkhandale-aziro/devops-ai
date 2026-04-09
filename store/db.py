@@ -13,7 +13,10 @@ import json
 import os
 import datetime
 
-DB_FILE        = os.path.join(os.path.dirname(__file__), "..", "aziro.db")
+DB_FILE        = os.path.join(
+    os.environ.get("AZIRO_DATA_DIR", os.path.join(os.path.dirname(__file__), "..")),
+    "aziro.db",
+)
 RETENTION_DAYS = 30
 
 

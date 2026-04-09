@@ -14,7 +14,7 @@ SYSTEM_PROMPT = (
 
 MAX_SESSIONS = 100
 
-_BASE = os.path.join(os.path.dirname(__file__), "..")
+_BASE = os.environ.get("AZIRO_DATA_DIR", os.path.join(os.path.dirname(__file__), ".."))
 
 
 class SessionManager:

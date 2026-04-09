@@ -19,6 +19,7 @@ _SENSITIVE_KEYS = {
     "api_key", "token", "auth_token", "access_token", "client_secret",
     "service_account_key", "credentials", "key_passphrase",
     "access_key_id", "session_token",
+    "kubeconfig_data", "service_account_key",
 }
 
 
@@ -29,7 +30,10 @@ class TargetManager:
     """
 
     def __init__(self):
-        self._file = os.path.join(os.path.dirname(__file__), "..", "targets.json")
+        self._file = os.path.join(
+            os.environ.get("AZIRO_DATA_DIR", os.path.join(os.path.dirname(__file__), "..")),
+            "targets.json",
+        )
 
     # ── persistence ──────────────────────────────────────────────────────────
 
@@ -89,10 +93,10 @@ class TargetManager:
 
     # ── target operations ────────────────────────────────────────────────────
 
-    def add(self, name, target_type, config):
+    def add(self, name, target_type, config, tid=None):
         targets = self.load()
         target  = {
-            "id":     str(uuid.uuid4()),
+            "id":     tid or str(uuid.uuid4()),
             "name":   name,
             "type":   target_type,
             "config": config,

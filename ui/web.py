@@ -209,6 +209,15 @@ def serve_react(path: str):
     if path and os.path.isfile(full):
         return send_from_directory(_DIST, path)
     # All other routes → index.html (React Router handles client-side routing)
+    # Inject API key so the SPA can authenticate against /api/ endpoints.
+    if _API_KEY:
+        index = os.path.join(_DIST, "index.html")
+        with open(index) as f:
+            html = f.read()
+        import html as html_mod
+        tag = f'<script>window.__AZIRO_API_KEY__="{html_mod.escape(_API_KEY)}"</script>'
+        html = html.replace("</head>", tag + "</head>", 1)
+        return Response(html, content_type="text/html")
     return send_from_directory(_DIST, "index.html")
 
 
@@ -217,6 +226,37 @@ def serve_react(path: str):
 @app.route("/api/v1/targets", methods=["GET"])
 def api_list():
     return jsonify(_targets.load_safe())
+
+
+def _persist_inline_content(tid, config):
+    """Write pasted credential content to files on the data volume.
+
+    Handles kubeconfig_data and service_account_key so users can paste
+    content in the UI instead of relying on host volume mounts.
+    """
+    data_dir = os.environ.get("AZIRO_DATA_DIR", "")
+    if not data_dir:
+        return
+
+    # Kubeconfig content → /app/data/creds/<tid>/kubeconfig
+    kc_data = config.pop("kubeconfig_data", "").strip()
+    if kc_data:
+        cred_dir = os.path.join(data_dir, "creds", tid)
+        os.makedirs(cred_dir, exist_ok=True)
+        kc_path = os.path.join(cred_dir, "kubeconfig")
+        with open(kc_path, "w") as f:
+            f.write(kc_data)
+        config["kubeconfig"] = kc_path
+
+    # GCP service account key JSON → /app/data/creds/<tid>/sa-key.json
+    sa_data = config.pop("service_account_key", "").strip()
+    if sa_data:
+        cred_dir = os.path.join(data_dir, "creds", tid)
+        os.makedirs(cred_dir, exist_ok=True)
+        sa_path = os.path.join(cred_dir, "sa-key.json")
+        with open(sa_path, "w") as f:
+            f.write(sa_data)
+        config["service_account_key_file"] = sa_path
 
 
 @app.route("/api/v1/targets", methods=["POST"])
@@ -229,7 +269,12 @@ def api_add():
     valid_types = {"ssh", "kubernetes", "docker", "aws", "gcp", "azure", "terraform", "local"}
     if ttype not in valid_types:
         return jsonify({"error": f"invalid type: {ttype}"}), 400
-    target = _targets.add(name, ttype, d.get("config", {}))
+    config = d.get("config", {})
+    # Generate ID early so credential files land in a target-specific dir
+    import uuid
+    tid = str(uuid.uuid4())
+    _persist_inline_content(tid, config)
+    target = _targets.add(name, ttype, config, tid=tid)
     # Never return raw secrets to the frontend
     target["config"] = _targets.mask_config(target.get("config", {}))
     return jsonify(target)

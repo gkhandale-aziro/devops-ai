@@ -1,0 +1,47 @@
+services:
+  aziro:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # ── Persistent data (DB, targets, sessions, encryption key) ────────────
+
+      - aziro-data:/app/data
+
+      # ── Host credentials (read-only reference) ────────────────────────────
+      # These are READ by cloud CLIs for auth. Live bind mounts — any change
+      # on the host (aws configure, gcloud auth login, etc.) is instant.
+      - ${HOME}/.aws:/root/.host-aws:ro
+      - ${HOME}/.config/gcloud:/root/.host-gcloud:ro
+      - ${HOME}/.azure:/root/.host-azure:ro
+      - ${HOME}/.ssh:/root/.ssh:ro
+
+      # ── Kubeconfig: host as seed, container writes its own ────────────────
+      # Host kubeconfig mounted read-only for existing contexts.
+      # Cloud setup commands (eks/gke/aks) write to /app/data/.kube/config
+      # on the data volume. KUBECONFIG merges both.
+      - ${HOME}/.kube:/root/.host-kube:ro
+
+      # Docker socket — for managing Docker targets
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # Terraform workspaces — uncomment and adjust path
+      # - /path/to/terraform:/tf:ro
+    env_file:
+      - .env
+    environment:
+      - AZIRO_DATA_DIR=/app/data
+      - AZIRO_KEY_FILE=/app/data/.aziro_key
+      # Merge host kubeconfig (read-only) + container kubeconfig (writable)
+      - KUBECONFIG=/root/.host-kube/config:/app/data/.kube/config
+      # Cloud CLIs read from host mounts
+      - AWS_SHARED_CREDENTIALS_FILE=/root/.host-aws/credentials
+      - AWS_CONFIG_FILE=/root/.host-aws/config
+      - CLOUDSDK_CONFIG=/root/.host-gcloud
+      - AZURE_CONFIG_DIR=/root/.host-azure
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  aziro-data:

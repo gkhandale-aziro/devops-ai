@@ -165,6 +165,21 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
     </div>
   );
 
+  const area = (label: string, key: string, placeholder?: string) => (
+    <div key={key} style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>{label}</div>
+      <textarea
+        value={config[key] ?? ""}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setConfig((prev: Record<string, string>) => ({ ...prev, [key]: e.target.value }))}
+        placeholder={placeholder}
+        rows={4}
+        style={{ width: "100%", background: "#0d1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 12, fontFamily: "monospace", outline: "none", resize: "vertical" }}
+        onFocus={e => (e.currentTarget.style.borderColor = "#6366f1")}
+        onBlur={e  => (e.currentTarget.style.borderColor = "#2d3148")}
+      />
+    </div>
+  );
+
   const hint = (text: string) => (
     <div style={{ fontSize: 11, color: "#64748b", marginBottom: 12, lineHeight: 1.5, background: "#12141f", padding: "8px 10px", borderRadius: 6, border: "1px solid #1e2235" }}>
       {text}
@@ -274,10 +289,11 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
 
   const k8sFields: Record<K8sProvider, ReactNode> = {
     local: <>
-      {hint("For Docker Desktop, minikube, kind, k3s, or any cluster with an existing kubeconfig. Leave fields blank to use current context.")}
+      {hint("For Docker Desktop, minikube, kind, k3s, or any cluster with an existing kubeconfig. Paste kubeconfig content OR provide a path inside the container.")}
       {authBanner()}
       {field("Context", "context", "e.g. minikube, docker-desktop (blank = current)")}
-      {field("Kubeconfig path", "kubeconfig", "~/.kube/config (blank = default)")}
+      {area("Kubeconfig content", "kubeconfig_data", "Paste kubeconfig YAML here (optional)")}
+      {field("Kubeconfig path", "kubeconfig", "only if file exists inside container (blank = default)")}
     </>,
     eks: <>
       {authBanner()}
@@ -335,7 +351,8 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
       {field("Project", "project", "my-project")}
       {field("Region", "region", "us-central1 (optional)")}
       {field("Zone", "zone", "us-central1-a (optional, overrides region)")}
-      {field("Service Account Key File", "service_account_key_file", "/path/to/sa-key.json (optional)")}
+      {area("Service Account Key JSON", "service_account_key", "Paste SA key JSON content (optional)")}
+      {field("SA Key File path", "service_account_key_file", "only if file exists inside container (optional)")}
     </>,
     azure: <>
       {field("Subscription", "subscription", "subscription-id or name")}

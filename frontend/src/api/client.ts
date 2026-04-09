@@ -5,10 +5,24 @@ import type {
 
 const BASE = "";  // same origin — Vite proxy handles /api in dev
 
+/**
+ * Auth header helper — reads AZIRO_API_KEY injected by the backend into
+ * index.html as window.__AZIRO_API_KEY__, or falls back to localStorage
+ * so users can paste a key via the browser console.
+ */
+function authHeaders(): Record<string, string> {
+  const key =
+    (window as unknown as Record<string, string>).__AZIRO_API_KEY__ ??
+    localStorage.getItem("aziro_api_key") ??
+    "";
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = { ...authHeaders(), ...init?.headers };
   let res: Response;
   try {
-    res = await fetch(BASE + path, init);
+    res = await fetch(BASE + path, { ...init, headers });
   } catch (e) {
     // fetch() throws TypeError on network failure (server down, DNS, offline,
     // CORS). Surface a clearer message than the default "Failed to fetch".
@@ -82,7 +96,7 @@ export const api = {
   chatStream: (targetId: string, message: string, signal?: AbortSignal) =>
     fetch(`/api/v1/chat/${targetId}/stream`, {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body:    JSON.stringify({ message }),
       signal,
     }),
@@ -92,7 +106,7 @@ export const api = {
   analyzeStream: (prompt: string) =>
     fetch("/api/v1/analyze/stream", {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body:    JSON.stringify({ prompt }),
     }),
 
@@ -113,7 +127,7 @@ export const api = {
     chatStream: (id: string, message: string, signal?: AbortSignal) =>
       fetch(`/api/v1/sessions/${id}/chat/stream`, {
         method:  "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body:    JSON.stringify({ message }),
         signal,
       }),

@@ -11,6 +11,17 @@ import os
 import shlex
 from .base import run_command
 
+# In Docker, cloud setup commands write kubeconfig here (on the data volume)
+# instead of the read-only host mount. Local mode writes to ~/.kube/config as before.
+_DATA_DIR = os.environ.get("AZIRO_DATA_DIR", "")
+_CONTAINER_KUBECONFIG = os.path.join(_DATA_DIR, ".kube", "config") if _DATA_DIR else ""
+
+
+def _ensure_container_kubeconfig():
+    """Create the writable kubeconfig directory on the data volume."""
+    if _CONTAINER_KUBECONFIG:
+        os.makedirs(os.path.dirname(_CONTAINER_KUBECONFIG), exist_ok=True)
+
 
 def check_cloud_auth(provider, config=None):
     """
@@ -76,6 +87,12 @@ def setup_kubeconfig(config):
     """
     provider   = config.get("provider", "local")
     kubeconfig = config.get("kubeconfig", "")
+
+    # In Docker, write to the data volume instead of the read-only host mount.
+    # Users can still override with an explicit kubeconfig path in target config.
+    if not kubeconfig and _CONTAINER_KUBECONFIG:
+        _ensure_container_kubeconfig()
+        kubeconfig = _CONTAINER_KUBECONFIG
 
     # Pass KUBECONFIG via env= dict so the shell never sees the path —
     # eliminates injection risk for the kubeconfig field even if shlex

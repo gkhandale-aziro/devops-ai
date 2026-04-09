@@ -112,43 +112,101 @@ TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 pyth
 
 ## Quick Start
 
+### 1. Install
+
 ```bash
-# Install Python dependencies
+# Clone and install
+git clone https://github.com/your-org/aziro-ops.git
+cd aziro-ops
 pip install -r requirements.txt
 
-# Copy the env template and fill in at least one AI provider key
+# Copy the env template
 cp .env.example .env
 ```
 
-### Web mode (React dashboard)
+### 2. Configure AI model
+
+Aziro Ops needs an AI backend. Pick **one** option:
+
+#### Option A — Ollama (local, free, private)
 
 ```bash
-# Local model (Ollama — free, private)
+# Install Ollama: https://ollama.com/download
 ollama pull llama3.1:8b
-AI_MODEL=ollama/llama3.1:8b python3 app.py
-
-# Or two-model setup (recommended — fast tool calls, smart final answers)
-export GROQ_API_KEY="gsk_..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 python3 app.py
+# No API key needed — runs entirely on your machine
 ```
 
-Open [http://localhost:5000](http://localhost:5000).
+#### Option B — Cloud API key
 
-### CLI mode (terminal UI)
+Add your key to `.env`:
 
 ```bash
-# Basic interactive CLI
+# OpenAI
+OPENAI_API_KEY=sk-...
+AI_MODEL=gpt-4o-mini
+
+# Or Anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+AI_MODEL=claude-haiku-4-5-20251001
+
+# Or Google Gemini
+GEMINI_API_KEY=...
+AI_MODEL=gemini/gemini-2.0-flash
+
+# Or Groq (free tier available)
+GROQ_API_KEY=gsk_...
+AI_MODEL=groq/llama-3.1-8b-instant
+```
+
+#### Option C — Two-model setup (recommended for best results)
+
+Use a fast model for tool calls and a smarter model for final answers:
+
+```bash
+TOOL_MODEL=groq/llama-3.1-8b-instant
+ANSWER_MODEL=claude-haiku-4-5-20251001
+```
+
+See [Recommended Ollama Models](#recommended-ollama-models) for local model choices.
+
+### 3. Configure API authentication
+
+Set `AZIRO_API_KEY` to secure all `/api/` endpoints with Bearer token auth. When unset, auth is disabled (acceptable for local development only).
+
+```bash
+# Generate a secure key
+export AZIRO_API_KEY=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
+
+# Or add to .env for persistence
+echo "AZIRO_API_KEY=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')" >> .env
+```
+
+The frontend sends this automatically. For direct API calls, pass it as a Bearer token:
+
+```bash
+curl -H "Authorization: Bearer <your-key>" http://localhost:5000/api/v1/targets
+```
+
+> **Warning:** Without `AZIRO_API_KEY`, every `/api/` route is open to anyone who can reach the server. Always set it before exposing Aziro Ops to any network.
+
+### 4. Run
+
+#### Web mode (React dashboard)
+
+```bash
+python3 app.py
+# → http://localhost:5000
+```
+
+#### CLI mode (terminal UI)
+
+```bash
 python3 main.py
-
-# Connect to a saved target by name
 python3 main.py --target prod-k8s
-
-# With background event monitoring
 python3 main.py --target prod-k8s --monitor
 ```
 
-### Frontend development
+### 5. Frontend development
 
 The React SPA is pre-built and committed to `frontend_dist/` — running `python3 app.py` serves it directly with no build step required. You only need Node.js if you're modifying the frontend.
 
@@ -162,6 +220,132 @@ npm run test:e2e      # Playwright end-to-end tests
 ```
 
 Requires Node.js 18+.
+
+---
+
+## Docker
+
+### Requirements
+
+The Docker image includes:
+
+| Component | Size impact | Why |
+| --------- | ----------- | --- |
+| `python:3.12-slim` | ~150 MB | Base runtime |
+| `pip` dependencies (Flask, LiteLLM, Paramiko, Cryptography) | ~120 MB | Backend |
+| `kubectl` | ~50 MB | Kubernetes target support |
+| `openssh-client` | ~5 MB | SSH target support |
+| `curl` | ~5 MB | Healthcheck |
+| Pre-built React SPA (`frontend_dist/`) | ~2 MB | Frontend |
+| **Total image size** | **~330 MB** | |
+
+The image does **not** include: Node.js, frontend source, tests, or Ollama. If using Ollama, run it separately on the host or as a sidecar container.
+
+### Build and run
+
+```bash
+# Build
+docker build -t aziro-ops .
+
+# Run (minimal)
+docker run -d --name aziro-ops \
+  -p 5000:5000 \
+  -v aziro-data:/app/data \
+  --env-file .env \
+  aziro-ops
+
+# Run with cloud credentials (optional — mount what you need)
+docker run -d --name aziro-ops \
+  -p 5000:5000 \
+  -v aziro-data:/app/data \
+  -v ~/.kube:/home/aziro/.kube:ro \
+  -v ~/.aws:/home/aziro/.aws:ro \
+  -v ~/.config/gcloud:/home/aziro/.config/gcloud:ro \
+  --env-file .env \
+  aziro-ops
+```
+
+### Using with Ollama
+
+Ollama runs outside the container. Connect them via host networking:
+
+```bash
+# Start Ollama on the host
+ollama serve
+
+# Run Aziro Ops with access to host network
+docker run -d --name aziro-ops \
+  -p 5000:5000 \
+  -v aziro-data:/app/data \
+  --env-file .env \
+  -e OLLAMA_API_BASE=http://host.docker.internal:11434 \
+  aziro-ops
+```
+
+On Linux, use `--add-host=host.docker.internal:host-gateway` if `host.docker.internal` doesn't resolve.
+
+### Docker Compose
+
+```bash
+docker compose up --build
+```
+
+See [`docker-compose.yml`](docker-compose.yml) for the full configuration.
+
+### Persistent data
+
+All state is stored in the `/app/data` volume:
+
+| File | Contents |
+| ---- | -------- |
+| `.aziro_key` | Fernet encryption key for credentials |
+| `targets.json` | Encrypted target configurations |
+| `chat_sessions.json` | Chat session metadata |
+| `chat_messages.json` | Chat message history |
+| `aziro.db` | SQLite event store (incidents, snapshots, AI analyses) |
+
+> **Backup:** `docker run --rm -v aziro-data:/data -v $(pwd):/backup alpine tar czf /backup/aziro-backup.tar.gz /data`
+
+---
+
+## Recommended Ollama Models
+
+All models run locally via [Ollama](https://ollama.com) — no API key, no data leaves your machine.
+
+### Best for Aziro Ops
+
+| Model | Size | VRAM | Best for | Install |
+| ----- | ---- | ---- | -------- | ------- |
+| **`llama3.1:8b`** | 4.7 GB | 6 GB | Default all-rounder — good tool calling + answers | `ollama pull llama3.1:8b` |
+| **`qwen2.5:7b`** | 4.4 GB | 6 GB | Strong tool calling, fast on modest hardware | `ollama pull qwen2.5:7b` |
+| **`mistral:7b`** | 4.1 GB | 6 GB | Fast, concise answers — good as TOOL_MODEL | `ollama pull mistral:7b` |
+| **`gemma3:4b`** | 3.3 GB | 4 GB | Lightweight — works on laptops with 8 GB RAM | `ollama pull gemma3:4b` |
+| **`llama3.1:70b`** | 40 GB | 48 GB | Best local quality — needs serious GPU | `ollama pull llama3.1:70b` |
+| **`deepseek-r1:8b`** | 4.9 GB | 6 GB | Strong reasoning for complex diagnosis | `ollama pull deepseek-r1:8b` |
+
+### Recommended two-model setups (local)
+
+```bash
+# Budget (8 GB RAM) — single model
+AI_MODEL=ollama/gemma3:4b
+
+# Standard (16 GB RAM) — fast tool calls, solid answers
+TOOL_MODEL=ollama/mistral:7b
+ANSWER_MODEL=ollama/llama3.1:8b
+
+# Power (24+ GB RAM) — best local quality
+TOOL_MODEL=ollama/qwen2.5:7b
+ANSWER_MODEL=ollama/llama3.1:70b
+```
+
+### Hybrid: local tool calls + cloud answers
+
+Best cost-to-quality ratio — tool calls stay local (free), only final answers hit the API:
+
+```bash
+TOOL_MODEL=ollama/qwen2.5:7b
+ANSWER_MODEL=claude-haiku-4-5-20251001  # or gpt-4o-mini, gemini/gemini-2.0-flash
+```
 
 ---
 
@@ -290,7 +474,7 @@ agent/needs_tools.py
 
 ---
 
-## Requirements
+## System Requirements
 
 - Python 3.8+
 - `pip install -r requirements.txt`
