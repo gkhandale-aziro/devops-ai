@@ -198,6 +198,38 @@ def api_info():
     })
 
 
+@app.route("/api/v1/models", methods=["GET"])
+def api_models():
+    """List available Ollama models (if Ollama is reachable)."""
+    from tools.base import run_command
+    out = run_command("ollama list 2>&1", timeout=10)
+    models = []
+    for line in out.strip().split("\n")[1:]:  # skip header
+        parts = line.split()
+        if parts:
+            models.append(parts[0])
+    return jsonify({"ollama": models, "current": {
+        "tool_model": _llm.tool_model, "answer_model": _llm.answer_model,
+    }})
+
+
+@app.route("/api/v1/models", methods=["PUT"])
+def api_set_models():
+    """Change AI models at runtime (no restart needed)."""
+    d = request.json or {}
+    if "tool_model" in d:
+        _llm.tool_model = d["tool_model"]
+    if "answer_model" in d:
+        _llm.answer_model = d["answer_model"]
+    if "ai_model" in d:
+        _llm.tool_model = d["ai_model"]
+        _llm.answer_model = d["ai_model"]
+    return jsonify({
+        "tool_model":   _llm.tool_model,
+        "answer_model": _llm.answer_model,
+    })
+
+
 # ── static ────────────────────────────────────────────────────────────────────
 
 @app.route("/", defaults={"path": ""})

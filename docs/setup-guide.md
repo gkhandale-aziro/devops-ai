@@ -107,15 +107,17 @@ AI_MODEL=ollama/llama3.1:8b
 # No API key needed
 ```
 
-**In Docker:** Ollama runs on the host, not in the container.
+**In Docker:** Ollama runs on the host, not in the container. You **must** set `OLLAMA_API_BASE` in `.env`:
 
 ```bash
 # .env
 AI_MODEL=ollama/llama3.1:8b
 OLLAMA_API_BASE=http://host.docker.internal:11434
-
-# Linux: add --add-host=host.docker.internal:host-gateway to docker run
 ```
+
+The launcher script (`docker-run.sh`) adds `--add-host=host.docker.internal:host-gateway` automatically for Linux.
+
+Without `OLLAMA_API_BASE`, the container tries to reach Ollama at `localhost:11434` inside itself — which doesn't exist.
 
 **Startup check (CLI only):** `main.py` verifies Ollama is running and the model is downloaded before starting. Web mode (`app.py`) does not — errors appear on first query.
 
@@ -195,6 +197,32 @@ LLM calls retry 4 times with backoff (0s → 10s → 20s → 60s). If all fail:
 
 - **CLI:** Error message printed, loop continues.
 - **Web:** SSE error event sent to browser, request ends.
+
+### Runtime model API
+
+Change models without restarting the container or process:
+
+```bash
+# Check current models
+curl http://127.0.0.1:5000/api/v1/info -H "Authorization: Bearer <key>"
+
+# List available Ollama models
+curl http://127.0.0.1:5000/api/v1/models -H "Authorization: Bearer <key>"
+
+# Switch to a single model
+curl -X PUT http://127.0.0.1:5000/api/v1/models \
+  -H "Authorization: Bearer <key>" \
+  -H "Content-Type: application/json" \
+  -d '{"ai_model": "gpt-4o-mini"}'
+
+# Switch to two-model setup
+curl -X PUT http://127.0.0.1:5000/api/v1/models \
+  -H "Authorization: Bearer <key>" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_model": "groq/llama-3.1-8b-instant", "answer_model": "claude-haiku-4-5-20251001"}'
+```
+
+Changes take effect on the next request. No restart, no rebuild.
 
 ---
 

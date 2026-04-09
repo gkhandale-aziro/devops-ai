@@ -466,8 +466,30 @@ agent/needs_tools.py
 | `AI_MODEL` | `ollama/llama3.1:8b` | Model for both tool calls and answers |
 | `TOOL_MODEL` | — | Override model for tool calls only |
 | `ANSWER_MODEL` | — | Override model for final answers only |
+| `OLLAMA_API_BASE` | — | Ollama server URL. **Required in Docker:** `http://host.docker.internal:11434` |
+| `AZIRO_API_KEY` | — | Bearer token for API auth. When unset, auth is disabled (dev mode) |
+| `AZIRO_DATA_DIR` | Project root | Data directory for DB, targets, sessions. Docker sets to `/app/data` |
+| `AZIRO_KEY_FILE` | `$AZIRO_DATA_DIR/.aziro_key` | Fernet encryption key location |
 | `SANDBOX` | `safe` | Execution mode: `safe`, `docker`, or `local` |
 | `PORT` | `5000` | Web server port |
+
+### Runtime model API
+
+Change AI models without restarting:
+
+```bash
+# Check current models
+curl http://127.0.0.1:5000/api/v1/info -H "Authorization: Bearer <key>"
+
+# List available Ollama models
+curl http://127.0.0.1:5000/api/v1/models -H "Authorization: Bearer <key>"
+
+# Switch models at runtime
+curl -X PUT http://127.0.0.1:5000/api/v1/models \
+  -H "Authorization: Bearer <key>" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_model": "groq/llama-3.1-8b-instant", "answer_model": "gpt-4o-mini"}'
+```
 
 ---
 
