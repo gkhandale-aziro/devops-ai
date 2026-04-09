@@ -3,7 +3,7 @@
 # Aziro Ops — Docker launcher
 # =============================================================================
 # Architecture:
-#   Host credentials → mounted read-only at /root/.host-*
+#   Host credentials → mounted read-only at /home/aziro/.host-*
 #   Cloud CLIs → pointed to host mounts via env vars
 #   kubeconfig → host (read-only) + container (writable) merged via KUBECONFIG
 #   New cluster setups from UI → write to /app/data/.kube/ on the data volume
@@ -36,20 +36,20 @@ docker run -d --name "$NAME" \
     \
     -v aziro-data:/app/data \
     \
-    -v "$HOME/.kube:/root/.host-kube:ro" \
-    -v "$HOME/.aws:/root/.host-aws:ro" \
-    -v "$HOME/.config/gcloud:/root/.host-gcloud:ro" \
-    -v "$HOME/.azure:/root/.host-azure:ro" \
-    -v "$HOME/.ssh:/root/.ssh:ro" \
+    -v "$HOME/.kube:/home/aziro/.host-kube:ro" \
+    -v "$HOME/.aws:/home/aziro/.host-aws:ro" \
+    -v "$HOME/.config/gcloud:/home/aziro/.host-gcloud:ro" \
+    -v "$HOME/.azure:/home/aziro/.host-azure:ro" \
+    -v "$HOME/.ssh:/home/aziro/.ssh:ro" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     \
     -e AZIRO_DATA_DIR=/app/data \
     -e AZIRO_KEY_FILE=/app/data/.aziro_key \
-    -e "KUBECONFIG=/root/.host-kube/config:/app/data/.kube/config" \
-    -e AWS_SHARED_CREDENTIALS_FILE=/root/.host-aws/credentials \
-    -e AWS_CONFIG_FILE=/root/.host-aws/config \
-    -e CLOUDSDK_CONFIG=/root/.host-gcloud \
-    -e AZURE_CONFIG_DIR=/root/.host-azure \
+    -e "KUBECONFIG=/home/aziro/.host-kube/config:/app/data/.kube/config" \
+    -e AWS_SHARED_CREDENTIALS_FILE=/home/aziro/.host-aws/credentials \
+    -e AWS_CONFIG_FILE=/home/aziro/.host-aws/config \
+    -e CLOUDSDK_CONFIG=/home/aziro/.host-gcloud \
+    -e AZURE_CONFIG_DIR=/home/aziro/.host-azure \
     \
     --add-host=host.docker.internal:host-gateway \
     --env-file .env \

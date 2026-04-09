@@ -102,7 +102,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates openssh-client git \
         procps net-tools iproute2 iputils-ping dnsutils \
-        traceroute nmap ncat sysstat \
+        traceroute sysstat \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Copy CLIs from parallel build stages ─────────────────────────────────────
@@ -129,10 +129,17 @@ COPY --from=python-deps /app/venv /app/venv
 ENV PATH="/app/venv/bin:/usr/lib/google-cloud-sdk/bin:$PATH"
 
 COPY . .
-RUN mkdir -p /app/data
+
+# ── Non-root user — runs the app with reduced privileges ────────────────────
+RUN groupadd -r aziro && useradd -r -g aziro -d /home/aziro -s /bin/false aziro && \
+    mkdir -p /home/aziro /app/data && \
+    chown -R aziro:aziro /app /home/aziro
+ENV HOME=/home/aziro
 
 ENV AZIRO_DATA_DIR=/app/data
 ENV AZIRO_KEY_FILE=/app/data/.aziro_key
+
+USER aziro
 
 EXPOSE 5000
 

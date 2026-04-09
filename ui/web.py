@@ -213,10 +213,21 @@ def api_models():
     }})
 
 
+_MODEL_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_./:@-]{0,127}$")
+
+
 @app.route("/api/v1/models", methods=["PUT"])
 def api_set_models():
     """Change AI models at runtime (no restart needed)."""
     d = request.json or {}
+
+    def _valid_model(v):
+        return isinstance(v, str) and _MODEL_RE.match(v)
+
+    for key in ("tool_model", "answer_model", "ai_model"):
+        if key in d and not _valid_model(d[key]):
+            return jsonify({"error": f"invalid model string for '{key}'"}), 400
+
     if "tool_model" in d:
         _llm.tool_model = d["tool_model"]
     if "answer_model" in d:
@@ -260,6 +271,9 @@ def api_list():
     return jsonify(_targets.load_safe())
 
 
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
 def _persist_inline_content(tid, config):
     """Write pasted credential content to files on the data volume.
 
@@ -268,6 +282,9 @@ def _persist_inline_content(tid, config):
     """
     data_dir = os.environ.get("AZIRO_DATA_DIR", "")
     if not data_dir:
+        return
+
+    if not _UUID_RE.match(str(tid)):
         return
 
     # Kubeconfig content → /app/data/creds/<tid>/kubeconfig
