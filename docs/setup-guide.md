@@ -30,16 +30,23 @@ python3 app.py               # → http://localhost:5000
 
 ### Docker
 
-App runs in a container. Persistent data on a Docker volume. Cloud CLIs baked into the image via multi-stage build.
+App runs in a container. Persistent data on a Docker volume. Cloud CLIs baked into the image via multi-stage parallel build.
 
 ```bash
-docker build -t aziro-ops .
-docker run -d --name aziro-ops \
-  -p 5000:5000 \
-  -v aziro-data:/app/data \
-  --env-file .env \
-  aziro-ops
+# Build (requires docker-buildx plugin)
+DOCKER_BUILDKIT=1 docker build -t aziro-ops .
+
+# Run with the launcher script (recommended — mounts everything upfront)
+chmod +x docker-run.sh
+./docker-run.sh
+
+# Or via Docker Compose
+docker compose up --build
 ```
+
+The launcher script pre-mounts all credential directories and the Docker socket. Directories can be empty — they're live bind mounts, so `aws configure` or `gcloud auth login` on the host is reflected instantly. **No restart needed to add new targets.**
+
+You can also skip host mounts entirely and **paste credentials directly in the UI** (kubeconfig YAML, GCP SA key JSON, SSH private keys, AWS access keys).
 
 ### Key differences
 
@@ -47,9 +54,9 @@ docker run -d --name aziro-ops \
 | ------ | ----- | ------ |
 | Data location | Project root (`./targets.json`, `./aziro.db`) | `/app/data/` volume |
 | Cloud CLIs | Use your system installs | Baked into image (kubectl, aws, gcloud, az, terraform, helm, docker) |
-| Kubeconfig | `~/.kube/config` | Must mount: `-v ~/.kube:/root/.kube:ro` |
-| Cloud creds | `~/.aws`, `~/.config/gcloud`, `~/.azure` | Must mount read-only (see [Docker Reference](#6-docker-reference)) |
-| SSH keys | `~/.ssh/` | Must mount: `-v ~/.ssh:/root/.ssh:ro` |
+| Kubeconfig | `~/.kube/config` | Pre-mounted read-only, or paste content in UI |
+| Cloud creds | `~/.aws`, `~/.config/gcloud`, `~/.azure` | Pre-mounted read-only, or enter keys in UI |
+| SSH keys | `~/.ssh/` | Pre-mounted read-only, or paste key content in UI |
 | Ollama | Reaches `localhost:11434` directly | Needs `OLLAMA_API_BASE=http://host.docker.internal:11434` |
 
 ---
@@ -220,10 +227,32 @@ AZIRO_API_KEY=<generated-key>
 | Name | `my-cluster` | Display name |
 | Type | `kubernetes` | |
 | Context | `kind-kubectl-ai` | From `kubectl config get-contexts` |
+| Kubeconfig content | (paste YAML) | Optional — paste full kubeconfig in UI |
+| Kubeconfig path | `/app/data/.kube/config` | Only if file exists inside container |
 
-**Docker:** Mount kubeconfig: `-v ~/.kube:/root/.kube:ro`
+**Two ways to provide kubeconfig:**
 
-Local clusters (kind, minikube) listen on `127.0.0.1` which is unreachable from Docker. Use `--network host` or `--add-host=host.docker.internal:host-gateway` and edit kubeconfig to replace `127.0.0.1` with `host.docker.internal`.
+1. **Paste in UI** — paste the kubeconfig YAML content directly in the "Kubeconfig content" textarea. The backend writes it to `/app/data/creds/<id>/kubeconfig` on the data volume. No host mounts needed.
+2. **Host mount** — the launcher script pre-mounts `~/.kube` read-only. Host kubeconfig changes are reflected instantly.
+
+**Local clusters (kind, minikube) in Docker:**
+
+These listen on `127.0.0.1` which is unreachable from inside Docker. Fix: put the Aziro container on the same Docker network as the cluster and rewrite the server URL in the kubeconfig.
+
+```bash
+# Example for Kind cluster named "kubectl-ai":
+# 1. Start Aziro on the kind network
+docker run -d --name aziro-ops --network kind -p 5000:5000 ...
+
+# 2. Export kubeconfig with internal hostname
+kubectl config view --minify --raw --flatten -o json | \
+  sed 's|https://127.0.0.1:[0-9]*|https://kubectl-ai-control-plane:6443|' | \
+  docker exec -i aziro-ops sh -c 'mkdir -p /app/data/.kube && cat > /app/data/.kube/config'
+
+# 3. Add target in UI with:
+#    Context: kind-kubectl-ai
+#    Kubeconfig path: /app/data/.kube/config
+```
 
 #### Amazon EKS
 
@@ -240,7 +269,7 @@ Local clusters (kind, minikube) listen on `127.0.0.1` which is unreachable from 
 
 **Local:** Needs `aws` CLI installed + configured (`aws configure` or `~/.aws/credentials`).
 
-**Docker:** Mount AWS creds: `-v ~/.aws:/root/.aws:ro`. The `aws` CLI is baked into the image.
+**Docker:** Pre-mounted by `docker-run.sh`. Or enter explicit access keys in the AWS target config (no mount needed). The `aws` CLI is baked into the image.
 
 #### Google GKE
 
@@ -258,7 +287,7 @@ Local clusters (kind, minikube) listen on `127.0.0.1` which is unreachable from 
 
 **Local:** Needs `gcloud` CLI + `gcloud auth login`.
 
-**Docker:** Mount gcloud tokens: `-v ~/.config/gcloud:/root/.config/gcloud:ro`. Or mount service account JSON and set its path in config.
+**Docker:** Pre-mounted by `docker-run.sh`. Or paste service account JSON in the UI (no mount needed).
 
 #### Azure AKS
 
@@ -275,7 +304,7 @@ Local clusters (kind, minikube) listen on `127.0.0.1` which is unreachable from 
 
 **Local:** Needs `az` CLI + `az login` (interactive browser).
 
-**Docker:** Mount Azure tokens: `-v ~/.azure:/root/.azure:ro`. For headless Docker, use service principal: `az login --service-principal`.
+**Docker:** Pre-mounted by `docker-run.sh`. For headless Docker, use service principal: `az login --service-principal`.
 
 ---
 
@@ -301,8 +330,8 @@ Local clusters (kind, minikube) listen on `127.0.0.1` which is unreachable from 
 
 **Docker:**
 - Password auth: Works without any mounts.
-- Key auth: Mount SSH keys: `-v ~/.ssh:/root/.ssh:ro`
-- If `key_path` points to a host file, it won't exist inside the container.
+- Key auth: Pre-mounted by `docker-run.sh`, or paste private key content in the UI.
+- To SSH into the Docker host itself: use `host.docker.internal` as the hostname (the launcher adds `--add-host` for this).
 
 **Connection:** Uses Paramiko (Python SSH library), not the `ssh` CLI binary. 10s connection timeout, 30s command timeout.
 
@@ -359,13 +388,14 @@ Local clusters (kind, minikube) listen on `127.0.0.1` which is unreachable from 
 | Project | `my-project-id` | GCP project ID |
 | Region | `us-central1` | Default region |
 | Zone | `us-central1-a` | Optional — overrides region |
-| Service Account Key File | `/path/to/key.json` | Optional — for service account auth |
+| Service Account Key JSON | (paste JSON content) | Optional — paste in UI, saved to data volume |
+| SA Key File path | `/path/to/key.json` | Only if file exists inside container |
 
 **Auth:** User login (`gcloud auth login`) or service account JSON.
 
 **Local:** `gcloud auth login` + `gcloud config set project my-project`.
 
-**Docker:** Mount: `-v ~/.config/gcloud:/root/.config/gcloud:ro`. Or mount service account key and set path.
+**Docker:** Pre-mounted by `docker-run.sh`. Or paste service account key JSON directly in the UI (no mount needed).
 
 ---
 
@@ -414,6 +444,8 @@ Local clusters (kind, minikube) listen on `127.0.0.1` which is unreachable from 
 | `chat_sessions.json` | Chat session metadata | No — race condition risk |
 | `chat_messages.json` | Chat message history | No — race condition risk |
 | `.aziro_key` | Fernet encryption key (chmod 600) | Read-only after creation |
+| `creds/<tid>/` | Inline credentials pasted via UI | Written once per target |
+| `.kube/config` | Container-generated kubeconfig | Written by EKS/GKE/AKS setup |
 
 ### Path resolution
 
@@ -449,12 +481,12 @@ tar czf aziro-backup.tar.gz targets.json aziro.db chat_*.json .aziro_key
 
 ### Dockerfile architecture (multi-stage parallel build)
 
-```
+```text
 ┌──────────── PARALLEL (BuildKit) ─────────────┐
 │  cli-kubectl    alpine + wget       ~50 MB    │
 │  cli-aws        python-slim + zip   ~60 MB    │
 │  cli-gcloud     google/cloud-sdk    ~180 MB   │
-│  cli-azure      mcr.ms/azure-cli    ~250 MB   │
+│  cli-azure      pip install azure   ~200 MB   │
 │  cli-terraform  alpine + wget       ~80 MB    │
 │  cli-helm       alpine + wget       ~50 MB    │
 │  cli-docker     alpine + wget       ~60 MB    │
@@ -474,36 +506,28 @@ tar czf aziro-backup.tar.gz targets.json aziro.db chat_*.json .aziro_key
 
 **Requires:** Docker with BuildKit (`docker-buildx` plugin).
 
-### Volume mounts
+### Volume mount architecture
+
+The launcher script (`docker-run.sh`) and `docker-compose.yml` mount everything upfront so you never need to restart the container to add targets:
 
 ```bash
-docker run -d --name aziro-ops \
-  -p 5000:5000 \
-  -v aziro-data:/app/data \
-  \
-  # Kubernetes (required for K8s targets)
-  -v ~/.kube:/root/.kube:ro \
-  \
-  # Cloud credentials (uncomment what you use)
-  -v ~/.aws:/root/.aws:ro \
-  -v ~/.config/gcloud:/root/.config/gcloud:ro \
-  -v ~/.azure:/root/.azure:ro \
-  \
-  # SSH keys (for key-based SSH targets)
-  -v ~/.ssh:/root/.ssh:ro \
-  \
-  # Docker socket (for Docker targets)
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  \
-  # Terraform workspace (for Terraform targets)
-  -v /path/to/tf:/tf:ro \
-  \
-  # Host network access (for local clusters)
-  --add-host=host.docker.internal:host-gateway \
-  \
-  --env-file .env \
-  aziro-ops
+# Host credentials → mounted read-only at /root/.host-*
+~/.kube           → /root/.host-kube:ro      # Kubernetes kubeconfig
+~/.aws            → /root/.host-aws:ro       # AWS credentials
+~/.config/gcloud  → /root/.host-gcloud:ro    # GCP tokens
+~/.azure          → /root/.host-azure:ro     # Azure tokens
+~/.ssh            → /root/.ssh:ro            # SSH keys
+/var/run/docker.sock → /var/run/docker.sock   # Docker daemon
+
+# Cloud CLIs pointed to host mounts via env vars:
+KUBECONFIG=/root/.host-kube/config:/app/data/.kube/config
+AWS_SHARED_CREDENTIALS_FILE=/root/.host-aws/credentials
+AWS_CONFIG_FILE=/root/.host-aws/config
+CLOUDSDK_CONFIG=/root/.host-gcloud
+AZURE_CONFIG_DIR=/root/.host-azure
 ```
+
+**Key design:** Host kubeconfig is read-only. When cloud setup commands (EKS/GKE/AKS) generate new kubeconfig entries, they write to `/app/data/.kube/config` on the data volume. The `KUBECONFIG` env var merges both.
 
 ### Docker Compose
 
@@ -511,23 +535,37 @@ docker run -d --name aziro-ops \
 docker compose up --build     # requires docker-buildx plugin
 ```
 
-### What breaks in Docker vs local
+### Adding targets without host mounts
 
-| Target | Local | Docker | Fix |
-| ------ | ----- | ------ | --- |
-| K8s (local cluster) | Works | Cannot reach 127.0.0.1 | `--network host` or edit kubeconfig |
-| K8s (EKS) | Works | Needs AWS creds | Mount `~/.aws` |
-| K8s (GKE) | Works | Needs GCP creds | Mount `~/.config/gcloud` |
-| K8s (AKS) | Works | Needs Azure creds | Mount `~/.azure` |
-| SSH (password) | Works | Works | None |
-| SSH (key) | Works | Key file missing | Mount `~/.ssh` |
-| Docker (local) | Works | No socket | Mount `/var/run/docker.sock` |
-| AWS (profile) | Works | Creds missing | Mount `~/.aws` |
-| AWS (explicit keys) | Works | Works | None (env vars) |
-| GCP (user login) | Works | Tokens missing | Mount `~/.config/gcloud` |
-| Azure (az login) | Works | Interactive fails | Mount `~/.azure` or use service principal |
-| Terraform | Works | Workspace missing | Mount workspace directory |
-| Ollama | Works | Can't reach localhost | Set `OLLAMA_API_BASE=http://host.docker.internal:11434` |
+You can skip host mounts entirely. The UI accepts inline credentials:
+
+| Credential | How |
+| ---------- | --- |
+| Kubeconfig | Paste YAML in "Kubeconfig content" textarea |
+| GCP SA key | Paste JSON in "Service Account Key JSON" textarea |
+| SSH key | Paste private key content in "Private Key" field |
+| AWS keys | Enter Access Key ID + Secret Access Key |
+
+These are written to `/app/data/creds/<target-id>/` on the volume and encrypted at rest.
+
+### What works in Docker
+
+| Target | Mount approach | Inline approach (no mount) |
+| ------ | -------------- | -------------------------- |
+| K8s (local cluster) | `--network kind` + rewrite kubeconfig | Paste kubeconfig with internal hostname |
+| K8s (EKS) | Pre-mounted `~/.aws` | Enter access key + secret in UI |
+| K8s (GKE) | Pre-mounted `~/.config/gcloud` | Paste SA key JSON in UI |
+| K8s (AKS) | Pre-mounted `~/.azure` | Service principal creds |
+| SSH (password) | Works out of the box | Works out of the box |
+| SSH (key) | Pre-mounted `~/.ssh` | Paste key content in UI |
+| Docker (local) | Pre-mounted socket | N/A — socket always needed |
+| Docker (remote) | Works out of the box | Works out of the box |
+| AWS (profile) | Pre-mounted `~/.aws` | Enter keys in UI |
+| AWS (explicit keys) | Works out of the box | Works out of the box |
+| GCP | Pre-mounted `~/.config/gcloud` | Paste SA key JSON in UI |
+| Azure | Pre-mounted `~/.azure` | Service principal creds |
+| Terraform | Mount workspace dir | N/A — needs filesystem |
+| Ollama | N/A | Set `OLLAMA_API_BASE=http://host.docker.internal:11434` |
 
 ---
 
@@ -536,6 +574,7 @@ docker compose up --build     # requires docker-buildx plugin
 ### "Failed to load events — is the backend running?"
 
 Frontend can't reach the API. Causes:
+
 1. **AZIRO_API_KEY set but frontend not rebuilt** — The backend injects the key into `index.html`. Rebuild frontend: `cd frontend && npm run build`.
 2. **Container not running** — `docker ps` to check.
 3. **Port not mapped** — Ensure `-p 5000:5000`.
@@ -547,8 +586,9 @@ The `aws` CLI is missing. In Docker, it's baked into the image via multi-stage b
 ### "connection refused" (kind/minikube from Docker)
 
 Local clusters listen on `127.0.0.1` which is the container's loopback, not the host's. Options:
+
+- Put Aziro on the same Docker network as the cluster (`--network kind`) and rewrite the kubeconfig server URL to the control plane container hostname (see [Local kubeconfig](#local-kubeconfig-kind-minikube-docker-desktop))
 - Use `--network host` (Linux only)
-- Use `--add-host=host.docker.internal:host-gateway` and update kubeconfig server URL
 
 ### "Ollama is not running"
 

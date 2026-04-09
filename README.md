@@ -225,72 +225,65 @@ Requires Node.js 18+.
 
 ## Docker
 
-### Requirements
+### Multi-stage parallel build
 
-The Docker image includes:
+The Dockerfile uses 8 parallel BuildKit stages — each CLI downloads concurrently, then only the binaries are copied into the final slim image.
 
-| Component | Size impact | Why |
-| --------- | ----------- | --- |
-| `python:3.12-slim` | ~150 MB | Base runtime |
-| `pip` dependencies (Flask, LiteLLM, Paramiko, Cryptography) | ~120 MB | Backend |
-| `kubectl` | ~50 MB | Kubernetes target support |
-| `openssh-client` | ~5 MB | SSH target support |
-| `curl` | ~5 MB | Healthcheck |
-| Pre-built React SPA (`frontend_dist/`) | ~2 MB | Frontend |
-| **Total image size** | **~330 MB** | |
+```text
+┌──────────── PARALLEL (BuildKit) ─────────────┐
+│  cli-kubectl    static binary       ~50 MB    │
+│  cli-aws        AWS CLI v2 zip      ~60 MB    │
+│  cli-gcloud     google/cloud-sdk    ~180 MB   │
+│  cli-azure      pip install azure   ~200 MB   │
+│  cli-terraform  static binary       ~80 MB    │
+│  cli-helm       static binary       ~50 MB    │
+│  cli-docker     static binary       ~60 MB    │
+│  python-deps    venv + pip          ~30 MB    │
+└──────────────────────────────────────────────┘
+                      │ COPY --from=*
+                      ▼
+┌──────────── FINAL (python:3.12-slim) ────────┐
+│  System tools (ps, df, ip, dig, etc.)        │
+│  All CLI binaries from above                 │
+│  Python venv + app code + pre-built SPA      │
+│  Total: ~800 MB                              │
+└──────────────────────────────────────────────┘
+```
 
-The image does **not** include: Node.js, frontend source, tests, or Ollama. If using Ollama, run it separately on the host or as a sidecar container.
+**Requires:** Docker with BuildKit (`docker-buildx` plugin).
+
+The image does **not** include: Node.js, frontend source, tests, or Ollama. If using Ollama, run it on the host (see below).
 
 ### Build and run
 
 ```bash
-# Build
-docker build -t aziro-ops .
+# Build (~2-3 min cold, <30s warm cache)
+DOCKER_BUILDKIT=1 docker build -t aziro-ops .
 
-# Run (minimal)
-docker run -d --name aziro-ops \
-  -p 5000:5000 \
-  -v aziro-data:/app/data \
-  --env-file .env \
-  aziro-ops
+# Run with the launcher script (mounts everything upfront)
+chmod +x docker-run.sh
+./docker-run.sh
 
-# Run with cloud credentials (optional — mount what you need)
-docker run -d --name aziro-ops \
-  -p 5000:5000 \
-  -v aziro-data:/app/data \
-  -v ~/.kube:/home/aziro/.kube:ro \
-  -v ~/.aws:/home/aziro/.aws:ro \
-  -v ~/.config/gcloud:/home/aziro/.config/gcloud:ro \
-  --env-file .env \
-  aziro-ops
-```
-
-### Using with Ollama
-
-Ollama runs outside the container. Connect them via host networking:
-
-```bash
-# Start Ollama on the host
-ollama serve
-
-# Run Aziro Ops with access to host network
-docker run -d --name aziro-ops \
-  -p 5000:5000 \
-  -v aziro-data:/app/data \
-  --env-file .env \
-  -e OLLAMA_API_BASE=http://host.docker.internal:11434 \
-  aziro-ops
-```
-
-On Linux, use `--add-host=host.docker.internal:host-gateway` if `host.docker.internal` doesn't resolve.
-
-### Docker Compose
-
-```bash
+# Or via Docker Compose
 docker compose up --build
 ```
 
-See [`docker-compose.yml`](docker-compose.yml) for the full configuration.
+The launcher script and compose file pre-mount all credential directories (kubeconfig, AWS, GCP, Azure, SSH, Docker socket). Directories can be empty at start — they're live bind mounts, so any credentials you add on the host (e.g. `aws configure`, `gcloud auth login`) appear inside the container instantly. **No restart needed to add new targets.**
+
+Alternatively, you can skip host mounts entirely and **paste credentials directly in the UI** (kubeconfig content, GCP service account JSON, SSH private keys, AWS access keys). These are written to the data volume and encrypted at rest.
+
+### Using with Ollama
+
+Ollama runs on the host, not in the container:
+
+```bash
+ollama serve                   # on the host
+
+# Add to .env:
+OLLAMA_API_BASE=http://host.docker.internal:11434
+```
+
+On Linux, the launcher script adds `--add-host=host.docker.internal:host-gateway` automatically.
 
 ### Persistent data
 
@@ -303,8 +296,12 @@ All state is stored in the `/app/data` volume:
 | `chat_sessions.json` | Chat session metadata |
 | `chat_messages.json` | Chat message history |
 | `aziro.db` | SQLite event store (incidents, snapshots, AI analyses) |
+| `creds/<tid>/` | Inline credentials pasted via UI (kubeconfig, SA keys) |
+| `.kube/config` | Container-generated kubeconfig (from EKS/GKE/AKS setup) |
 
 > **Backup:** `docker run --rm -v aziro-data:/data -v $(pwd):/backup alpine tar czf /backup/aziro-backup.tar.gz /data`
+
+See [`docs/setup-guide.md`](docs/setup-guide.md) for the full Docker reference, target connection guide, and troubleshooting.
 
 ---
 
