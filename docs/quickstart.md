@@ -88,8 +88,16 @@ Click **+ Add Target** in the sidebar.
 
 1. Select **Local / kubeconfig**
 2. Enter a name and your kubectl context (run `kubectl config get-contexts` to see them)
-3. In Docker: paste your kubeconfig YAML in the **Kubeconfig content** field
-4. Save
+3. Save
+
+**Docker + local cluster?** Run this once on the host first:
+
+```bash
+chmod 644 ~/.kube/config
+kubectl config set-cluster <cluster-name> --server=https://host.docker.internal:6443 --insecure-skip-tls-verify=true
+```
+
+Cloud clusters (EKS/GKE/AKS) work without any extra steps.
 
 ### SSH server
 

@@ -263,24 +263,26 @@ AZIRO_API_KEY=<generated-key>
 1. **Paste in UI** — paste the kubeconfig YAML content directly in the "Kubeconfig content" textarea. The backend writes it to `/app/data/creds/<id>/kubeconfig` on the data volume. No host mounts needed.
 2. **Host mount** — the launcher script pre-mounts `~/.kube` read-only. Host kubeconfig changes are reflected instantly.
 
-**Local clusters (kind, minikube) in Docker:**
+**Local clusters (kind, minikube, kubeadm, k3s) in Docker:**
 
-These listen on `127.0.0.1` which is unreachable from inside Docker. Fix: put the Aziro container on the same Docker network as the cluster and rewrite the server URL in the kubeconfig.
+These listen on `127.0.0.1` which is unreachable from inside Docker. The simplest fix is to rewrite the server URL to `host.docker.internal` and skip TLS verification (the cert won't include that hostname):
 
 ```bash
-# Example for Kind cluster named "kubectl-ai":
-# 1. Start Aziro on the kind network
-docker run -d --name aziro-ops --network kind -p 5000:5000 ...
-
-# 2. Export kubeconfig with internal hostname
-kubectl config view --minify --raw --flatten -o json | \
-  sed 's|https://127.0.0.1:[0-9]*|https://kubectl-ai-control-plane:6443|' | \
-  docker exec -i aziro-ops sh -c 'mkdir -p /app/data/.kube && cat > /app/data/.kube/config'
-
-# 3. Add target in UI with:
-#    Context: kind-kubectl-ai
-#    Kubeconfig path: /app/data/.kube/config
+# Run once on the host — persists in ~/.kube/config
+kubectl config set-cluster <cluster-name> --server=https://host.docker.internal:6443 --insecure-skip-tls-verify=true
 ```
+
+Replace `<cluster-name>` with your cluster name (run `kubectl config get-clusters` to check). No container restart needed — kubeconfig is a live bind mount.
+
+Then add the target in the UI with just the **Context** field filled in.
+
+**Kubeconfig permissions:** The container runs as a non-root `aziro` user. If your `~/.kube/config` has `600` permissions, the container can't read it. Fix:
+
+```bash
+chmod 644 ~/.kube/config
+```
+
+**Alternative — paste in UI:** Instead of fixing host permissions, paste the kubeconfig YAML directly in the UI's **Kubeconfig content** field. Run `kubectl config view --minify --raw --flatten` to get it. Remember to change `127.0.0.1` to `host.docker.internal` in the pasted YAML.
 
 #### Amazon EKS
 
@@ -613,12 +615,31 @@ Frontend can't reach the API. Causes:
 
 The `aws` CLI is missing. In Docker, it's baked into the image via multi-stage build. If using an old image, rebuild: `docker build -t aziro-ops .`
 
-### "connection refused" (kind/minikube from Docker)
+### "connection refused" (local cluster from Docker)
 
-Local clusters listen on `127.0.0.1` which is the container's loopback, not the host's. Options:
+Local clusters listen on `127.0.0.1` which is the container's loopback, not the host's. Fix:
 
-- Put Aziro on the same Docker network as the cluster (`--network kind`) and rewrite the kubeconfig server URL to the control plane container hostname (see [Local kubeconfig](#local-kubeconfig-kind-minikube-docker-desktop))
-- Use `--network host` (Linux only)
+```bash
+kubectl config set-cluster <cluster-name> --server=https://host.docker.internal:6443 --insecure-skip-tls-verify=true
+```
+
+No container restart needed. See [Local kubeconfig](#local-kubeconfig-kind-minikube-docker-desktop) for details.
+
+### "tls: failed to verify certificate: x509: certificate is valid for ... not host.docker.internal"
+
+The K8s API server cert doesn't include `host.docker.internal` in its SAN list. Fix:
+
+```bash
+kubectl config set-cluster <cluster-name> --insecure-skip-tls-verify=true
+```
+
+### "permission denied" on kubeconfig
+
+The container runs as non-root user `aziro`. If `~/.kube/config` has `600` permissions, the read-only mount can't be read. Fix:
+
+```bash
+chmod 644 ~/.kube/config
+```
 
 ### "Ollama is not running"
 
