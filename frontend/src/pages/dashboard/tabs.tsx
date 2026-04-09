@@ -4,6 +4,7 @@
 import { useState, useMemo } from 'react';
 import { RingChart, Card, Pre } from './primitives';
 import { KubectlTable, hasKubectlData, serviceTypeColorFn, pvStatusColorFn, type ColorFn } from './tables';
+import { C } from '../../utils/theme';
 
 // ── Overview metric cards ─────────────────────────────────────────────────────
 
@@ -40,8 +41,8 @@ export function OverviewTab({ data }: { data: Record<string, string> }) {
     ? failedRaw.split("\n").filter(Boolean)
     : [];
 
-  const pctColor  = (p: number) => p > 80 ? "#ef4444" : p > 60 ? "#f59e0b" : "#22c55e";
-  const fillColor = (p: number) => p > 80 ? "#ef4444" : p > 60 ? "#f59e0b" : "#22c55e";
+  const pctColor  = (p: number) => p > 80 ? C.status.danger : p > 60 ? C.status.warning : C.status.success;
+  const fillColor = (p: number) => p > 80 ? C.status.danger : p > 60 ? C.status.warning : C.status.success;
 
   return (
     <div style={{ overflowY: "auto", padding: 16, flex: 1 }}>
@@ -53,17 +54,17 @@ export function OverviewTab({ data }: { data: Record<string, string> }) {
           { label: "Disk",       val: diskUsed,       sub: `of ${diskTotal} (${diskPct}%)`, pct: diskPct },
           { label: "Uptime",     val: uptimeStr,      sub: os,                              pct: -1      },
         ].map(card => (
-          <div key={card.label} style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, padding: 16, boxShadow: "0 4px 16px rgba(0,0,0,.35)", display: "flex", alignItems: "center", gap: 14 }}>
+          <div key={card.label} style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, padding: 16, boxShadow: "0 4px 16px rgba(0,0,0,.35)", display: "flex", alignItems: "center", gap: 14 }}>
             {card.pct >= 0
               ? <RingChart pct={card.pct} color={fillColor(card.pct)} size={52} />
-              : <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#6366f118", border: "2px solid #6366f133", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              : <div style={{ width: 52, height: 52, borderRadius: "50%", background: `${C.accent.primary}18`, border: `2px solid ${C.accent.primary}33`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.accent.primary} strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 </div>
             }
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>{card.label}</div>
+              <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>{card.label}</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: card.pct >= 0 ? pctColor(card.pct) : "#7c8cf8", lineHeight: 1 }}>{card.val}</div>
-              <div style={{ fontSize: 10, color: "#64748b", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.sub}</div>
+              <div style={{ fontSize: 10, color: C.text.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.sub}</div>
             </div>
           </div>
         ))}
@@ -73,8 +74,8 @@ export function OverviewTab({ data }: { data: Record<string, string> }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Card title={`Failed Services (${failed.length})`}>
           {failed.length === 0
-            ? <div style={{ color: "#22c55e", fontSize: 13 }}>All services healthy ✓</div>
-            : failed.map((s, i) => <div key={i} style={{ fontSize: 13, color: "#ef4444", marginBottom: 3 }}>• {s}</div>)
+            ? <div style={{ color: C.status.success, fontSize: 13 }}>All services healthy ✓</div>
+            : failed.map((s, i) => <div key={i} style={{ fontSize: 13, color: C.status.danger, marginBottom: 3 }}>• {s}</div>)
           }
         </Card>
         <Card title="Top Processes">
@@ -92,9 +93,9 @@ export function OverviewTab({ data }: { data: Record<string, string> }) {
  *  collapsible Card with a `<Pre>` body. Used as the default route in
  *  Dashboard's TabContent when no specialized component exists. */
 export function GenericTab({ data }: { data: Record<string, string> }) {
-  if (data.error) return <div style={{ padding: 20, color: "#ef4444" }}>{data.error}</div>;
+  if (data.error) return <div style={{ padding: 20, color: C.status.danger }}>{data.error}</div>;
   const entries = Object.entries(data);
-  if (!entries.length) return <div style={{ padding: 20, color: "#64748b" }}>No data</div>;
+  if (!entries.length) return <div style={{ padding: 20, color: C.text.muted }}>No data</div>;
   return (
     <div style={{ overflowY: "auto", padding: 16, flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
       {entries.map(([key, val]) => (
@@ -114,8 +115,8 @@ export function EventsTab({ data }: { data: Record<string, string> }) {
   const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {
     if (col.toUpperCase() === "TYPE") {
-      if (val === "Warning") return "#f59e0b";
-      if (val === "Normal")  return "#22c55e";
+      if (val === "Warning") return C.status.warning;
+      if (val === "Normal")  return C.status.success;
     }
     return null;
   };
@@ -136,28 +137,28 @@ export function EventsTab({ data }: { data: Record<string, string> }) {
       {/* summary bar */}
       <div style={{
         display: "flex", alignItems: "center", gap: 16, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{counts.total} Events</span>
-        <div style={{ width: 1, height: 20, background: "#2d3148" }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{counts.total} Events</span>
+        <div style={{ width: 1, height: 20, background: C.border.muted }} />
         {counts.warning > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b", animation: "pulse 2s ease-in-out infinite" }} />
-            <span style={{ fontSize: 12, color: "#f59e0b", fontWeight: 600 }}>{counts.warning}</span>
-            <span style={{ fontSize: 11, color: "#64748b" }}>Warning</span>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.warning, animation: "pulse 2s ease-in-out infinite" }} />
+            <span style={{ fontSize: 12, color: C.status.warning, fontWeight: 600 }}>{counts.warning}</span>
+            <span style={{ fontSize: 11, color: C.text.muted }}>Warning</span>
           </div>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e" }} />
-          <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>{counts.normal}</span>
-          <span style={{ fontSize: 11, color: "#64748b" }}>Normal</span>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.success }} />
+          <span style={{ fontSize: 12, color: C.status.success, fontWeight: 600 }}>{counts.normal}</span>
+          <span style={{ fontSize: 11, color: C.text.muted }}>Normal</span>
         </div>
         {counts.total > 0 && (
           <>
             <div style={{ flex: 1 }} />
-            <div style={{ width: 80, height: 5, borderRadius: 3, background: "#1e2235", overflow: "hidden", display: "flex" }}>
-              <div style={{ width: `${counts.normal / counts.total * 100}%`, background: "#22c55e" }} />
-              <div style={{ width: `${counts.warning / counts.total * 100}%`, background: "#f59e0b" }} />
+            <div style={{ width: 80, height: 5, borderRadius: 3, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
+              <div style={{ width: `${counts.normal / counts.total * 100}%`, background: C.status.success }} />
+              <div style={{ width: `${counts.warning / counts.total * 100}%`, background: C.status.warning }} />
             </div>
           </>
         )}
@@ -190,10 +191,10 @@ export function ServicesTab({ data }: { data: Record<string, string> }) {
   }, [raw]);
 
   const pills = [
-    { label: "LoadBalancer", count: counts.lb,  color: "#818cf8", icon: "🌐" },
-    { label: "NodePort",     count: counts.np,  color: "#06b6d4", icon: "🔗" },
-    { label: "ClusterIP",    count: counts.cip, color: "#64748b", icon: "🔒" },
-    { label: "ExternalName", count: counts.ext, color: "#f59e0b", icon: "↗" },
+    { label: "LoadBalancer", count: counts.lb,  color: C.accent.light, icon: "🌐" },
+    { label: "NodePort",     count: counts.np,  color: C.status.info, icon: "🔗" },
+    { label: "ClusterIP",    count: counts.cip, color: C.text.muted, icon: "🔒" },
+    { label: "ExternalName", count: counts.ext, color: C.status.warning, icon: "↗" },
   ];
 
   return (
@@ -201,10 +202,10 @@ export function ServicesTab({ data }: { data: Record<string, string> }) {
       {/* summary */}
       <div style={{
         display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, flexWrap: "wrap",
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0, flexWrap: "wrap",
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{counts.total} Services</span>
-        <div style={{ width: 1, height: 20, background: "#2d3148" }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{counts.total} Services</span>
+        <div style={{ width: 1, height: 20, background: C.border.muted }} />
         {pills.map(p => p.count > 0 && (
           <div key={p.label} style={{
             display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
@@ -212,7 +213,7 @@ export function ServicesTab({ data }: { data: Record<string, string> }) {
           }}>
             <span style={{ fontSize: 11 }}>{p.icon}</span>
             <span style={{ fontSize: 12, color: p.color, fontWeight: 600 }}>{p.count}</span>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>{p.label}</span>
+            <span style={{ fontSize: 11, color: C.text.secondary }}>{p.label}</span>
           </div>
         ))}
       </div>
@@ -274,17 +275,17 @@ export function parseWorkloadCounts(raw: string, label: string): { total: number
 export function WorkloadsTab({ data }: { data: Record<string, string> }) {
   const readyColor: ColorFn = (val, col) => {
     if (col.toUpperCase() === "READY" || col.toUpperCase() === "AVAILABLE") {
-      if (val.includes("0/") || val === "0") return "#ef4444";
+      if (val.includes("0/") || val === "0") return C.status.danger;
     }
     return null;
   };
 
   const sections: WorkloadCounts[] = useMemo(() => [
-    { label: "Deployments",  key: "deployments",  icon: "🚀", color: "#818cf8", ...parseWorkloadCounts(data.deployments  ?? "", "Deployments")  },
-    { label: "StatefulSets", key: "statefulsets", icon: "🗄",  color: "#06b6d4", ...parseWorkloadCounts(data.statefulsets ?? "", "StatefulSets") },
-    { label: "DaemonSets",   key: "daemonsets",   icon: "🔁", color: "#a78bfa", ...parseWorkloadCounts(data.daemonsets   ?? "", "DaemonSets")   },
-    { label: "ReplicaSets",  key: "replicasets",  icon: "📋", color: "#64748b", ...parseWorkloadCounts(data.replicasets  ?? "", "ReplicaSets")  },
-    { label: "Jobs",         key: "jobs",         icon: "⚡", color: "#f59e0b", ...parseWorkloadCounts(data.jobs         ?? "", "Jobs")         },
+    { label: "Deployments",  key: "deployments",  icon: "🚀", color: C.accent.light, ...parseWorkloadCounts(data.deployments  ?? "", "Deployments")  },
+    { label: "StatefulSets", key: "statefulsets", icon: "🗄",  color: C.status.info, ...parseWorkloadCounts(data.statefulsets ?? "", "StatefulSets") },
+    { label: "DaemonSets",   key: "daemonsets",   icon: "🔁", color: C.accent.soft, ...parseWorkloadCounts(data.daemonsets   ?? "", "DaemonSets")   },
+    { label: "ReplicaSets",  key: "replicasets",  icon: "📋", color: C.text.muted, ...parseWorkloadCounts(data.replicasets  ?? "", "ReplicaSets")  },
+    { label: "Jobs",         key: "jobs",         icon: "⚡", color: C.status.warning, ...parseWorkloadCounts(data.jobs         ?? "", "Jobs")         },
     { label: "CronJobs",     key: "cronjobs",     icon: "🕐", color: "#22d3ee", ...parseWorkloadCounts(data.cronjobs     ?? "", "CronJobs")     },
   ], [data]);
 
@@ -299,37 +300,37 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
       {/* ── Summary bar ────────────────────────────────────────────────── */}
       <div style={{
         display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", marginBottom: 16,
-        background: "#0d1117", border: "1px solid #1e2235", borderRadius: 10,
+        background: C.bg.base, border: `1px solid ${C.border.subtle}`, borderRadius: 10,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 22, fontWeight: 800, color: "#e2e8f0" }}>{totalAll}</span>
-          <span style={{ fontSize: 12, color: "#64748b" }}>Total Workloads</span>
+          <span style={{ fontSize: 22, fontWeight: 800, color: C.text.primary }}>{totalAll}</span>
+          <span style={{ fontSize: 12, color: C.text.muted }}>Total Workloads</span>
         </div>
-        <div style={{ width: 1, height: 24, background: "#2d3148" }} />
+        <div style={{ width: 1, height: 24, background: C.border.muted }} />
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e88" }} />
-          <span style={{ fontSize: 13, color: "#22c55e", fontWeight: 700 }}>{readyAll}</span>
-          <span style={{ fontSize: 11, color: "#64748b" }}>Ready</span>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.status.success, boxShadow: `0 0 6px ${C.status.success}88` }} />
+          <span style={{ fontSize: 13, color: C.status.success, fontWeight: 700 }}>{readyAll}</span>
+          <span style={{ fontSize: 11, color: C.text.muted }}>Ready</span>
         </div>
         {failedAll > 0 && (
           <>
-            <div style={{ width: 1, height: 24, background: "#2d3148" }} />
+            <div style={{ width: 1, height: 24, background: C.border.muted }} />
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 6px #ef444488", animation: "pulse 2s ease-in-out infinite" }} />
-              <span style={{ fontSize: 13, color: "#ef4444", fontWeight: 700 }}>{failedAll}</span>
-              <span style={{ fontSize: 11, color: "#64748b" }}>Not Ready</span>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.status.danger, boxShadow: `0 0 6px ${C.status.danger}88`, animation: "pulse 2s ease-in-out infinite" }} />
+              <span style={{ fontSize: 13, color: C.status.danger, fontWeight: 700 }}>{failedAll}</span>
+              <span style={{ fontSize: 11, color: C.text.muted }}>Not Ready</span>
             </div>
           </>
         )}
         {/* health bar */}
         <div style={{ flex: 1 }} />
-        <div style={{ width: 120, height: 6, borderRadius: 3, background: "#1e2235", overflow: "hidden", display: "flex" }}>
+        <div style={{ width: 120, height: 6, borderRadius: 3, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
           {totalAll > 0 && (
             <>
-              <div style={{ width: `${readyAll / totalAll * 100}%`, background: "#22c55e", transition: "width .5s" }} />
+              <div style={{ width: `${readyAll / totalAll * 100}%`, background: C.status.success, transition: "width .5s" }} />
               <div style={{
                 width: `${failedAll / totalAll * 100}%`,
-                background: "#ef4444",
+                background: C.status.danger,
                 transition: "width .5s",
                 animation: failedAll > 0 ? "pulse 2s ease-in-out infinite" : undefined,
               }} />
@@ -343,44 +344,44 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
         {sections.map(s => {
           const isActive = expanded === s.key;
           const pct = s.total > 0 ? Math.round(s.ready / s.total * 100) : 100;
-          const pctColor = s.notReady > 0 ? "#ef4444" : "#22c55e";
+          const pctColor = s.notReady > 0 ? C.status.danger : C.status.success;
           return (
             <div
               key={s.key}
               onClick={() => setExpanded(isActive ? "" : s.key)}
               style={{
-                background: isActive ? "#12162a" : "#1a1d27",
-                border: `1px solid ${isActive ? s.color + "66" : "#2d3148"}`,
+                background: isActive ? "#12162a" : C.bg.card,
+                border: `1px solid ${isActive ? s.color + "66" : C.border.muted}`,
                 borderRadius: 10, padding: "14px 16px", cursor: "pointer",
                 transition: "all .15s", position: "relative", overflow: "hidden",
                 boxShadow: isActive ? `0 0 20px ${s.color}15` : "none",
               }}
               onMouseEnter={e => { if (!isActive) e.currentTarget.style.borderColor = s.color + "44"; }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = "#2d3148"; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = C.border.muted; }}
             >
               {/* top accent line */}
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.total > 0 ? s.color : "#2d3148" }} />
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.total > 0 ? s.color : C.border.muted }} />
 
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                 <span style={{ fontSize: 18 }}>{s.icon}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{s.label}</span>
-                <span style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{isActive ? "▼" : "▶"}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{s.label}</span>
+                <span style={{ marginLeft: "auto", fontSize: 10, color: C.text.faint }}>{isActive ? "▼" : "▶"}</span>
               </div>
 
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 28, fontWeight: 800, color: s.total > 0 ? s.color : "#475569", lineHeight: 1 }}>
+                <span style={{ fontSize: 28, fontWeight: 800, color: s.total > 0 ? s.color : C.text.faint, lineHeight: 1 }}>
                   {s.total}
                 </span>
                 {s.total > 0 && (
                   <div style={{ display: "flex", gap: 8, fontSize: 11 }}>
-                    <span style={{ color: "#22c55e" }}>✓ {s.ready}</span>
-                    {s.notReady > 0 && <span style={{ color: "#ef4444" }}>✗ {s.notReady}</span>}
+                    <span style={{ color: C.status.success }}>✓ {s.ready}</span>
+                    {s.notReady > 0 && <span style={{ color: C.status.danger }}>✗ {s.notReady}</span>}
                   </div>
                 )}
               </div>
 
               {/* mini progress bar */}
-              <div style={{ height: 3, borderRadius: 2, background: "#2d3148", overflow: "hidden" }}>
+              <div style={{ height: 3, borderRadius: 2, background: C.border.muted, overflow: "hidden" }}>
                 {s.total > 0 && (
                   <div style={{ width: `${pct}%`, height: "100%", background: pctColor, transition: "width .4s" }} />
                 )}
@@ -398,22 +399,22 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
         const hasData = hasKubectlData(raw);
         return (
           <div style={{
-            background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10,
+            background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10,
             overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,.3)",
           }}>
             <div style={{
-              padding: "10px 16px", borderBottom: "1px solid #2d3148",
+              padding: "10px 16px", borderBottom: `1px solid ${C.border.muted}`,
               display: "flex", alignItems: "center", gap: 8,
               background: "#12141f",
             }}>
               <span style={{ fontSize: 14 }}>{s.icon}</span>
               <span style={{ fontSize: 13, fontWeight: 600 }}>{s.label}</span>
-              <span style={{ fontSize: 11, color: "#64748b" }}>· {s.total} resource{s.total !== 1 ? "s" : ""}</span>
+              <span style={{ fontSize: 11, color: C.text.muted }}>· {s.total} resource{s.total !== 1 ? "s" : ""}</span>
             </div>
             <div style={{ overflowX: "auto" }}>
               {hasData
                 ? <KubectlTable raw={raw} colorFn={readyColor} />
-                : <div style={{ padding: 20, color: "#475569", fontSize: 13 }}>No {s.label.toLowerCase()} found</div>
+                : <div style={{ padding: 20, color: C.text.faint, fontSize: 13 }}>No {s.label.toLowerCase()} found</div>
               }
             </div>
           </div>
@@ -451,15 +452,15 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
   }, [data]);
 
   const pills = [
-    { label: "PVCs",    count: counts.pvcs, color: "#818cf8", icon: "📦" },
-    { label: "PVs",     count: counts.pvs,  color: "#06b6d4", icon: "💾" },
-    { label: "Classes", count: counts.sc,   color: "#64748b", icon: "🏷" },
+    { label: "PVCs",    count: counts.pvcs, color: C.accent.light, icon: "📦" },
+    { label: "PVs",     count: counts.pvs,  color: C.status.info, icon: "💾" },
+    { label: "Classes", count: counts.sc,   color: C.text.muted, icon: "🏷" },
   ];
 
   const statusPills = [
-    { label: "Bound",   count: counts.bound,   color: "#22c55e" },
-    { label: "Pending", count: counts.pending,  color: "#f59e0b" },
-    { label: "Lost",    count: counts.lost,     color: "#ef4444" },
+    { label: "Bound",   count: counts.bound,   color: C.status.success },
+    { label: "Pending", count: counts.pending,  color: C.status.warning },
+    { label: "Lost",    count: counts.lost,     color: C.status.danger },
   ];
 
   return (
@@ -467,7 +468,7 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
       {/* summary */}
       <div style={{
         display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, flexWrap: "wrap",
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0, flexWrap: "wrap",
       }}>
         {pills.map(p => (
           <div key={p.label} style={{
@@ -476,17 +477,17 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
           }}>
             <span style={{ fontSize: 11 }}>{p.icon}</span>
             <span style={{ fontSize: 12, color: p.color, fontWeight: 600 }}>{p.count}</span>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>{p.label}</span>
+            <span style={{ fontSize: 11, color: C.text.secondary }}>{p.label}</span>
           </div>
         ))}
         {counts.pvcs > 0 && (
           <>
-            <div style={{ width: 1, height: 20, background: "#2d3148" }} />
+            <div style={{ width: 1, height: 20, background: C.border.muted }} />
             {statusPills.map(s => s.count > 0 && (
               <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.color }} />
                 <span style={{ fontSize: 11, color: s.color, fontWeight: 600 }}>{s.count}</span>
-                <span style={{ fontSize: 10, color: "#64748b" }}>{s.label}</span>
+                <span style={{ fontSize: 10, color: C.text.muted }}>{s.label}</span>
               </div>
             ))}
           </>
@@ -527,23 +528,23 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
       {/* summary */}
       <div style={{
         display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-          background: "#818cf815", border: "1px solid #818cf833", borderRadius: 6,
+          background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: 6,
         }}>
           <span style={{ fontSize: 11 }}>🌐</span>
-          <span style={{ fontSize: 12, color: "#818cf8", fontWeight: 600 }}>{counts.ingresses}</span>
-          <span style={{ fontSize: 11, color: "#94a3b8" }}>Ingresses</span>
+          <span style={{ fontSize: 12, color: C.accent.light, fontWeight: 600 }}>{counts.ingresses}</span>
+          <span style={{ fontSize: 11, color: C.text.secondary }}>Ingresses</span>
         </div>
         <div style={{
           display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-          background: "#64748b15", border: "1px solid #64748b33", borderRadius: 6,
+          background: `${C.text.muted}15`, border: `1px solid ${C.text.muted}33`, borderRadius: 6,
         }}>
           <span style={{ fontSize: 11 }}>🏷</span>
-          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{counts.classes}</span>
-          <span style={{ fontSize: 11, color: "#94a3b8" }}>Classes</span>
+          <span style={{ fontSize: 12, color: C.text.muted, fontWeight: 600 }}>{counts.classes}</span>
+          <span style={{ fontSize: 11, color: C.text.secondary }}>Classes</span>
         </div>
       </div>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -571,10 +572,10 @@ export function NetworkTab({ data }: { data: Record<string, string> }) {
   };
 
   const sections = useMemo(() => [
-    { key: "services",    label: "Services",         icon: "🔗", color: "#818cf8", count: countLines(data.services),    colorFn: serviceTypeColorFn, defaultOpen: true  },
-    { key: "ingresses",   label: "Ingresses",        icon: "🌐", color: "#06b6d4", count: countLines(data.ingresses),   defaultOpen: false },
-    { key: "netpolicies", label: "Network Policies",  icon: "🛡", color: "#a78bfa", count: countLines(data.netpolicies), defaultOpen: false },
-    { key: "endpoints",   label: "Endpoints",         icon: "📍", color: "#64748b", count: countLines(data.endpoints),   defaultOpen: false },
+    { key: "services",    label: "Services",         icon: "🔗", color: C.accent.light, count: countLines(data.services),    colorFn: serviceTypeColorFn, defaultOpen: true  },
+    { key: "ingresses",   label: "Ingresses",        icon: "🌐", color: C.status.info, count: countLines(data.ingresses),   defaultOpen: false },
+    { key: "netpolicies", label: "Network Policies",  icon: "🛡", color: C.accent.soft, count: countLines(data.netpolicies), defaultOpen: false },
+    { key: "endpoints",   label: "Endpoints",         icon: "📍", color: C.text.muted, count: countLines(data.endpoints),   defaultOpen: false },
   ].filter(s => data[s.key]), [data]);
 
   const preItems = useMemo(() => [
@@ -589,7 +590,7 @@ export function NetworkTab({ data }: { data: Record<string, string> }) {
       {/* summary */}
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0, flexWrap: "wrap",
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0, flexWrap: "wrap",
       }}>
         {sections.map(s => (
           <div key={s.key} style={{
@@ -598,7 +599,7 @@ export function NetworkTab({ data }: { data: Record<string, string> }) {
           }}>
             <span style={{ fontSize: 11 }}>{s.icon}</span>
             <span style={{ fontSize: 12, color: s.color, fontWeight: 600 }}>{s.count}</span>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>{s.label}</span>
+            <span style={{ fontSize: 11, color: C.text.secondary }}>{s.label}</span>
           </div>
         ))}
       </div>
@@ -626,9 +627,9 @@ export function DockerContainersTab({ data }: { data: Record<string, string> }) 
   const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {
     if (col.toUpperCase() === "STATUS") {
-      if (/^Up/i.test(val))    return "#22c55e";
-      if (/Exited/i.test(val)) return "#ef4444";
-      if (/Paused/i.test(val)) return "#f59e0b";
+      if (/^Up/i.test(val))    return C.status.success;
+      if (/Exited/i.test(val)) return C.status.danger;
+      if (/Paused/i.test(val)) return C.status.warning;
     }
     return null;
   };
@@ -649,24 +650,24 @@ export function DockerContainersTab({ data }: { data: Record<string, string> }) 
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{counts.total} Containers</span>
-        <div style={{ width: 1, height: 20, background: "#2d3148" }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{counts.total} Containers</span>
+        <div style={{ width: 1, height: 20, background: C.border.muted }} />
         {counts.up > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e" }} />
-          <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>{counts.up}</span>
-          <span style={{ fontSize: 11, color: "#64748b" }}>Running</span>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.success }} />
+          <span style={{ fontSize: 12, color: C.status.success, fontWeight: 600 }}>{counts.up}</span>
+          <span style={{ fontSize: 11, color: C.text.muted }}>Running</span>
         </div>}
         {counts.exited > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", animation: "pulse 2s ease-in-out infinite" }} />
-          <span style={{ fontSize: 12, color: "#ef4444", fontWeight: 600 }}>{counts.exited}</span>
-          <span style={{ fontSize: 11, color: "#64748b" }}>Exited</span>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.danger, animation: "pulse 2s ease-in-out infinite" }} />
+          <span style={{ fontSize: 12, color: C.status.danger, fontWeight: 600 }}>{counts.exited}</span>
+          <span style={{ fontSize: 11, color: C.text.muted }}>Exited</span>
         </div>}
         {counts.paused > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} />
-          <span style={{ fontSize: 12, color: "#f59e0b", fontWeight: 600 }}>{counts.paused}</span>
-          <span style={{ fontSize: 11, color: "#64748b" }}>Paused</span>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.warning }} />
+          <span style={{ fontSize: 12, color: C.status.warning, fontWeight: 600 }}>{counts.paused}</span>
+          <span style={{ fontSize: 11, color: C.text.muted }}>Paused</span>
         </div>}
       </div>
       <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No containers running" />
@@ -685,15 +686,15 @@ export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-          background: "#818cf815", border: "1px solid #818cf833", borderRadius: 6,
+          background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: 6,
         }}>
           <span style={{ fontSize: 11 }}>💾</span>
-          <span style={{ fontSize: 12, color: "#818cf8", fontWeight: 600 }}>{count}</span>
-          <span style={{ fontSize: 11, color: "#94a3b8" }}>Volumes</span>
+          <span style={{ fontSize: 12, color: C.accent.light, fontWeight: 600 }}>{count}</span>
+          <span style={{ fontSize: 11, color: C.text.secondary }}>Volumes</span>
         </div>
       </div>
       <KubectlTable raw={raw} emptyMessage="No Docker volumes" />
@@ -712,15 +713,15 @@ export function DockerImagesTab({ data }: { data: Record<string, string> }) {
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-          background: "#06b6d415", border: "1px solid #06b6d433", borderRadius: 6,
+          background: `${C.status.info}15`, border: `1px solid ${C.status.info}33`, borderRadius: 6,
         }}>
           <span style={{ fontSize: 11 }}>📦</span>
-          <span style={{ fontSize: 12, color: "#06b6d4", fontWeight: 600 }}>{count}</span>
-          <span style={{ fontSize: 11, color: "#94a3b8" }}>Images</span>
+          <span style={{ fontSize: 12, color: C.status.info, fontWeight: 600 }}>{count}</span>
+          <span style={{ fontSize: 11, color: C.text.secondary }}>Images</span>
         </div>
       </div>
       <KubectlTable raw={raw} emptyMessage="No Docker images" />
@@ -737,9 +738,9 @@ export function DockerStatsTab({ data }: { data: Record<string, string> }) {
     const upper = col.toUpperCase();
     if (upper === "CPU %" || upper === "MEM %") {
       const pct = parseFloat(val);
-      if (pct > 80) return "#ef4444";
-      if (pct > 50) return "#f59e0b";
-      if (pct > 0)  return "#22c55e";
+      if (pct > 80) return C.status.danger;
+      if (pct > 50) return C.status.warning;
+      if (pct > 0)  return C.status.success;
     }
     return null;
   };
@@ -747,10 +748,10 @@ export function DockerStatsTab({ data }: { data: Record<string, string> }) {
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
-        background: "#0b0d14", borderBottom: "1px solid #1e2235", flexShrink: 0,
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>📊 Container Stats</span>
-        <span style={{ fontSize: 11, color: "#475569" }}>CPU & memory usage (live snapshot)</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>📊 Container Stats</span>
+        <span style={{ fontSize: 11, color: C.text.faint }}>CPU & memory usage (live snapshot)</span>
       </div>
       <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No container stats available" />
     </div>

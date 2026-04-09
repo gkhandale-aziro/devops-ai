@@ -90,7 +90,7 @@ tightening) is highest-leverage lowest-risk — start there.
 
 - [ ] Tests for remaining tables (NodeTable, PodTable, ResourceModal, LogsTab) — need shared api mock helper
 - [ ] Live verification on VM after each polish batch
-- [ ] Token adoption sweep across `pages/dashboard/*` (use `C` / `SPACE` / `RADIUS` from `theme.ts`)
+- [x] Token adoption sweep across `pages/dashboard/*` — ~200+ hex literals → `C.*` tokens in primitives/tables/tabs
 - [ ] Extract `<PodRow>` memoized row component (enables real `useCallback` win)
 
 ## Done

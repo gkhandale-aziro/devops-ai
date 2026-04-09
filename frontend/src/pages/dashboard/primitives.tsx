@@ -4,6 +4,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { fadeInStyle, skeletonStyle } from "../../utils/animations";
+import { C } from "../../utils/theme";
 
 // ── RingChart — SVG donut ring for metric cards ─────────────────────────────
 
@@ -18,7 +19,7 @@ export function RingChart({ pct, color, size = 52 }: { pct: number; color: strin
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#2d3148" strokeWidth={5} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={C.border.muted} strokeWidth={5} />
         <circle
           cx={size / 2} cy={size / 2} r={r} fill="none"
           stroke={color} strokeWidth={5}
@@ -45,14 +46,14 @@ export function RingChart({ pct, color, size = 52 }: { pct: number; color: strin
 export function PodSummaryBar({ counts }: { counts: { running: number; pending: number; bad: number; total: number } }) {
   const other = counts.total - counts.running - counts.pending - counts.bad;
   const segments = [
-    { label: "Running", count: counts.running, color: "#22c55e" },
-    { label: "Pending", count: counts.pending, color: "#f59e0b" },
-    { label: "Failed",  count: counts.bad,     color: "#ef4444" },
-    ...(other > 0 ? [{ label: "Other", count: other, color: "#64748b" }] : []),
+    { label: "Running", count: counts.running, color: C.status.success },
+    { label: "Pending", count: counts.pending, color: C.status.warning },
+    { label: "Failed",  count: counts.bad,     color: C.status.danger },
+    ...(other > 0 ? [{ label: "Other", count: other, color: C.text.muted }] : []),
   ];
   return (
-    <div style={{ padding: "8px 16px", background: "#0b0d14", borderBottom: "1px solid #1e2235", display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
-      <div style={{ flex: 1, height: 6, borderRadius: 3, background: "#1e2235", display: "flex", overflow: "hidden" }}>
+    <div style={{ padding: "8px 16px", background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 3, background: C.border.subtle, display: "flex", overflow: "hidden" }}>
         {segments.map(seg => seg.count > 0 && (
           <div key={seg.label} style={{
             width: `${seg.count / counts.total * 100}%`,
@@ -65,10 +66,10 @@ export function PodSummaryBar({ counts }: { counts: { running: number; pending: 
         {segments.map(seg => (
           <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: seg.color, display: "inline-block", boxShadow: seg.label === "Running" ? `0 0 5px ${seg.color}88` : "none" }} />
-            <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>{seg.count} {seg.label}</span>
+            <span style={{ fontSize: 11, color: C.text.secondary, fontWeight: 500 }}>{seg.count} {seg.label}</span>
           </div>
         ))}
-        <span style={{ fontSize: 11, color: "#475569" }}>/ {counts.total} total</span>
+        <span style={{ fontSize: 11, color: C.text.faint }}>/ {counts.total} total</span>
       </div>
     </div>
   );
@@ -85,7 +86,7 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
   const [open, setOpen] = useState(defaultOpen);
   const headerId = `card-${title.replace(/\s+/g, "-").toLowerCase()}`;
   return (
-    <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 10, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,.3)" }}>
+    <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,.3)" }}>
       <div
         id={headerId}
         role="button"
@@ -93,15 +94,15 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(o => !o); } }}
-        style={{ padding: "10px 14px", borderBottom: open ? "1px solid #2d3148" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none", transition: "border-bottom-color .25s" }}
+        style={{ padding: "10px 14px", borderBottom: open ? `1px solid ${C.border.muted}` : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none", transition: "border-bottom-color .25s" }}
       >
-        <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#64748b" strokeWidth="1.5"
+        <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={C.text.muted} strokeWidth="1.5"
           style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .2s ease", flexShrink: 0 }}>
           <polyline points="3,1 7,5 3,9" />
         </svg>
         {title}
-        {hint && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>· {hint}</span>}
-        <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>{open ? "▼" : "▶"}</span>
+        {hint && <span style={{ fontSize: 11, color: C.text.muted, fontWeight: 400 }}>· {hint}</span>}
+        <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 10, color: C.text.faint }}>{open ? "▼" : "▶"}</span>
       </div>
       <div
         role="region"
@@ -133,37 +134,37 @@ export function NoTargetEmptyState() {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 0, padding: 40 }}>
       <div style={{ textAlign: "center", maxWidth: 480 }}>
-        <div style={{ width: 56, height: 56, borderRadius: 14, background: "linear-gradient(135deg,#6366f1,#818cf8)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", boxShadow: "0 0 32px #6366f133" }}>
+        <div style={{ width: 56, height: 56, borderRadius: 14, background: `linear-gradient(135deg,${C.accent.primary},${C.accent.light})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", boxShadow: `0 0 32px ${C.accent.primary}33` }}>
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8">
             <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
           </svg>
         </div>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: "#e2e8f0", marginBottom: 8, letterSpacing: "-.3px" }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text.primary, marginBottom: 8, letterSpacing: "-.3px" }}>
           Connect your first target
         </h2>
-        <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.7, marginBottom: 28 }}>
+        <p style={{ fontSize: 13, color: C.text.muted, lineHeight: 1.7, marginBottom: 28 }}>
           Add a Kubernetes cluster, SSH server, Docker host, or cloud account from the sidebar to start monitoring and managing your infrastructure with AI.
         </p>
-        <div style={{ background: "#0f1219", border: "1px solid #1e2235", borderRadius: 10, padding: "16px 20px", textAlign: "left", marginBottom: 24 }}>
-          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 700, marginBottom: 12 }}>Getting started</div>
+        <div style={{ background: C.bg.elevated, border: `1px solid ${C.border.subtle}`, borderRadius: 10, padding: "16px 20px", textAlign: "left", marginBottom: 24 }}>
+          <div style={{ fontSize: 11, color: C.text.faint, textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 700, marginBottom: 12 }}>Getting started</div>
           {[
             "Click + in the sidebar to add a connection",
             "Choose the target type — Kubernetes, SSH, Docker, AWS…",
             "Explore resources, stream logs, and ask AI anything",
           ].map((step, i) => (
             <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: i < 2 ? 10 : 0 }}>
-              <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#1e2240", border: "1px solid #2d3555", color: "#818cf8", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
-              <span style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>{step}</span>
+              <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#1e2240", border: `1px solid ${C.border.strong}`, color: C.accent.light, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+              <span style={{ fontSize: 13, color: C.text.secondary, lineHeight: 1.5 }}>{step}</span>
             </div>
           ))}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {FEATURE_HINTS.map(f => (
-            <div key={f.label} style={{ background: "#0b0d14", border: "1px solid #1e2235", borderRadius: 8, padding: "10px 12px", textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 14, width: 20, flexShrink: 0, color: "#6366f1", fontWeight: 700 }}>{f.icon}</span>
+            <div key={f.label} style={{ background: C.bg.panel, border: `1px solid ${C.border.subtle}`, borderRadius: 8, padding: "10px 12px", textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <span style={{ fontSize: 14, width: 20, flexShrink: 0, color: C.accent.primary, fontWeight: 700 }}>{f.icon}</span>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 2 }}>{f.label}</div>
-                <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.4 }}>{f.desc}</div>
+                <div style={{ fontSize: 11, color: C.text.faint, lineHeight: 1.4 }}>{f.desc}</div>
               </div>
             </div>
           ))}
@@ -187,7 +188,7 @@ export function ContextualHint({ id, children }: { id: string; children: ReactNo
       <span style={{ flex: 1 }}>{children}</span>
       <button onClick={() => { localStorage.setItem(`hint-${id}`, "1"); setDismissed(true); }}
         aria-label="Dismiss tip"
-        style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 14, padding: 2, display: "flex", alignItems: "center" }}>
+        style={{ background: "none", border: "none", color: C.text.faint, cursor: "pointer", fontSize: 14, padding: 2, display: "flex", alignItems: "center" }}>
         <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -204,8 +205,8 @@ export function Pre({ children }: { children: ReactNode }) {
 
 export function LoadingSpinner() {
   return (
-    <div role="status" aria-live="polite" aria-label="Loading" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, color: "#64748b", fontSize: 13 }}>
-      <span aria-hidden="true" style={{ display: "inline-block", width: 16, height: 16, border: "2px solid #2d3148", borderTopColor: "#7c8cf8", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+    <div role="status" aria-live="polite" aria-label="Loading" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, color: C.text.muted, fontSize: 13 }}>
+      <span aria-hidden="true" style={{ display: "inline-block", width: 16, height: 16, border: `2px solid ${C.border.muted}`, borderTopColor: "#7c8cf8", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
       Loading…
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
