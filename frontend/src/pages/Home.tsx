@@ -54,15 +54,6 @@ function Sparkline({ values, color, width = 80, height = 28 }: {
   );
 }
 
-/** Deterministic fake-trend based on a seed value for decorative sparklines */
-function trendData(seed: number, len = 10, direction: "up" | "down" | "flat" = "flat"): number[] {
-  const base = seed || 1;
-  return Array.from({ length: len }, (_, i) => {
-    const noise = Math.sin(i * 1.7 + base) * 0.3 + Math.cos(i * 0.9 + base * 0.3) * 0.2;
-    const trend = direction === "up" ? i * 0.1 : direction === "down" ? -i * 0.1 : 0;
-    return Math.max(0, base + noise + trend);
-  });
-}
 
 export function Home({ targets, monitorActive }: Props) {
   const [recent,   setRecent]   = useState<StoredEvent[]>([]);
@@ -131,7 +122,7 @@ export function Home({ targets, monitorActive }: Props) {
             value={targets.length}
             sub={online > 0 ? `${online} online` : "none online"}
             color="#6366f1"
-            sparkData={trendData(targets.length, 10, targets.length > 2 ? "up" : "flat")}
+
             warn={offline > 0 ? `${offline} offline` : undefined}
             loading={loading}
             icon={
@@ -143,7 +134,7 @@ export function Home({ targets, monitorActive }: Props) {
             value={loading ? "—" : criticals}
             sub="requiring action"
             color={criticals > 0 ? "#f43f5e" : "#22c55e"}
-            sparkData={trendData(criticals + 1, 10, criticals > 0 ? "up" : "down")}
+
             pulse={criticals > 0}
             loading={loading}
             icon={
@@ -155,7 +146,7 @@ export function Home({ targets, monitorActive }: Props) {
             value={loading ? "—" : warnings}
             sub="needs investigation"
             color={warnings > 0 ? "#f59e0b" : "#22c55e"}
-            sparkData={trendData(warnings + 1, 10, warnings > 3 ? "up" : "flat")}
+
             loading={loading}
             icon={
               <AlertCircle size={16} />
@@ -166,7 +157,7 @@ export function Home({ targets, monitorActive }: Props) {
             value={monitorActive ? "Active" : "Idle"}
             sub={monitorActive ? "Watching live events" : "Start to capture events"}
             color={monitorActive ? "#22c55e" : "#64748b"}
-            sparkData={trendData(3, 10, monitorActive ? "up" : "flat")}
+
             pulse={monitorActive}
             loading={false}
             icon={
