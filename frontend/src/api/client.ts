@@ -1,5 +1,6 @@
 import type {
   Target, TargetType, StoredEvent, Stats, ChatSession, TriageLevel,
+  TopologyResponse, SearchResponse,
 } from "../types";
 
 const BASE = "";  // same origin — Vite proxy handles /api in dev
@@ -153,19 +154,12 @@ export const api = {
   // ── Topology ──────────────────────────────────────────────────────────────
   topology: (targetId: string, namespace?: string) => {
     const qs = namespace ? `?namespace=${encodeURIComponent(namespace)}` : "";
-    return req<{
-      deployments: Array<{ namespace: string; name: string; ready: string; available: string }>;
-      pods:        Array<{ namespace: string; name: string; ready: string; status: string; restarts: string }>;
-      services:    Array<{ namespace: string; name: string; type: string; port: string }>;
-      ingresses:   Array<{ namespace: string; name: string; hosts: string }>;
-    }>(`/api/v1/topology/${targetId}${qs}`);
+    return req<TopologyResponse>(`/api/v1/topology/${targetId}${qs}`);
   },
 
   // ── Search ────────────────────────────────────────────────────────────────
   search: (targetId: string, q: string) =>
-    req<{ results: Array<{ kind: string; namespace: string; name: string; status: string }> }>(
-      `/api/v1/search/${targetId}?q=${encodeURIComponent(q)}`
-    ),
+    req<SearchResponse>(`/api/v1/search/${targetId}?q=${encodeURIComponent(q)}`),
 
   // ── Log stream ────────────────────────────────────────────────────────────
   logStreamUrl: (targetId: string, pod: string, namespace: string, container?: string) => {

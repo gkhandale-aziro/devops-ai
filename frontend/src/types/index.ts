@@ -121,6 +121,65 @@ export interface ChatSession {
   updated:   string;
 }
 
+// ── Topology ──────────────────────────────────────────────────────────────────
+
+export interface TopologyDeployment {
+  namespace: string;
+  name:      string;
+  ready:     string;
+  available: string;
+}
+
+export interface TopologyPod {
+  namespace: string;
+  name:      string;
+  ready:     string;
+  status:    string;
+  restarts:  string;
+}
+
+export interface TopologyService {
+  namespace: string;
+  name:      string;
+  type:      string;
+  port:      string;
+}
+
+export interface TopologyIngress {
+  namespace: string;
+  name:      string;
+  hosts:     string;
+}
+
+export interface TopologyResponse {
+  deployments: TopologyDeployment[];
+  pods:        TopologyPod[];
+  services:    TopologyService[];
+  ingresses:   TopologyIngress[];
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+export interface SearchHit {
+  kind:      string;
+  namespace: string;
+  name:      string;
+  status:    string;
+}
+
+export interface SearchResponse {
+  results: SearchHit[];
+}
+
+// ── Pod status ────────────────────────────────────────────────────────────────
+
+/** Known pod phase / waiting-reason values surfaced in `kubectl get pods`. */
+export type PodStatus =
+  | "Running" | "Pending" | "Succeeded" | "Completed" | "Terminating"
+  | "CrashLoopBackOff" | "ImagePullBackOff" | "ErrImagePull"
+  | "CreateContainerConfigError" | "OOMKilled" | "Error" | "Failed"
+  | "Init:Error" | "Unknown";
+
 // ── Tab commands ──────────────────────────────────────────────────────────────
 
 export type TabId =

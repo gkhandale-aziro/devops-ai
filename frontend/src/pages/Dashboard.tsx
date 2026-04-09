@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import type { Target } from "../types";
+import type { Target, TabId } from "../types";
 import { TABS_BY_TYPE }  from "../types";
 import { api }  from "../api/client";
 import { useTargetChat } from "../hooks/useChat";
@@ -7,6 +7,7 @@ import { ChatPanel } from "../components/ChatPanel";
 import { LogStream } from "../components/LogStream";
 import { ResourceGraph } from "../components/ResourceGraph";
 import { BTN_TRANSITION, btnHoverStyle, btnActiveStyle, TAB_TRANSITION, tabHoverStyle, fadeInStyle } from "../utils/animations";
+import { TIMING } from "../utils/theme";
 import {
   NoTargetEmptyState, ContextualHint, SkeletonLoader,
 } from "./dashboard/primitives";
@@ -24,7 +25,7 @@ interface Props {
 }
 
 export function Dashboard({ target }: Props) {
-  const [activeTab, setActiveTab]   = useState<string | null>(null);
+  const [activeTab, setActiveTab]   = useState<TabId | null>(null);
   const [tabData,   setTabData]     = useState<Record<string, string>>({});
   const [tabLoading, setTabLoading] = useState(false);
 
@@ -39,7 +40,7 @@ export function Dashboard({ target }: Props) {
   // Auto-dismiss error toast after 6 seconds
   useEffect(() => {
     if (!errorToast) return;
-    const t = setTimeout(() => setErrorToast(null), 6000);
+    const t = setTimeout(() => setErrorToast(null), TIMING.toastDismiss);
     return () => clearTimeout(t);
   }, [errorToast]);
 
@@ -70,7 +71,7 @@ export function Dashboard({ target }: Props) {
       savedTab === "__topology" ||
       tabs.some(t => t.id === savedTab)
     );
-    setActiveTab(validTab ? savedTab : tabs[0].id);
+    setActiveTab(validTab ? (savedTab as TabId) : tabs[0].id);
     setLastRefreshed(null);
     const savedNs = localStorage.getItem(`dashboard-ns-${target.id}`) ?? "";
     setNsFilter(savedNs);
@@ -356,6 +357,18 @@ interface TabContentProps {
   onRetry?: () => void;
 }
 
+/**
+ * Routes a `tabId` to the correct tab component based on the target's type.
+ *
+ * Special cases handled here (not in the lookup below):
+ * - `loading` → per-tab `SkeletonLoader` variant (cards/table/mixed)
+ * - `null` tabId or missing target → nothing
+ * - `data.error` set → inline error card with a retry button
+ * - Virtual tabs (__chat, __topology) are handled by Dashboard itself and
+ *   never reach this component.
+ *
+ * Add new tabs by mapping `(target.type, tabId)` to a component below.
+ */
 function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: TabContentProps) {
   if (loading) {
     const ttype = target.type;

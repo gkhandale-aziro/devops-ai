@@ -136,7 +136,7 @@ export default function App() {
           </div>
         )}
 
-        {/* P1: Cmd+K Command Palette */}
+        {/* Cmd+K Command Palette */}
         <CommandPalette
           targets={targets}
           activeTarget={activeTarget}

@@ -9,6 +9,15 @@
 
 // ── Colors ─────────────────────────────────────────────────────────────────
 
+/**
+ * Color tokens grouped by purpose.
+ * - `bg.*`     — dark surfaces from deepest (base) to most elevated (active)
+ * - `border.*` — three strengths (subtle, muted, strong)
+ * - `text.*`   — from primary foreground to faint hints
+ * - `accent.*` — indigo/violet brand colors
+ * - `status.*` — semantic (success / warning / danger / info / neutral)
+ * - `error.*`  — error toast/banner surface
+ */
 export const C = {
   // Backgrounds (dark surfaces, lightest → darkest depth order)
   bg: {
@@ -79,4 +88,20 @@ export const RADIUS = {
   lg: 8,
   xl: 12,
   pill: 999,
+} as const;
+
+// ── Timing (ms) ────────────────────────────────────────────────────────────
+
+/**
+ * Animation / auto-dismiss timings used across the app.
+ * - `toastDismiss`    — error toast auto-dismiss window
+ * - `pulse`           — attention-pulse animation period
+ * - `transition`      — default UI transition (hover, expand/collapse)
+ * - `transitionFast`  — snappier hover/focus transitions
+ */
+export const TIMING = {
+  toastDismiss:    6000,
+  pulse:           2000,
+  transition:      300,
+  transitionFast:  150,
 } as const;

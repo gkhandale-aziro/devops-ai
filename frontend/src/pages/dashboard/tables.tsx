@@ -15,7 +15,7 @@ import {
   useState, useEffect, useCallback, useMemo, useRef, useDeferredValue,
   type MouseEvent,
 } from "react";
-import type { Target } from "../../types";
+import type { Target, PodStatus } from "../../types";
 import { api, readSSE } from "../../api/client";
 import { parseKubectl } from "../../utils/parseKubectl";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
@@ -24,6 +24,12 @@ import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 
 const nodeStatusColor = (s: string) => s === "Ready" ? "#22c55e" : "#ef4444";
 
+/**
+ * Cluster node listing — parses `kubectl get nodes` output and renders it as
+ * a clickable table. Row clicks open a ResourceModal with `kubectl describe
+ * node`. Handles both `-A` and `-n <ns>` shaped output (node is cluster-scoped
+ * so no namespace column).
+ */
 export function NodeTable({ raw, target }: { raw: string; target: Target }) {
   const [resource, setResource] = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
   const [loading, setLoading]   = useState(false);
@@ -94,11 +100,36 @@ export function NodeTable({ raw, target }: { raw: string; target: Target }) {
 
 // ── Pod table — module-level constants (hoisted to avoid recreation per render)
 
-const POD_BAD_STATUSES = new Set(["CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff", "ErrImagePull", "CreateContainerError"]);
+/** Statuses considered failing — used for row tint, summary counts, AI badge.
+ *  Typed as Set<string> for .has(arbitraryString) ergonomics, but literal
+ *  values are checked against `PodStatus` via `satisfies`. */
+const POD_BAD_STATUSES: ReadonlySet<string> = new Set([
+  "CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff",
+  "ErrImagePull", "CreateContainerConfigError", "Failed", "Init:Error",
+] satisfies PodStatus[]);
 
-const podStatusColor = (s: string) =>
-  s === "Running" ? "#22c55e" : s.includes("Error") || s.includes("Crash") || s === "OOMKilled" ? "#ef4444" : "#f59e0b";
+/** Maps a pod status string → display color. Accepts any string since kubectl
+ *  may emit values outside the known `PodStatus` union (e.g. custom reasons). */
+const podStatusColor = (s: string): string =>
+  s === "Running" || s === "Succeeded" || s === "Completed" ? "#22c55e"
+  : s.includes("Error") || s.includes("Crash") || s === "OOMKilled" || s === "Failed" ? "#ef4444"
+  : "#f59e0b";
 
+/**
+ * Pod listing with namespace filter, search, AI badge, and modal.
+ *
+ * Features:
+ * - Summary bar (running/pending/bad) derived from `POD_BAD_STATUSES`
+ * - Namespace dropdown (derived from visible rows)
+ * - Full-text search across name/ns/status
+ * - Unhealthy rows get a red tint + left accent (visual polish batch)
+ * - Keyboard nav: ↑/↓ moves focus, Enter opens the ResourceModal
+ * - AI "Diagnose" badge button on bad pods → calls /analyze for a 1-line
+ *   summary, cached per `${ns}/${name}` key
+ *
+ * @param onStreamLogs Optional callback — when set, each row shows a "Logs"
+ *                     button that streams container output to the LogStream tray.
+ */
 export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; onStreamLogs?: (pod: string, ns: string) => void }) {
   const [resource,     setResource]     = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
   const [loading,      setLoading]      = useState(false);
@@ -422,6 +453,12 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
 
 // ── Logs tab ────────────────────────────────────────────────────────────────
 
+/**
+ * Aggregated system logs viewer for ssh/local targets. Parses the multi-line
+ * `raw` string (journalctl / syslog format) and renders it in a scrollable
+ * `<Pre>` with simple level-based colorization. Not used for kubernetes pod
+ * logs — those go through `LogStream` via `onStreamLogs`.
+ */
 export function LogsTab({ raw, target }: { raw: string; target: Target }) {
   const [content,  setContent]  = useState(raw);
   const [selected, setSelected] = useState("");
@@ -510,6 +547,21 @@ export const pvStatusColorFn: ColorFn = (val, col) => {
   return null;
 };
 
+/**
+ * Generic renderer for any kubectl column-aligned output. Splits the raw
+ * text via `parseKubectl` and builds a semantic `<table role="grid">` with
+ * optional per-cell coloring and row click handling.
+ *
+ * Handles three fallback states before parsing:
+ * - Error (TIMEOUT / ERROR / "not found") → amber message
+ * - Empty (blank or "No resources found") → gray `emptyMessage`
+ * - Unparseable (parse returned no headers) → gray `emptyMessage`
+ *
+ * @param raw           Output from `kubectl get …` (may be any status).
+ * @param colorFn       Optional per-cell colorizer — `(val, col) => string | null`.
+ * @param onRowClick    Optional click handler receiving `(cols, headers)`.
+ * @param emptyMessage  Copy shown when there is no data (default: "No data").
+ */
 export function KubectlTable({ raw, colorFn, onRowClick, emptyMessage = "No data" }: {
   raw:        string;
   colorFn?:   ColorFn;
@@ -518,9 +570,9 @@ export function KubectlTable({ raw, colorFn, onRowClick, emptyMessage = "No data
 }) {
   const trimmed = raw?.trim() ?? "";
   const isError = /^\[?(TIMEOUT|ERROR|not found)/i.test(trimmed);
-  const noData  = !trimmed || /^\[?No resources/i.test(trimmed);
+  const isEmpty = !trimmed || /^\[?No resources/i.test(trimmed);
   if (isError) return <div style={{ padding: "20px 16px", color: "#f59e0b", fontSize: 13 }}>{trimmed}</div>;
-  if (noData)  return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>{emptyMessage}</div>;
+  if (isEmpty) return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>{emptyMessage}</div>;
 
   const { headers, rows } = parseKubectl(raw);
   if (!headers.length) return <div style={{ padding: "20px 16px", color: "#475569", fontSize: 13 }}>{emptyMessage}</div>;

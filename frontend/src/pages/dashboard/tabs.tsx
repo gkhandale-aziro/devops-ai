@@ -7,6 +7,9 @@ import { KubectlTable, hasKubectlData, serviceTypeColorFn, pvStatusColorFn, type
 
 // ── Overview metric cards ─────────────────────────────────────────────────────
 
+/** SSH/local target overview — uptime, disk, memory, hostname metric cards
+ *  rendered via `RingChart` where a percentage is parseable, otherwise plain
+ *  text. Falls back to `GenericTab` fields for any extra keys in `data`. */
 export function OverviewTab({ data }: { data: Record<string, string> }) {
   const uptime    = data.uptime ?? "";
   const memRaw    = data.memory ?? "";
@@ -85,6 +88,9 @@ export function OverviewTab({ data }: { data: Record<string, string> }) {
 
 // ── Generic ───────────────────────────────────────────────────────────────────
 
+/** Catch-all dump for unknown tab shapes — renders every `data[key]` in a
+ *  collapsible Card with a `<Pre>` body. Used as the default route in
+ *  Dashboard's TabContent when no specialized component exists. */
 export function GenericTab({ data }: { data: Record<string, string> }) {
   if (data.error) return <div style={{ padding: 20, color: "#ef4444" }}>{data.error}</div>;
   const entries = Object.entries(data);
@@ -102,6 +108,8 @@ export function GenericTab({ data }: { data: Record<string, string> }) {
 
 // ── Events tab ────────────────────────────────────────────────────────────────
 
+/** Kubernetes events tab — summary pills (normal vs warning) + `KubectlTable`.
+ *  Warning/Error rows are colorized via a TYPE-column ColorFn. */
 export function EventsTab({ data }: { data: Record<string, string> }) {
   const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {
@@ -161,9 +169,10 @@ export function EventsTab({ data }: { data: Record<string, string> }) {
 
 // ── Services tab ──────────────────────────────────────────────────────────────
 
+/** Kubernetes services tab — summary pills per TYPE (LoadBalancer, NodePort,
+ *  ClusterIP, ExternalName) + colorized `KubectlTable`. */
 export function ServicesTab({ data }: { data: Record<string, string> }) {
   const raw = data.services ?? "";
-  const colorFn = serviceTypeColorFn;
 
   const counts = useMemo(() => {
     const c = { lb: 0, np: 0, cip: 0, ext: 0, total: 0 };
@@ -207,7 +216,7 @@ export function ServicesTab({ data }: { data: Record<string, string> }) {
           </div>
         ))}
       </div>
-      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No services found" />
+      <KubectlTable raw={raw} colorFn={serviceTypeColorFn} emptyMessage="No services found" />
     </div>
   );
 }
@@ -224,6 +233,9 @@ interface WorkloadCounts {
   notReady: number;
 }
 
+/** Extracts {total, ready, notReady} from a `kubectl get <workload>` listing.
+ *  `label` picks which column to read — "Pods" uses the READY column
+ *  (e.g. "2/3"), other workloads use AVAILABLE vs DESIRED. */
 export function parseWorkloadCounts(raw: string, label: string): { total: number; ready: number; notReady: number } {
   if (!hasKubectlData(raw)) return { total: 0, ready: 0, notReady: 0 };
   const lines = raw.trim().split("\n").slice(1); // skip header
@@ -255,6 +267,10 @@ export function parseWorkloadCounts(raw: string, label: string): { total: number
   return { total, ready, notReady };
 }
 
+/** Visual overview of deployments / statefulsets / daemonsets / pods. Renders
+ *  3-column cards with total + ready/notReady counts and a per-workload
+ *  health bar. Clicking a card expands its `KubectlTable` in-place. The
+ *  top-right global health bar pulses red when any workload has failures. */
 export function WorkloadsTab({ data }: { data: Record<string, string> }) {
   const readyColor: ColorFn = (val, col) => {
     if (col.toUpperCase() === "READY" || col.toUpperCase() === "AVAILABLE") {
@@ -409,8 +425,9 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
 
 // ── K8s Storage tab ───────────────────────────────────────────────────────────
 
+/** Kubernetes storage tab — PVCs, PVs, and StorageClasses in three sections.
+ *  PVC/PV STATUS column is colorized via `pvStatusColorFn` (Bound/Pending/Lost). */
 export function K8sStorageTab({ data }: { data: Record<string, string> }) {
-  const pvcColor = pvStatusColorFn;
 
   const counts = useMemo(() => {
     const c = { bound: 0, pending: 0, lost: 0, pvcs: 0, pvs: 0, sc: 0 };
@@ -477,10 +494,10 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
       </div>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <Card title="Persistent Volume Claims" hint={`${counts.pvcs}`} defaultOpen={true}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvcColor} emptyMessage="No persistent volume claims" /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvStatusColorFn} emptyMessage="No persistent volume claims" /></div>
         </Card>
         <Card title="Persistent Volumes" hint={`${counts.pvs}`} defaultOpen={false}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvcColor} emptyMessage="No persistent volumes" /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvStatusColorFn} emptyMessage="No persistent volumes" /></div>
         </Card>
         <Card title="Storage Classes" hint={`${counts.sc}`} defaultOpen={false}>
           <div style={{ overflowX: "auto" }}><KubectlTable raw={data.storageclasses ?? ""} emptyMessage="No storage classes" /></div>
@@ -492,6 +509,7 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
 
 // ── Ingress tab ───────────────────────────────────────────────────────────────
 
+/** Kubernetes ingress tab — ingresses + ingress classes with summary pills. */
 export function IngressTab({ data }: { data: Record<string, string> }) {
   const counts = useMemo(() => {
     let ingresses = 0, classes = 0;
@@ -542,16 +560,18 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
 
 // ── Network tab ───────────────────────────────────────────────────────────────
 
+/** Consolidated network view — services / ingresses / netpolicies / endpoints
+ *  as collapsible Cards, plus pre-formatted ports/routes/interfaces/dns on
+ *  ssh/local targets. */
 export function NetworkTab({ data }: { data: Record<string, string> }) {
-  const svcColor = serviceTypeColorFn;
 
-  const countLines = (raw?: string) => {
-    if (!hasKubectlData(raw)) return 0;
-    return raw!.split("\n").slice(1).filter(l => l.trim()).length;
+  const countLines = (raw?: string): number => {
+    if (!raw || !hasKubectlData(raw)) return 0;
+    return raw.split("\n").slice(1).filter(l => l.trim()).length;
   };
 
   const sections = useMemo(() => [
-    { key: "services",    label: "Services",         icon: "🔗", color: "#818cf8", count: countLines(data.services),    colorFn: svcColor, defaultOpen: true  },
+    { key: "services",    label: "Services",         icon: "🔗", color: "#818cf8", count: countLines(data.services),    colorFn: serviceTypeColorFn, defaultOpen: true  },
     { key: "ingresses",   label: "Ingresses",        icon: "🌐", color: "#06b6d4", count: countLines(data.ingresses),   defaultOpen: false },
     { key: "netpolicies", label: "Network Policies",  icon: "🛡", color: "#a78bfa", count: countLines(data.netpolicies), defaultOpen: false },
     { key: "endpoints",   label: "Endpoints",         icon: "📍", color: "#64748b", count: countLines(data.endpoints),   defaultOpen: false },
@@ -600,6 +620,8 @@ export function NetworkTab({ data }: { data: Record<string, string> }) {
 
 // ── Docker tabs ───────────────────────────────────────────────────────────────
 
+/** Docker `ps -a` view with running/exited/paused pill counts. Column set is
+ *  controlled by `DOCKER_PS_FORMAT` in `ui/web.py`. */
 export function DockerContainersTab({ data }: { data: Record<string, string> }) {
   const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {
@@ -652,6 +674,7 @@ export function DockerContainersTab({ data }: { data: Record<string, string> }) 
   );
 }
 
+/** Docker volumes listing — `docker volume ls` output with a count pill. */
 export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
   const raw = data.output ?? "";
   const count = useMemo(() => {
@@ -678,6 +701,7 @@ export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
   );
 }
 
+/** Docker images listing — `docker images` output with a count pill. */
 export function DockerImagesTab({ data }: { data: Record<string, string> }) {
   const raw = data.output ?? "";
   const count = useMemo(() => {
@@ -704,6 +728,9 @@ export function DockerImagesTab({ data }: { data: Record<string, string> }) {
   );
 }
 
+/** Docker stats snapshot — CPU% and MEM% colorized via threshold ColorFn
+ *  (green < 50%, amber < 80%, red ≥ 80%). Not live-streaming; one snapshot
+ *  per tab reload. */
 export function DockerStatsTab({ data }: { data: Record<string, string> }) {
   const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {

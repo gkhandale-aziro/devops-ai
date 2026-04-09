@@ -7,6 +7,10 @@ import { fadeInStyle, skeletonStyle } from "../../utils/animations";
 
 // ── RingChart — SVG donut ring for metric cards ─────────────────────────────
 
+/** SVG donut-ring percentage indicator used in metric cards.
+ *  @param pct   0–100 (values above 100 are clamped visually but still labeled literally).
+ *  @param color Stroke color for the filled arc.
+ *  @param size  Outer square size in px — default 52. */
 export function RingChart({ pct, color, size = 52 }: { pct: number; color: string; size?: number }) {
   const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
@@ -36,6 +40,8 @@ export function RingChart({ pct, color, size = 52 }: { pct: number; color: strin
 
 // ── PodSummaryBar — status breakdown above pod table ────────────────────────
 
+/** Horizontal segmented bar showing pod status breakdown above PodTable.
+ *  Animates segment widths on count changes (namespace filter, refresh). */
 export function PodSummaryBar({ counts }: { counts: { running: number; pending: number; bad: number; total: number } }) {
   const other = counts.total - counts.running - counts.pending - counts.bad;
   const segments = [
@@ -70,6 +76,11 @@ export function PodSummaryBar({ counts }: { counts: { running: number; pending: 
 
 // ── Card — collapsible section ──────────────────────────────────────────────
 
+/** Collapsible section with header, optional hint, and animated body.
+ *  Keyboard accessible: Enter/Space on the header toggles; aria-expanded
+ *  + aria-hidden track state. Content stays in the DOM during collapse to
+ *  allow smooth max-height/opacity transition.
+ *  @param defaultOpen Initial open state; only consulted on mount. */
 export function Card({ title, hint, children, defaultOpen = true }: { title: string; hint?: string; children: ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const headerId = `card-${title.replace(/\s+/g, "-").toLowerCase()}`;
@@ -164,6 +175,9 @@ export function NoTargetEmptyState() {
 
 // ── Contextual hint (dismissable, stored in localStorage) ───────────────────
 
+/** Dismissable info tip — persists dismissal in localStorage under `hint-<id>`.
+ *  Sidebar's "Restore tips" button clears every `hint-*` key to bring all tips
+ *  back for the current user. */
 export function ContextualHint({ id, children }: { id: string; children: ReactNode }) {
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(`hint-${id}`) === "1");
   if (dismissed) return null;
@@ -200,6 +214,9 @@ export function LoadingSpinner() {
 
 export type SkeletonVariant = "cards" | "table" | "mixed";
 
+/** Animated placeholder shown during tab data fetch.
+ *  @param variant "cards" for Overview-style 4-card rows, "table" for list
+ *                 rows, "mixed" (default) for a card-row followed by a list. */
 export function SkeletonLoader({ variant = "mixed" }: { variant?: SkeletonVariant } = {}) {
   return (
     <div role="status" aria-live="polite" aria-label="Loading content" style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column", gap: 12, ...fadeInStyle }}>

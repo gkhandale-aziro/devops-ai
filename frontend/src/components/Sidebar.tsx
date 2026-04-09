@@ -87,11 +87,10 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           </svg>
         </div>
         <div>
-          {/* P2: Primary brand name larger + bolder */}
+          {/* Brand name */}
           <div style={{ fontSize: 15, fontWeight: 800, color: "var(--c-text-primary,#f1f5f9)", letterSpacing: "-.3px", lineHeight: 1.2 }}>
             Aziro<span style={{ color: "var(--c-accent,#6366f1)" }}>Ops</span>
           </div>
-          {/* P2: Subtitle at 10px min, slightly more visible */}
           <div style={{ fontSize: 10, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".7px", marginTop: 2, fontWeight: 500 }}>
             DevOps AI Platform
           </div>
@@ -103,7 +102,6 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         <span style={{ fontSize: 10, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".9px", fontWeight: 700 }}>
           Connections
         </span>
-        {/* P7: Count as a colored pill, not raw grey text */}
         {targets.length > 0 && (
           <span style={{
             fontSize: 10, fontWeight: 700,
@@ -162,11 +160,10 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                   ? "var(--c-accent-dim,#6366f122)"
                   : isHovered ? "var(--c-bg-raised,#0f1629)" : "transparent",
                 border: `1px solid ${isActive ? "var(--c-accent,#6366f1)33" : "transparent"}`,
-                /* P4: active item gets a subtle lift shadow */
                 boxShadow: isActive ? "0 2px 8px #6366f122" : "none",
               }}
             >
-              {/* P6: Type badge — 9px text (was 8px), stronger weight */}
+              {/* Type badge */}
               <div style={{
                 width: 30, height: 30, borderRadius: 7, flexShrink: 0,
                 background: `${typeColor}18`,
@@ -178,7 +175,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                {/* P2: Name is primary — bolder */}
+                {/* Name */}
                 <div style={{
                   fontSize: 13, fontWeight: isActive ? 700 : 500,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -186,14 +183,14 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                   display: "flex", alignItems: "center", gap: 5,
                 }}>
                   {t.name}
-                  {/* P7: LOCAL badge at 9px min (was 8px) */}
+                  {/* LOCAL badge */}
                   {t.type === "local" && (
                     <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 800, background: "#22c55e18", border: "1px solid #22c55e33", padding: "1px 5px", borderRadius: 4, letterSpacing: ".3px", flexShrink: 0 }}>
                       LOCAL
                     </span>
                   )}
                 </div>
-                {/* P2: Status — tertiary color, smaller */}
+                {/* Status row */}
                 <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
                   <span style={{
                     width: 5, height: 5, borderRadius: "50%", background: dotColor,
@@ -302,7 +299,6 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
       </div>
 
       {/* ── Footer — AI model + theme ─────────────────────────────────────── */}
-      {/* P5: Consolidated into one footer block, not three separate borders */}
       <div style={{
         borderTop: "1px solid var(--c-border,#1a2235)",
         padding: "10px 14px 12px",
@@ -317,7 +313,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
               flexShrink: 0, animation: "pulse 2s infinite",
             }} />
             <div style={{ minWidth: 0, flex: 1 }}>
-              {/* P2: Label 10px (was 9), bolder */}
+              {/* Label */}
               <div style={{ fontSize: 10, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 600, marginBottom: 1 }}>AI Model</div>
               <div style={{
                 fontSize: 11, fontWeight: 600,

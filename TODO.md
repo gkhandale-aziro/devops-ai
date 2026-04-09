@@ -53,11 +53,45 @@ sense to batch.
 - [x] `ui/web.py` → extracted `DOCKER_PS_FORMAT` constant above `TAB_COMMANDS`
 - [ ] Decide: keep `frontend_dist/` in git (simplicity on VM, accept occasional pull conflicts) vs move to CI (cleaner but needs build pipeline) — deferred, needs product decision
 
+## Next up — S4 nice-to-have backlog
+
+Enumerated from 2026-04-08 audit after S3 batch shipped (commit `3b508cb`).
+Grouped by theme; each group can ship as one commit. Batch 1 (type
+tightening) is highest-leverage lowest-risk — start there.
+
+### Batch 1: Type tightening
+- [x] Extract inline API response types → `TopologyResponse` / `SearchResponse` in `types/`
+- [x] Narrow `raw!.split(...)` in `tabs.tsx` — replaced with proper early-return guard
+- [x] `activeTab: TabId | null` in Dashboard (uses `TabId` union from `types/`)
+- [x] `PodStatus` union type + `POD_BAD_STATUSES satisfies PodStatus[]`
+- [x] Explicit return types on non-component helpers — components remain inferred (React ergonomics)
+
+### Batch 2: Docstrings (JSDoc)
+- [x] `tables.tsx` — `NodeTable`, `PodTable`, `LogsTab`, `KubectlTable`, `parseWorkloadCounts`
+- [x] `tabs.tsx` — all 12 tab components + `parseWorkloadCounts`
+- [x] `primitives.tsx` — `RingChart`, `PodSummaryBar`, `Card`, `SkeletonLoader`, `ContextualHint`
+- [x] `Dashboard.tsx TabContent` — dispatcher JSDoc with special-case notes
+- [x] `theme.ts` — `C` token groups documented by purpose
+
+### Batch 3: Naming consistency
+- [x] ColorFn aliases removed — `svcColor`/`pvcColor` locals dropped, call sites use `serviceTypeColorFn`/`pvStatusColorFn` directly
+- [x] `raw`/`output`/`data` audit — these are semantically distinct (local kubectl stdout / single-output backend key / full API response bag); no rename needed
+- [x] Loading boolean audit — all already use `<scope>Loading` suffix pattern (`tabLoading`, `nsLoading`, `histLoading`, `chatLoading`); consistent
+- [x] Predicate audit — `isBad`/`isActive`/`isError`/`isK8s`/`hasData`/`hasKubectlData` all `is*`/`has*`; renamed stray `noData` → `isEmpty` in KubectlTable
+
+### Batch 4: Cleanup / misc
+- [x] Strip dead inline `// P1:` / `// P2:` / `// P5:` refs to old audit phases (App.tsx, Sidebar.tsx)
+- [x] Extract `TIMING` constants → `theme.ts` (toastDismiss wired in Dashboard; pulse/transition remain in CSS animation strings where templating them hurts clarity)
+- [x] `console.warn` tag format — audit clean, all use `[Module]` prefix (App/Chat/Home)
+- [x] Module-header block comments — all `pages/dashboard/*.tsx` files have JSDoc headers
+- [ ] Decide `frontend_dist/index.html` in git (carried over from S3 cleanup)
+
 ## Backlog
 
-- [ ] S4 nice-to-have items (deferred from audit — list not yet enumerated)
 - [ ] Tests for remaining tables (NodeTable, PodTable, ResourceModal, LogsTab) — need shared api mock helper
 - [ ] Live verification on VM after each polish batch
+- [ ] Token adoption sweep across `pages/dashboard/*` (use `C` / `SPACE` / `RADIUS` from `theme.ts`)
+- [ ] Extract `<PodRow>` memoized row component (enables real `useCallback` win)
 
 ## Done
 
@@ -70,3 +104,4 @@ sense to batch.
   - tabs extraction (`e475d9a`)
 - [x] Playwright visual regression suite — 14 specs (`d335246`, `3738e51`)
 - [x] Namespace filter NAMESPACE-column fix (`bd7fd43`)
+- [x] S3 polish batch — loading/error UX, helpers, persistence, visuals, cleanup (`3b508cb`)
