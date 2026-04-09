@@ -12,7 +12,7 @@
  * the page shell and lets each piece be tested in isolation.
  */
 import {
-  useState, useEffect, useCallback, useMemo, useRef, useDeferredValue,
+  useState, useEffect, useCallback, useMemo, useRef, useDeferredValue, memo,
   type MouseEvent,
 } from "react";
 import type { Target, PodStatus } from "../../types";
@@ -115,6 +115,119 @@ const podStatusColor = (s: string): string =>
   s === "Running" || s === "Succeeded" || s === "Completed" ? C.status.success
   : s.includes("Error") || s.includes("Crash") || s === "OOMKilled" || s === "Failed" ? C.status.danger
   : C.status.warning;
+
+// ── PodRow — memoized single-row component ─────────────────────────────────
+
+interface PodRowProps {
+  ns: string;
+  name: string;
+  ready: string;
+  status: string;
+  restarts: string;
+  age: string;
+  isBad: boolean;
+  sc: string;
+  aiBadge: string | undefined;
+  badgeLoading: boolean;
+  onOpen: (kind: string, name: string, ns: string) => void;
+  onDiagnose: (name: string, ns: string, status: string) => void;
+  onStreamLogs?: (pod: string, ns: string) => void;
+}
+
+/** Memoized pod table row — skips re-render when its own props haven't
+ *  changed, which is the common case when only another row's AI badge
+ *  updates. */
+const PodRow = memo(function PodRow({
+  ns, name, ready, status, restarts, age, isBad, sc,
+  aiBadge, badgeLoading: isBadgeLoading, onOpen, onDiagnose, onStreamLogs,
+}: PodRowProps) {
+  return (
+    <tr
+      onClick={() => onOpen("pod", name, ns)}
+      tabIndex={0}
+      role="button"
+      aria-label={`View pod ${name} in ${ns}`}
+      onKeyDown={(ev) => {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onOpen("pod", name, ns); }
+        else if (ev.key === "ArrowDown") {
+          ev.preventDefault();
+          const next = ev.currentTarget.nextElementSibling as HTMLElement | null;
+          next?.focus?.();
+        } else if (ev.key === "ArrowUp") {
+          ev.preventDefault();
+          const prev = ev.currentTarget.previousElementSibling as HTMLElement | null;
+          prev?.focus?.();
+        }
+      }}
+      style={{
+        cursor: "pointer",
+        transition: "background .1s",
+        background: isBad ? `${C.status.danger}10` : "transparent",
+        borderLeft: isBad ? `2px solid ${C.status.danger}` : "2px solid transparent",
+      }}
+      onMouseEnter={ev => (ev.currentTarget.style.background = isBad ? `${C.status.danger}20` : C.bg.card)}
+      onMouseLeave={ev => (ev.currentTarget.style.background = isBad ? `${C.status.danger}10` : "transparent")}
+    >
+      <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{ns}</td>
+      <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600 }}>
+        {name}
+        {isBad && !aiBadge && !isBadgeLoading && (
+          <button
+            onClick={e => { e.stopPropagation(); onDiagnose(name, ns, status); }}
+            aria-label={`Diagnose pod ${name}`}
+            title="Get AI diagnosis for this pod"
+            style={{
+              marginLeft: 6, background: `${C.accent.light}22`, border: `1px solid ${C.accent.light}44`,
+              color: C.accent.light, borderRadius: 4, padding: "2px 7px",
+              fontSize: 11, fontWeight: 600, cursor: "pointer", verticalAlign: "middle",
+            }}
+          >
+            ✦ Diagnose
+          </button>
+        )}
+        {isBadgeLoading && (
+          <span style={{ marginLeft: 6, fontSize: 9, color: C.accent.light }}>analyzing…</span>
+        )}
+        {aiBadge && (
+          <div style={{
+            marginTop: 3, fontSize: 10, color: "#a5b4fc", lineHeight: 1.4,
+            background: "#1e2240", border: `1px solid ${C.accent.primary}33`,
+            borderRadius: 4, padding: "3px 7px", maxWidth: 400,
+          }}>
+            ✦ {aiBadge}
+          </div>
+        )}
+      </td>
+      <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{ready}</td>
+      <td style={{ padding: "8px 12px" }}>
+        <span style={{ background: sc + "22", color: sc, border: `1px solid ${sc}44`, borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
+          {status}
+        </span>
+      </td>
+      <td style={{ padding: "8px 12px", fontSize: 12, color: +restarts > 5 ? C.status.warning : +restarts > 0 ? C.text.secondary : C.text.muted }}>
+        {restarts}
+      </td>
+      <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{age}</td>
+      <td style={{ padding: "8px 12px" }}>
+        {onStreamLogs && (
+          <button
+            onClick={e => { e.stopPropagation(); onStreamLogs(name, ns); }}
+            aria-label={`Stream live logs for pod ${name}`}
+            title="Stream live logs"
+            style={{
+              background: `${C.status.info}22`, border: `1px solid ${C.status.info}44`,
+              color: C.status.info, borderRadius: 4, padding: "2px 7px",
+              fontSize: 10, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            ▶ Logs
+          </button>
+        )}
+      </td>
+      <td style={{ padding: "8px 12px", color: C.text.dim, textAlign: "right" }}>›</td>
+    </tr>
+  );
+});
 
 /**
  * Pod listing with namespace filter, search, AI badge, and modal.
@@ -246,93 +359,24 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
               if (c.length < 5) return null;
               const [ns, name, ready, status] = c;
               const restarts = c[4] ?? "0";
-              const sc = podStatusColor(status);
-              const isBad = POD_BAD_STATUSES.has(status);
               const badgeKey = `${ns}/${name}`;
               return (
-                <tr key={i} onClick={() => openResource("pod", name, ns)}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`View pod ${name} in ${ns}`}
-                  onKeyDown={(ev) => {
-                    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openResource("pod", name, ns); }
-                    else if (ev.key === "ArrowDown") {
-                      ev.preventDefault();
-                      const next = ev.currentTarget.nextElementSibling as HTMLElement | null;
-                      next?.focus?.();
-                    } else if (ev.key === "ArrowUp") {
-                      ev.preventDefault();
-                      const prev = ev.currentTarget.previousElementSibling as HTMLElement | null;
-                      prev?.focus?.();
-                    }
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    transition: "background .1s",
-                    background: isBad ? `${C.status.danger}10` : "transparent",
-                    borderLeft: isBad ? `2px solid ${C.status.danger}` : "2px solid transparent",
-                  }}
-                  onMouseEnter={ev => (ev.currentTarget.style.background = isBad ? `${C.status.danger}20` : C.bg.card)}
-                  onMouseLeave={ev => (ev.currentTarget.style.background = isBad ? `${C.status.danger}10` : "transparent")}
-                >
-                  <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{ns}</td>
-                  <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600 }}>
-                    {name}
-                    {isBad && !aiBadges[badgeKey] && !badgeLoading[badgeKey] && (
-                      <button
-                        onClick={e => { e.stopPropagation(); fetchAIBadge(name, ns, status); }}
-                        aria-label={`Diagnose pod ${name}`}
-                        title="Get AI diagnosis for this pod"
-                        style={{
-                          marginLeft: 6, background: `${C.accent.light}22`, border: `1px solid ${C.accent.light}44`,
-                          color: C.accent.light, borderRadius: 4, padding: "2px 7px",
-                          fontSize: 11, fontWeight: 600, cursor: "pointer", verticalAlign: "middle",
-                        }}
-                      >
-                        ✦ Diagnose
-                      </button>
-                    )}
-                    {badgeLoading[badgeKey] && (
-                      <span style={{ marginLeft: 6, fontSize: 9, color: C.accent.light }}>analyzing…</span>
-                    )}
-                    {aiBadges[badgeKey] && (
-                      <div style={{
-                        marginTop: 3, fontSize: 10, color: "#a5b4fc", lineHeight: 1.4,
-                        background: "#1e2240", border: `1px solid ${C.accent.primary}33`,
-                        borderRadius: 4, padding: "3px 7px", maxWidth: 400,
-                      }}>
-                        ✦ {aiBadges[badgeKey]}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{ready}</td>
-                  <td style={{ padding: "8px 12px" }}>
-                    <span style={{ background: sc + "22", color: sc, border: `1px solid ${sc}44`, borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
-                      {status}
-                    </span>
-                  </td>
-                  <td style={{ padding: "8px 12px", fontSize: 12, color: +restarts > 5 ? C.status.warning : +restarts > 0 ? C.text.secondary : C.text.muted }}>
-                    {restarts}
-                  </td>
-                  <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{c[c.length - 1]}</td>
-                  <td style={{ padding: "8px 12px" }}>
-                    {onStreamLogs && (
-                      <button
-                        onClick={e => { e.stopPropagation(); onStreamLogs(name, ns); }}
-                        aria-label={`Stream live logs for pod ${name}`}
-                        title="Stream live logs"
-                        style={{
-                          background: `${C.status.info}22`, border: `1px solid ${C.status.info}44`,
-                          color: C.status.info, borderRadius: 4, padding: "2px 7px",
-                          fontSize: 10, fontWeight: 600, cursor: "pointer",
-                        }}
-                      >
-                        ▶ Logs
-                      </button>
-                    )}
-                  </td>
-                  <td style={{ padding: "8px 12px", color: C.text.dim, textAlign: "right" }}>›</td>
-                </tr>
+                <PodRow
+                  key={i}
+                  ns={ns}
+                  name={name}
+                  ready={ready}
+                  status={status}
+                  restarts={restarts}
+                  age={c[c.length - 1]}
+                  isBad={POD_BAD_STATUSES.has(status)}
+                  sc={podStatusColor(status)}
+                  aiBadge={aiBadges[badgeKey]}
+                  badgeLoading={!!badgeLoading[badgeKey]}
+                  onOpen={openResource}
+                  onDiagnose={fetchAIBadge}
+                  onStreamLogs={onStreamLogs}
+                />
               );
             })}
           </tbody>

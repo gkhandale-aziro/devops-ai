@@ -88,10 +88,10 @@ tightening) is highest-leverage lowest-risk — start there.
 
 ## Backlog
 
-- [ ] Tests for remaining tables (NodeTable, PodTable, ResourceModal, LogsTab) — need shared api mock helper
+- [x] Tests for remaining tables (NodeTable, PodTable, ResourceModal, LogsTab) — shared mock helper in `test/apiMock.ts`, 26 tests in `tables-components.test.tsx`
 - [ ] Live verification on VM after each polish batch
 - [x] Token adoption sweep across `pages/dashboard/*` — ~200+ hex literals → `C.*` tokens in primitives/tables/tabs
-- [ ] Extract `<PodRow>` memoized row component (enables real `useCallback` win)
+- [x] Extract `<PodRow>` memoized row component — `memo(PodRow)` in tables.tsx, callbacks stable via `useCallback`
 
 ## Done
 
