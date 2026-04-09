@@ -1,3 +1,5 @@
-litellm
-flask
-paramiko
+flask>=3.0,<4.0
+litellm>=1.40,<2.0
+paramiko>=3.0,<4.0
+pytest>=9.0,<10.0
+cryptography>=46.0.6,<47.0

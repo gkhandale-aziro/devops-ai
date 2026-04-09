@@ -3,9 +3,17 @@ __pycache__/
 *.pyo
 targets.json
 chat_sessions.json
+chat_messages.json
 .env
 *.egg-info/
 dist/
 build/
 .venv/
 venv/
+.aziro_key
+aziro.db
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/.playwright/

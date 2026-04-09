@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}Incident History — Aziro Ops{% endblock %}
+
+{% block head %}
+<style>
+  .hist-wrap { display:grid; grid-template-columns:220px 1fr; gap:0; height:calc(100vh - 56px); margin:-1rem; overflow:hidden; }
+
+  /* sidebar */
+  .h-sidebar { background:#12141f; border-right:1px solid #2d3148; padding:12px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
+  .h-sidebar h6 { font-size:11px; text-transform:uppercase; letter-spacing:.8px; color:#64748b; margin-bottom:4px; }
+  .form-ctrl { width:100%; background:#0f1117; border:1px solid #2d3148; color:#e2e8f0; border-radius:6px; padding:7px 10px; font-size:13px; }
+  .form-ctrl:focus { outline:none; border-color:#4f46e5; }
+  .btn-filter { width:100%; background:#4f46e5; border:none; color:#fff; border-radius:6px; padding:8px; font-size:13px; cursor:pointer; }
+  .btn-filter:hover { background:#6366f1; }
+  .btn-clear  { width:100%; background:#1a1d27; border:1px solid #2d3148; color:#64748b; border-radius:6px; padding:7px; font-size:13px; cursor:pointer; }
+  .btn-clear:hover { border-color:#ef4444; color:#ef4444; }
+
+  .stat-strip { background:#1a1d27; border:1px solid #2d3148; border-radius:6px; padding:10px; }
+  .stat-row   { display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
+  .stat-row:last-child { margin-bottom:0; }
+
+  /* main content */
+  .h-main { display:flex; flex-direction:column; overflow:hidden; }
+  .h-topbar { padding:10px 16px; border-bottom:1px solid #2d3148; display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  .h-topbar h5 { font-size:14px; margin:0; }
+  .result-count { font-size:12px; color:#64748b; margin-left:auto; }
+
+  .h-table-wrap { flex:1; overflow-y:auto; }
+  table { width:100%; border-collapse:collapse; }
+  thead th { background:#12141f; padding:9px 14px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#64748b; border-bottom:1px solid #2d3148; position:sticky; top:0; }
+  tbody tr { border-bottom:1px solid #2d3148; cursor:pointer; transition:background .1s; }
+  tbody tr:hover { background:#1a1d27; }
+  td { padding:9px 14px; font-size:13px; }
+
+  .lv-badge { font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; }
+  .lv-badge.L1 { background:#0e7490; }
+  .lv-badge.L2 { background:#b45309; }
+  .lv-badge.L3 { background:#be123c; }
+
+  .td-obj   { font-weight:500; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .td-diag  { color:#94a3b8; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .td-ts    { color:#64748b; white-space:nowrap; font-size:12px; }
+
+  /* detail drawer */
+  .drawer { position:fixed; right:0; top:56px; bottom:0; width:460px; background:#1a1d27;
+            border-left:1px solid #2d3148; overflow-y:auto; transform:translateX(100%);
+            transition:transform .25s; z-index:50; padding:20px; }
+  .drawer.open { transform:translateX(0); }
+  .drawer-close { float:right; background:none; border:none; color:#64748b; font-size:18px; cursor:pointer; line-height:1; }
+  .drawer-close:hover { color:#ef4444; }
+  .drawer h5 { font-size:14px; margin-bottom:12px; }
+
+  .detail-section { margin-bottom:14px; }
+  .detail-label   { font-size:11px; text-transform:uppercase; color:#64748b; letter-spacing:.5px; margin-bottom:5px; }
+  .detail-val     { font-size:13px; }
+  .snap-pre       { background:#0d1117; color:#c9d1d9; border-radius:6px; padding:10px; font-size:11px; white-space:pre-wrap; max-height:200px; overflow-y:auto; }
+  .analysis-box   { background:#12141f; border:1px solid #2d3148; border-radius:6px; padding:12px; font-size:12px; line-height:1.6; white-space:pre-wrap; }
+
+  .empty-state { text-align:center; color:#64748b; font-size:13px; padding:60px 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hist-wrap">
+
+  <!-- sidebar: filters -->
+  <div class="h-sidebar">
+    <div>
+      <h6>Filter by Level</h6>
+      <select class="form-ctrl" id="levelSel" name="level">
+        <option value=""    {% if not level %}selected{% endif %}>All levels</option>
+        <option value="L1"  {% if level=='L1' %}selected{% endif %}>L1 — Detect</option>
+        <option value="L2"  {% if level=='L2' %}selected{% endif %}>L2 — Diagnose</option>
+        <option value="L3"  {% if level=='L3' %}selected{% endif %}>L3 — Critical</option>
+      </select>
+    </div>
+    <div>
+      <h6>Filter by Object</h6>
+      <input class="form-ctrl" id="objInput" placeholder="pod / node name"
+             value="{{ object_filter }}">
+    </div>
+    <button class="btn-filter" onclick="applyFilter()">Apply Filter</button>
+    <button class="btn-clear"  onclick="clearFilter()">Clear</button>
+
+    <!-- stats -->
+    <div class="stat-strip">
+      <h6 style="margin-bottom:8px;">Shown</h6>
+      <div class="stat-row"><span>Results</span><span id="rowCount">{{ events|length }}</span></div>
+      {% if level %}<div class="stat-row"><span>Level</span><span>{{ level }}</span></div>{% endif %}
+      {% if object_filter %}<div class="stat-row"><span>Object</span><span style="color:#7c8cf8">{{ object_filter }}</span></div>{% endif %}
+    </div>
+
+    <div>
+      <h6>Quick links</h6>
+      <a href="/history?level=L3" style="font-size:12px;color:#f43f5e;display:block;margin-bottom:4px;">Critical (L3) only</a>
+      <a href="/history?level=L2" style="font-size:12px;color:#f59e0b;display:block;margin-bottom:4px;">Diagnose (L2) only</a>
+      <a href="/history"          style="font-size:12px;color:#64748b;display:block;">Clear filters</a>
+    </div>
+  </div>
+
+  <!-- main: table -->
+  <div class="h-main">
+    <div class="h-topbar">
+      <h5>Incident History</h5>
+      <span class="result-count">{{ events|length }} event{% if events|length != 1 %}s{% endif %}</span>
+    </div>
+
+    <div class="h-table-wrap">
+      {% if events %}
+      <table>
+        <thead>
+          <tr>
+            <th>Level</th>
+            <th>Timestamp</th>
+            <th>Reason</th>
+            <th>Object</th>
+            <th>Namespace</th>
+            <th>Last Diagnosis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in events %}
+          <tr onclick="loadDetail({{ e.id }})">
+            <td><span class="lv-badge {{ e.level }}">{{ e.level }}</span></td>
+            <td class="td-ts">{{ e.timestamp[:16] }}</td>
+            <td>{{ e.reason }}</td>
+            <td class="td-obj" title="{{ e.object }}">{{ e.object }}</td>
+            <td style="color:#64748b;font-size:12px;">{{ e.namespace or '—' }}</td>
+            <td class="td-diag" title="{{ e.last_diagnosis or '' }}">{{ (e.last_diagnosis or '')[:80] or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        {% if level or object_filter %}
+          No incidents match the current filter.
+        {% else %}
+          No incidents recorded yet. Start monitoring to capture events.
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Detail drawer -->
+<div class="drawer" id="drawer">
+  <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  <h5 id="drawerTitle">Event detail</h5>
+  <div id="drawerBody">Loading...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function applyFilter() {
+  const level = document.getElementById('levelSel').value;
+  const obj   = document.getElementById('objInput').value.trim();
+  const params = new URLSearchParams();
+  if (level) params.set('level', level);
+  if (obj)   params.set('object', obj);
+  window.location.search = params.toString();
+}
+
+function clearFilter() {
+  window.location.search = '';
+}
+
+function loadDetail(id) {
+  const drawer = document.getElementById('drawer');
+  document.getElementById('drawerTitle').textContent = 'Loading…';
+  document.getElementById('drawerBody').textContent  = '';
+  drawer.classList.add('open');
+
+  fetch(`/api/events/${id}`)
+    .then(r => r.json())
+    .then(renderDetail)
+    .catch(e => {
+      document.getElementById('drawerBody').textContent = 'Error: ' + e;
+    });
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+}
+
+function renderDetail(e) {
+  document.getElementById('drawerTitle').textContent = `${e.reason} — ${e.object}`;
+
+  let html = `
+    <div class="detail-section">
+      <div class="detail-label">Event</div>
+      <div class="detail-val">
+        <span class="lv-badge ${e.level}">${e.level}</span>
+        <strong style="margin-left:8px;">${escHtml(e.reason)}</strong>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-label">Object / Namespace</div>
+      <div class="detail-val">${escHtml(e.object)} ${e.namespace ? '<span style="color:#64748b">/ '+escHtml(e.namespace)+'</span>' : ''}</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-label">Time</div>
+      <div class="detail-val" style="color:#64748b">${e.timestamp}</div>
+    </div>`;
+
+  if (e.message) {
+    html += `<div class="detail-section">
+      <div class="detail-label">Event Message</div>
+      <div class="detail-val" style="color:#94a3b8">${escHtml(e.message)}</div>
+    </div>`;
+  }
+
+  // snapshots — API returns array of {kind, content, ...}, convert to dict
+  const snaps = {};
+  for (const s of (e.snapshots || [])) snaps[s.kind] = s.content;
+  const snapOrder = ['describe','logs','logs_previous','events'];
+  const snapLabels = {describe:'kubectl describe',logs:'kubectl logs',logs_previous:'kubectl logs --previous',events:'cluster events'};
+  for (const k of snapOrder) {
+    if (snaps[k]) {
+      html += `<div class="detail-section">
+        <div class="detail-label">${snapLabels[k]||k}</div>
+        <pre class="snap-pre">${escHtml(snaps[k])}</pre>
+      </div>`;
+    }
+  }
+
+  // analysis
+  const analyses = e.analyses || [];
+  if (analyses.length) {
+    const latest = analyses[analyses.length - 1];
+    if (latest.diagnosis) {
+      html += `<div class="detail-section">
+        <div class="detail-label">AI Diagnosis</div>
+        <div class="analysis-box">${escHtml(latest.diagnosis)}</div>
+      </div>`;
+    }
+    if (latest.remediation) {
+      html += `<div class="detail-section">
+        <div class="detail-label">Proposed Remediation</div>
+        <div class="analysis-box" style="border-color:#f59e0b">${escHtml(latest.remediation)}</div>
+      </div>`;
+    }
+  }
+
+  // object history link
+  html += `<div style="margin-top:12px;">
+    <a href="/history?object=${encodeURIComponent(e.object)}" style="font-size:12px;color:#7c8cf8;">
+      View all incidents for ${escHtml(e.object)} →
+    </a>
+  </div>`;
+
+  document.getElementById('drawerBody').innerHTML = html;
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// close drawer on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+</script>
+{% endblock %}
