@@ -6,18 +6,22 @@ Aziro Ops connects to your servers, Kubernetes clusters, and cloud accounts and 
 
 ---
 
-## What's New
+## Status
 
-- **Cmd+K Command Palette** — search targets, pages, and K8s resources instantly
-- **Resource Topology Graph** — visual map of Ingress → Service → Deployment → Pod relationships
-- **Inline AI Badges** — click `✦ AI` on any unhealthy pod for an instant one-line diagnosis
-- **Live Log Streaming** — real-time `kubectl logs -f` tray, filter + pause + auto-scroll
-- **Theme Switcher** — Indigo (default), Tron (cyan), Sapphire (blue) — persisted per browser
-- **OLED Dark Mode** — redesigned with Plus Jakarta Sans, sparkline charts, skeleton loaders
-- **SEV1/SEV2/SEV3** severity system with persistent incident history and AI diagnosis
-- **K8s Workloads/Ingress/Storage tabs** — full Kubernetes resource coverage beyond pods/nodes
-- **Collapsible resource cards** — every section is expandable/collapsible
-- **Markdown AI responses** — formatted code blocks, headers, and lists in chat
+**Pre-v1.0 — Developer preview.** Feature-complete for single-user internal use. A 6-week hardening + UI sprint is underway to reach production-ready v1.0. See [`Aziro_Ops_Priority_Roadmap.docx`](Aziro_Ops_Priority_Roadmap.docx) and [`Aziro_Ops_UI_Roadmap_Merged.docx`](Aziro_Ops_UI_Roadmap_Merged.docx) for the plan.
+
+## Differentiators
+
+Features where Aziro Ops leads other open-source DevOps tools (Lens, ArgoCD, Headlamp, Komodor, Grafana, Datadog, RunWhen, Portainer, Devtron, Kubecost):
+
+- **Cmd+K Command Palette with live K8s resource search** — search targets, pages, and live pods/nodes/deployments in one palette
+- **Multi-cloud unified sidebar** — Kubernetes, SSH, Docker, AWS, GCP, Azure, Terraform managed from a single rail
+- **Inline `✦ AI` badges** on unhealthy resources — one-click diagnosis without opening chat
+- **Two-model AI display** — tool calls and final answer stream as separate visible steps
+- **Resource Topology SVG Graph** — Ingress → Service → Deployment → Pod network flow
+- **Cloud auth pre-checks** in the AddTarget wizard — verifies CLI installed and authenticated before saving
+- **Persistent log stream tray** — dev-tools console pattern, not a modal
+- **SEV1/SEV2/SEV3** triage with snapshots captured at the moment the event fired
 
 ---
 
@@ -63,14 +67,20 @@ Aziro Ops connects to your servers, Kubernetes clusters, and cloud accounts and 
 - Acknowledge / Resolve workflow
 - Status persists across restarts
 
-### Competitive Features (Devtron/Lens/Grafana parity)
-| Feature | Inspired by |
-|---------|-------------|
-| Cmd+K palette with live K8s search | VS Code / Linear |
-| Resource topology SVG graph | ArgoCD resource tree |
-| Inline AI on unhealthy resources | Datadog Bits AI |
-| Live log streaming tray | Lens bottom tray |
-| Theme switcher | Grafana themes |
+### Honest Gaps (being addressed in v1.0 sprint)
+
+| Gap | Status |
+|-----|--------|
+| No authentication / multi-user | Flask-Login + RBAC landing in Week 1 |
+| Flask dev server (single-process) | Gunicorn + nginx landing in Week 2 |
+| SQLite write serialization | Postgres + Alembic landing in Week 3 |
+| No real metric charts (current sparklines are decorative) | Recharts + Prometheus landing in Week 3 |
+| No light theme (only dark variants) | Day / Night theme landing in Week 1 |
+| No toast / notification feedback | Sonner toast system landing in Week 1 |
+| No settings page | Settings page landing in Week 2 |
+| No onboarding tour | react-joyride landing in Week 4 |
+| Read-only resource views | Restart/Scale/Delete/Edit YAML landing in Week 2–4 |
+| No WCAG accessibility baseline | Axe-core CI landing in Week 5 |
 
 ---
 
@@ -106,21 +116,52 @@ TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 pyth
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Option 1: Local model (Ollama — free, private)
+# Copy the env template and fill in at least one AI provider key
+cp .env.example .env
+```
+
+### Web mode (React dashboard)
+
+```bash
+# Local model (Ollama — free, private)
 ollama pull llama3.1:8b
 AI_MODEL=ollama/llama3.1:8b python3 app.py
 
-# Option 2: Cloud model
-export GEMINI_API_KEY="..."
-AI_MODEL=gemini/gemini-2.0-flash python3 app.py
-
-# Option 3: Two-model setup (recommended for best performance)
+# Or two-model setup (recommended — fast tool calls, smart final answers)
 export GROQ_API_KEY="gsk_..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 python3 app.py
 ```
 
-Open [http://localhost:5000](http://localhost:5000) and add your first connection.
+Open [http://localhost:5000](http://localhost:5000).
+
+### CLI mode (terminal UI)
+
+```bash
+# Basic interactive CLI
+python3 main.py
+
+# Connect to a saved target by name
+python3 main.py --target prod-k8s
+
+# With background event monitoring
+python3 main.py --target prod-k8s --monitor
+```
+
+### Frontend development
+
+The React SPA is pre-built and committed to `frontend_dist/` — running `python3 app.py` serves it directly with no build step required. You only need Node.js if you're modifying the frontend.
+
+```bash
+cd frontend
+npm install           # first time only
+npm run dev           # Vite dev server on :5173, proxies /api to :5000
+npm run build         # rebuild frontend_dist/ for production
+npm run test          # Vitest unit tests
+npm run test:e2e      # Playwright end-to-end tests
+```
+
+Requires Node.js 18+.
 
 ---
 
@@ -130,15 +171,22 @@ Open [http://localhost:5000](http://localhost:5000) and add your first connectio
 
 ```
 devops-ai/
-├── app.py                   ← Entry point
+├── app.py                   ← Web server entry point (Flask)
+├── main.py                  ← CLI entry point (TerminalUI + agent loop)
+│
 ├── ui/
-│   └── web.py               ← Flask routes (thin, logic-free)
+│   ├── web.py               ← Flask routes (thin, logic-free)
+│   └── terminal.py          ← CLI TerminalUI (colored output, readline loop)
 │
 ├── frontend/                ← React 18 + TypeScript + Vite SPA
 │   └── src/
-│       ├── pages/           ← Home, Dashboard, Alerts, History, Chat
+│       ├── pages/
+│       │   ├── Home.tsx, Alerts.tsx, History.tsx, Chat.tsx
+│       │   ├── Dashboard.tsx
+│       │   └── dashboard/   ← primitives, tables, tabs (extracted modules)
 │       ├── components/      ← Sidebar, CommandPalette, ResourceGraph,
-│       │                       LogStream, ChatPanel, AIDrawer, ThemeContext
+│       │                       LogStream, ChatPanel, AIDrawer, AlertCard,
+│       │                       AddTargetModal, LevelBadge, Markdown, ThemeContext
 │       ├── hooks/           ← useChat, useSSE (exponential backoff)
 │       └── api/client.ts    ← Typed API layer + SSE stream reader
 │
@@ -147,16 +195,16 @@ devops-ai/
 │   ├── manager.py           ← Per-target message history
 │   └── needs_tools.py       ← Greeting vs infra heuristic
 │
-├── providers/               ← LiteLLM wrapper
-│   └── client.py            ← chat(), chat_stream(), TOOL_MODEL / ANSWER_MODEL
+├── providers/
+│   └── client.py            ← LiteLLM wrapper: chat(), chat_stream(),
+│                              TOOL_MODEL / ANSWER_MODEL routing
 │
 ├── tools/                   ← One file per target type
-│   ├── executor.py          ← Routes command to correct tool
+│   ├── executor.py          ← Routes command to correct tool, _run_many (max 8 workers)
 │   ├── base.py              ← run_command(), 30s timeout, 3000 char truncation
 │   ├── filter.py            ← is_destructive() — blocks dangerous commands
-│   ├── ssh.py, kubectl.py, docker.py
-│   ├── aws.py, gcp.py, azure.py, terraform.py, local.py
-│   └── _run_many()          ← parallel execution, max 8 workers
+│   ├── ssh.py, kubectl.py, docker.py, local.py
+│   └── aws.py, gcp.py, azure.py, terraform.py
 │
 ├── monitor/                 ← Background event watcher
 │   ├── watcher.py           ← kubectl get events -w stream
@@ -169,16 +217,22 @@ devops-ai/
 │   └── manager.py           ← Chat sessions, persisted to chat_messages.json
 │
 ├── targets/
-│   └── manager.py           ← Connection CRUD, credential masking
+│   ├── manager.py           ← Connection CRUD, credential masking
+│   └── crypto.py            ← Fernet encryption for credentials at rest
 │
 ├── sandbox/                 ← Execution isolation
 │   ├── safe.py              ← Read-only command whitelist
 │   ├── docker_sandbox.py    ← Container isolation
-│   └── executor.py          ← SANDBOX=safe|docker|local
+│   ├── executor.py          ← SANDBOX=safe|docker|local
+│   └── redact.py            ← StreamRedactor — scrubs secrets from SSE streams
 │
-└── prompts/
-    ├── system_prompt.txt    ← Editable without code changes
-    └── builder.py           ← Injects live pod list at startup
+├── auth/                    ← (Scaffolding — Flask-Login landing in Week 1)
+│
+├── prompts/
+│   ├── system_prompt.txt    ← Editable without code changes
+│   └── builder.py           ← Injects live pod list at startup
+│
+└── tests/                   ← pytest suite (153 tests passing)
 ```
 
 ### Request Flow
@@ -190,16 +244,16 @@ Browser (React SPA)
        ▼
 ui/web.py  (Flask, thin routes)
        │
-       ├─ /api/targets          → targets/manager.py  (credential-masked)
-       ├─ /api/tab/<tid>/<tab>  → tools/executor.py   (_run_many, parallel)
-       ├─ /api/resource/<tid>   → tools/executor.py   (describe + logs)
-       ├─ /api/topology/<tid>   → kubectl → structured JSON (nodes/edges)
-       ├─ /api/logs/<tid>/stream→ subprocess.Popen kubectl logs -f (SSE)
-       ├─ /api/search/<tid>     → parallel kubectl grep (Cmd+K live search)
-       ├─ /api/chat/<tid>/stream→ agent/conversation.py (tool loop + stream)
-       ├─ /api/sessions/...     → sessions/manager.py (persistent history)
-       ├─ /api/monitor/stream   → monitor/watcher.py (SSE push)
-       └─ /api/events/...       → store/db.py (SQLite, JOIN with analyses)
+       ├─ /api/v1/targets          → targets/manager.py  (credential-masked)
+       ├─ /api/v1/tab/<tid>/<tab>  → tools/executor.py   (_run_many, parallel)
+       ├─ /api/v1/resource/<tid>   → tools/executor.py   (describe + logs)
+       ├─ /api/v1/topology/<tid>   → kubectl → structured JSON (nodes/edges)
+       ├─ /api/v1/logs/<tid>/stream→ subprocess.Popen kubectl logs -f (SSE)
+       ├─ /api/v1/search/<tid>     → parallel kubectl grep (Cmd+K live search)
+       ├─ /api/v1/chat/<tid>/stream→ agent/conversation.py (tool loop + stream)
+       ├─ /api/v1/sessions/...     → sessions/manager.py (persistent history)
+       ├─ /api/v1/monitor/stream   → monitor/watcher.py (SSE push)
+       └─ /api/v1/events/...       → store/db.py (SQLite, JOIN with analyses)
 ```
 
 ### AI Agent Loop
