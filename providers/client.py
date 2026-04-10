@@ -223,7 +223,7 @@ class ModelHealth:
 
 # ── LLM Client ──────────────────────────────────────────────────────────────
 
-RECOVERY_INTERVAL = 300  # 5 min between recovery probes
+RECOVERY_INTERVAL = 1800  # 30 min between recovery probes (avoid quota yo-yo)
 TRANSIENT_RETRIES = 2    # retry transient (non-quota) errors this many times
 TRANSIENT_DELAY   = 3    # seconds between transient retries
 
@@ -421,14 +421,17 @@ class LLMClient:
         }
 
         try:
-            yield from self._stream_once(kwargs, model)
+            for chunk in self._stream_once(kwargs, model):
+                yield chunk
             return
         except Exception as e:
             if self._handle_error(e):
                 # Fallback activated -> retry with fallback model
                 fb = self._effective_model(use_tools)
                 kwargs["model"] = fb
-                yield from self._stream_once(kwargs, fb)
+                print(f"  [AI] Retrying with fallback {fb}...")
+                for chunk in self._stream_once(kwargs, fb):
+                    yield chunk
                 return
 
             if _is_quota_error(e):
@@ -439,7 +442,8 @@ class LLMClient:
             # Transient error -> one retry
             try:
                 time.sleep(TRANSIENT_DELAY)
-                yield from self._stream_once(kwargs, model)
+                for chunk in self._stream_once(kwargs, model):
+                    yield chunk
                 return
             except Exception:
                 raise e  # raise original
