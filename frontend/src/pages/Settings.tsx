@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Settings as SettingsIcon,
   Bot,
@@ -6,7 +6,7 @@ import {
   Keyboard,
   Info,
 } from "lucide-react";
-import { EmptyState } from "../components/ui/empty-state";
+
 import {
   Card,
   CardHeader,
@@ -30,7 +30,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
 ];
 
 export function Settings({ targetCount }: Props) {
-  const [models, setModels] = useState<string[]>([]);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [current, setCurrent] = useState({ tool_model: "", answer_model: "" });
   const [loading, setLoading] = useState(true);
 
@@ -38,7 +38,7 @@ export function Settings({ targetCount }: Props) {
     api.models
       .list()
       .then((data) => {
-        setModels(data.ollama ?? []);
+        setOllamaModels(data.ollama ?? []);
         setCurrent(data.current);
       })
       .catch(() => toast.error("Failed to load AI models"))
@@ -95,28 +95,17 @@ export function Settings({ targetCount }: Props) {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p
-                  style={{
-                    fontSize: 13,
-                    color: "var(--c-text-muted)",
-                  }}
-                >
+                <p style={{ fontSize: 13, color: "var(--c-text-muted)" }}>
                   Loading models...
                 </p>
-              ) : models.length === 0 ? (
-                <EmptyState
-                  icon={<Bot size={32} />}
-                  title="No models available"
-                  description="Ollama is not running or has no models pulled. Start Ollama and pull a model to get started."
-                />
               ) : (
                 <div className={cn("flex flex-col gap-4")}>
                   {(
                     [
-                      ["tool_model", "Tool Model"],
-                      ["answer_model", "Answer Model"],
+                      ["tool_model", "Tool Model", "Model for tool calls (fast)"],
+                      ["answer_model", "Answer Model", "Model for final answers (smart)"],
                     ] as const
-                  ).map(([field, label]) => (
+                  ).map(([field, label, hint]) => (
                     <div key={field}>
                       <label
                         htmlFor={field}
@@ -125,35 +114,45 @@ export function Settings({ targetCount }: Props) {
                           fontWeight: 600,
                           color: "var(--c-text-secondary)",
                           display: "block",
-                          marginBottom: 6,
+                          marginBottom: 4,
                         }}
                       >
                         {label}
                       </label>
-                      <select
-                        id={field}
-                        value={current[field]}
-                        onChange={(e) => updateModel(field, e.target.value)}
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid var(--c-border)",
-                          background: "var(--c-bg-base)",
-                          color: "var(--c-text-primary)",
-                          fontSize: 13,
-                          outline: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {models.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
+                      <p style={{ fontSize: 11, color: "var(--c-text-muted)", margin: "0 0 6px" }}>{hint}</p>
+                      {ollamaModels.length > 0 ? (
+                        <select
+                          id={field}
+                          value={current[field]}
+                          onChange={(e) => updateModel(field, e.target.value)}
+                          style={{
+                            width: "100%",
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid var(--c-border)",
+                            background: "var(--c-bg-base)",
+                            color: "var(--c-text-primary)",
+                            fontSize: 13,
+                            outline: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {ollamaModels.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <ModelInput
+                          id={field}
+                          value={current[field]}
+                          onSubmit={(v) => updateModel(field, v)}
+                        />
+                      )}
                     </div>
                   ))}
+                  <p style={{ fontSize: 11, color: "var(--c-text-faint)", lineHeight: 1.5, margin: 0 }}>
+                    Supports any LiteLLM model: gemini/*, openai/*, ollama/*, anthropic/*, etc.
+                  </p>
                 </div>
               )}
             </CardContent>
@@ -259,6 +258,57 @@ export function Settings({ targetCount }: Props) {
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Text input with Enter-to-submit for typing any LiteLLM model string. */
+function ModelInput({ id, value, onSubmit }: { id: string; value: string; onSubmit: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setDraft(value); }, [value]);
+
+  const changed = draft.trim() !== "" && draft.trim() !== value;
+
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <input
+        ref={inputRef}
+        id={id}
+        type="text"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter" && changed) onSubmit(draft.trim()); }}
+        placeholder="e.g. gemini/gemini-2.5-flash"
+        style={{
+          flex: 1,
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: `1px solid ${changed ? "var(--c-accent)" : "var(--c-border)"}`,
+          background: "var(--c-bg-base)",
+          color: "var(--c-text-primary)",
+          fontSize: 13,
+          outline: "none",
+        }}
+      />
+      <button
+        onClick={() => { if (changed) onSubmit(draft.trim()); }}
+        disabled={!changed}
+        style={{
+          padding: "8px 16px",
+          borderRadius: 8,
+          border: "none",
+          background: changed ? "var(--c-accent)" : "var(--c-bg-raised)",
+          color: changed ? "#fff" : "var(--c-text-faint)",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: changed ? "pointer" : "default",
+          transition: "all .15s",
+        }}
+      >
+        Save
+      </button>
     </div>
   );
 }

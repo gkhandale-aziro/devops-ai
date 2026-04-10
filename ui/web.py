@@ -202,17 +202,24 @@ def api_info():
 
 @app.route("/api/v1/models", methods=["GET"])
 def api_models():
-    """List available Ollama models (if Ollama is reachable)."""
+    """List available models. Tries Ollama; always returns current config."""
     from tools.base import run_command
-    out = run_command("ollama list 2>&1", timeout=10)
-    models = []
-    for line in out.strip().split("\n")[1:]:  # skip header
-        parts = line.split()
-        if parts:
-            models.append(parts[0])
-    return jsonify({"ollama": models, "current": {
-        "tool_model": _llm.tool_model, "answer_model": _llm.answer_model,
-    }})
+    ollama_models = []
+    try:
+        out = run_command("ollama list 2>&1", timeout=5)
+        for line in out.strip().split("\n")[1:]:
+            parts = line.split()
+            if parts:
+                ollama_models.append(parts[0])
+    except Exception:
+        pass  # Ollama not available — that's fine
+    return jsonify({
+        "ollama": ollama_models,
+        "current": {
+            "tool_model": _llm.tool_model,
+            "answer_model": _llm.answer_model,
+        },
+    })
 
 
 _MODEL_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_./:@-]{0,127}$")
