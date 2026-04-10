@@ -66,14 +66,22 @@ def _is_quota_error(exc: Exception) -> bool:
     return any(kw.lower() in msg for kw in _QUOTA_KEYWORDS)
 
 
-# Preferred fallback models, best-first for DevOps tool-calling workloads.
-_PREFERRED_FALLBACKS = [
+# Preferred fallback models for tool calls (fast, good at structured output).
+_PREFERRED_TOOL_FALLBACKS = [
     "qwen2.5:7b",
     "qwen2.5:3b",
     "llama3.1:8b",
     "gemma3:latest",
-    "qwen2.5:14b",    # good but slow on CPU
     "llama3.2:latest",
+]
+
+# Preferred fallback models for answers (smarter, better reasoning).
+_PREFERRED_ANSWER_FALLBACKS = [
+    "qwen2.5:14b",
+    "qwen2.5:7b",
+    "llama3.1:8b",
+    "gemma3:latest",
+    "mixtral:8x7b",   # strong reasoning but slow on CPU
 ]
 
 
@@ -93,9 +101,9 @@ def _discover_ollama_models() -> list[str]:
         return []
 
 
-def _pick_best_fallback(available: list[str]) -> str:
+def _pick_best_fallback(available: list[str], preference: list[str]) -> str:
     """Pick the best fallback model from available Ollama models."""
-    for preferred in _PREFERRED_FALLBACKS:
+    for preferred in preference:
         if preferred in available:
             return preferred
     return available[0] if available else ""
@@ -118,7 +126,9 @@ class ModelHealth:
         self.status: str = self.HEALTHY
         self.primary_tool: str = ""
         self.primary_answer: str = ""
-        self.fallback_model: str = ""
+        self.fallback_tool: str = ""
+        self.fallback_answer: str = ""
+        self.fallback_model: str = ""       # display label for UI
         self.error_message: str = ""
         self.last_error_time: float = 0
         self.last_recovery_check: float = 0
@@ -137,13 +147,20 @@ class ModelHealth:
             except Exception:
                 pass
 
-    def set_degraded(self, error_msg: str, fallback_model: str = ""):
+    def set_degraded(self, error_msg: str,
+                     fallback_tool: str = "", fallback_answer: str = ""):
         with self._lock:
             self.error_message = error_msg
             self.last_error_time = time.time()
-            if fallback_model:
+            if fallback_tool:
                 self.status = self.FALLBACK
-                self.fallback_model = fallback_model
+                self.fallback_tool = fallback_tool
+                self.fallback_answer = fallback_answer or fallback_tool
+                # Display label: show both if different
+                if self.fallback_tool == self.fallback_answer:
+                    self.fallback_model = self.fallback_tool
+                else:
+                    self.fallback_model = f"{self.fallback_tool} / {self.fallback_answer}"
             else:
                 self.status = self.UNAVAILABLE
             self._notify()
@@ -154,6 +171,8 @@ class ModelHealth:
                 return
             self.status = self.HEALTHY
             self.error_message = ""
+            self.fallback_tool = ""
+            self.fallback_answer = ""
             self.fallback_model = ""
             self._notify()
 
@@ -164,6 +183,8 @@ class ModelHealth:
                 "primary_tool": self.primary_tool,
                 "primary_answer": self.primary_answer,
                 "fallback_model": self.fallback_model,
+                "fallback_tool": self.fallback_tool,
+                "fallback_answer": self.fallback_answer,
                 "error_message": self.error_message,
                 "since": self.last_error_time if self.status != self.HEALTHY else 0,
             }
@@ -194,8 +215,11 @@ class LLMClient:
 
     def _effective_model(self, use_tools: bool) -> str:
         """Return the model to actually use, accounting for fallback state."""
-        if self.health.status == ModelHealth.FALLBACK and self.health.fallback_model:
-            return self.health.fallback_model
+        if self.health.status == ModelHealth.FALLBACK:
+            if use_tools and self.health.fallback_tool:
+                return self.health.fallback_tool
+            if not use_tools and self.health.fallback_answer:
+                return self.health.fallback_answer
         return self.tool_model if use_tools else self.answer_model
 
     def _try_recovery(self) -> bool:
@@ -230,12 +254,17 @@ class LLMClient:
             return False
 
     def _activate_fallback(self, error: Exception):
-        """Detect Ollama, switch to best available fallback model."""
+        """Detect Ollama, switch to best available fallback models (tool + answer)."""
         ollama_models = _discover_ollama_models()
         if ollama_models:
-            fallback = _pick_best_fallback(ollama_models)
-            print(f"  [AI] Quota exhausted — falling back to Ollama: {fallback}")
-            self.health.set_degraded(str(error), fallback_model=f"ollama/{fallback}")
+            tool_fb   = _pick_best_fallback(ollama_models, _PREFERRED_TOOL_FALLBACKS)
+            answer_fb = _pick_best_fallback(ollama_models, _PREFERRED_ANSWER_FALLBACKS)
+            print(f"  [AI] Quota exhausted — fallback tool: ollama/{tool_fb}, answer: ollama/{answer_fb}")
+            self.health.set_degraded(
+                str(error),
+                fallback_tool=f"ollama/{tool_fb}",
+                fallback_answer=f"ollama/{answer_fb}",
+            )
         else:
             print(f"  [AI] Quota exhausted — no Ollama available")
             self.health.set_degraded(str(error))
