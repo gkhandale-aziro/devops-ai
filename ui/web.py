@@ -984,11 +984,17 @@ def api_sessions_chat_stream(sid):
 
     def generate():
         full = ""
-        for chunk in _llm.chat_stream(msgs, use_tools=False):
-            full += chunk
-            yield f"data: {json.dumps({'t': chunk})}\n\n"
-        msgs.append({"role": "assistant", "content": full})
-        _sessions.set_messages(sid, msgs)
+        try:
+            for chunk in _llm.chat_stream(msgs, use_tools=False):
+                full += chunk
+                yield f"data: {json.dumps({'t': chunk})}\n\n"
+        except Exception as e:
+            err_msg = str(e)[:200]
+            print(f"  [Chat] stream error: {err_msg}")
+            yield f"data: {json.dumps({'error': f'AI model error: {err_msg}'})}\n\n"
+        if full:
+            msgs.append({"role": "assistant", "content": full})
+            _sessions.set_messages(sid, msgs)
         yield "data: [DONE]\n\n"
 
     redactor = StreamRedactor()

@@ -86,7 +86,20 @@ _PREFERRED_ANSWER_FALLBACKS = [
 
 
 def _discover_ollama_models() -> list[str]:
-    """Return available Ollama model names, or [] if Ollama is not reachable."""
+    """Return available Ollama model names via HTTP API or CLI fallback."""
+    import urllib.request
+
+    # Try HTTP API first (works inside Docker via OLLAMA_API_BASE)
+    base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
+    try:
+        req = urllib.request.Request(f"{base}/api/tags", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        pass
+
+    # Fallback to CLI (works when Ollama is installed locally)
     try:
         out = subprocess.run(
             ["ollama", "list"], capture_output=True, text=True, timeout=5,
@@ -360,8 +373,8 @@ class LLMClient:
                     self._activate_fallback(e)
                 # Retry with fallback
                 if self.health.status == ModelHealth.FALLBACK:
-                    fallback_model = self.health.fallback_model
-                    kwargs["model"] = fallback_model
+                    fb = self.health.fallback_tool if use_tools else self.health.fallback_answer
+                    kwargs["model"] = fb
                     t0 = time.time()
                     response = litellm.completion(**kwargs)
                     for chunk in response:
@@ -369,6 +382,6 @@ class LLMClient:
                         if delta and delta.content:
                             yield delta.content
                     elapsed = time.time() - t0
-                    print(f"  [AI] {fallback_model} | stream (fallback) | {elapsed:.1f}s")
+                    print(f"  [AI] {fb} | stream (fallback) | {elapsed:.1f}s")
                     return
             raise
