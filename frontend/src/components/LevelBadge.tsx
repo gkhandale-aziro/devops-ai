@@ -1,27 +1,29 @@
-import { LEVEL_LABELS, levelColor } from "../types";
+import { LEVEL_LABELS } from "../types";
+import { Badge } from "./ui/badge";
 
 interface Props {
   level: string;
   showLabel?: boolean;
 }
 
+const LEVEL_MAP: Record<string, { variant: "destructive" | "warning" | "info"; label: string }> = {
+  "SEV1": { variant: "destructive", label: "SEV1" },
+  "SEV2": { variant: "warning", label: "SEV2" },
+  "SEV3": { variant: "info", label: "SEV3" },
+  "1": { variant: "destructive", label: "SEV1" },
+  "2": { variant: "warning", label: "SEV2" },
+  "3": { variant: "info", label: "SEV3" },
+  "L1": { variant: "destructive", label: "SEV1" },
+  "L2": { variant: "warning", label: "SEV2" },
+  "L3": { variant: "info", label: "SEV3" },
+};
+
 export function LevelBadge({ level, showLabel = false }: Props) {
-  const c = levelColor(level);
-  const label = (LEVEL_LABELS as Record<string, string>)[level];
+  const mapped = LEVEL_MAP[level] ?? { variant: "info" as const, label: level };
+  const desc = (LEVEL_LABELS as Record<string, string>)[mapped.label];
   return (
-    <span
-      style={{
-        background:    c.bg,
-        color:         c.text,
-        border:        `1px solid ${c.border}`,
-        borderRadius:  4,
-        padding:       "2px 7px",
-        fontSize:      11,
-        fontWeight:    700,
-        whiteSpace:    "nowrap",
-      }}
-    >
-      {level}{showLabel && label ? ` — ${label}` : ""}
-    </span>
+    <Badge variant={mapped.variant}>
+      {mapped.label}{showLabel && desc ? ` — ${desc}` : ""}
+    </Badge>
   );
 }
