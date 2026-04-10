@@ -1,19 +1,30 @@
 import { useState, useRef, useEffect } from "react";
-import { Check, X as XIcon, ChevronDown, ChevronRight } from "lucide-react";
+import { Check, X as XIcon, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react";
 import type { ChatMsg, ToolCall } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
 import { C } from "../utils/theme";
+import { api } from "../api/client";
 
 interface Props {
   messages:     ChatMsg[];
   loading:      boolean;
   onSend:       (text: string) => void;
   placeholder?: string;
+  targetId?:    string;
 }
 
-export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
+export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: Props) {
   const [text,    setText]    = useState("");
   const [focused, setFocused] = useState(false);
+  const [ratings, setRatings] = useState<Record<number, "up" | "down">>({});
+
+  function handleFeedback(msgIndex: number, content: string, rating: "up" | "down") {
+    if (ratings[msgIndex]) return; // already rated
+    setRatings(prev => ({ ...prev, [msgIndex]: rating }));
+    if (targetId) {
+      api.feedback(targetId, content, rating).catch(() => {});
+    }
+  }
   const feedRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -94,6 +105,51 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
                   <ThinkingDots />
                 ) : "—"}
               </div>
+
+              {/* Feedback bar — thumbs up/down on assistant messages */}
+              {!isUser && m.content && !(loading && isLast) && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  paddingLeft: 4, paddingTop: 2,
+                }}>
+                  <button
+                    onClick={() => handleFeedback(i, m.content, "up")}
+                    disabled={!!ratings[i]}
+                    style={{
+                      background: "none", border: "none", cursor: ratings[i] ? "default" : "pointer",
+                      padding: 4, borderRadius: 4, display: "flex", alignItems: "center",
+                      opacity: ratings[i] === "down" ? 0.3 : ratings[i] === "up" ? 1 : 0.5,
+                      transition: "opacity 150ms",
+                    }}
+                    aria-label="Thumbs up"
+                  >
+                    <ThumbsUp
+                      size={13}
+                      color={ratings[i] === "up" ? C.accent.primary : C.text.faint}
+                      fill={ratings[i] === "up" ? C.accent.primary : "none"}
+                      strokeWidth={1.8}
+                    />
+                  </button>
+                  <button
+                    onClick={() => handleFeedback(i, m.content, "down")}
+                    disabled={!!ratings[i]}
+                    style={{
+                      background: "none", border: "none", cursor: ratings[i] ? "default" : "pointer",
+                      padding: 4, borderRadius: 4, display: "flex", alignItems: "center",
+                      opacity: ratings[i] === "up" ? 0.3 : ratings[i] === "down" ? 1 : 0.5,
+                      transition: "opacity 150ms",
+                    }}
+                    aria-label="Thumbs down"
+                  >
+                    <ThumbsDown
+                      size={13}
+                      color={ratings[i] === "down" ? C.status.danger : C.text.faint}
+                      fill={ratings[i] === "down" ? C.status.danger : "none"}
+                      strokeWidth={1.8}
+                    />
+                  </button>
+                </div>
+              )}
 
               {/* Tool calls — expandable blocks */}
               {m.tools && m.tools.length > 0 && (

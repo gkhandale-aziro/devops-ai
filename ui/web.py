@@ -1032,6 +1032,21 @@ def api_events_by_object(name):
     return jsonify(_store.get_object_history(name, limit=limit))
 
 
+@app.route("/api/v1/feedback", methods=["POST"])
+def api_feedback():
+    """Save user feedback (thumbs up/down) for an AI response."""
+    body = request.json or {}
+    target_id = body.get("target_id", "").strip()
+    message = body.get("message", "").strip()
+    rating = body.get("rating", "").strip()
+    if rating not in ("up", "down"):
+        return jsonify({"error": "rating must be 'up' or 'down'"}), 400
+    if not message:
+        return jsonify({"error": "message required"}), 400
+    _store.save_feedback(target_id, message, rating, body.get("comment", ""))
+    return jsonify({"ok": True})
+
+
 @app.route("/api/v1/stats", methods=["GET"])
 def api_stats():
     """Cluster incident stats: counts by level, top failing objects."""

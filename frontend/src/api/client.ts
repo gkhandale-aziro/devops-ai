@@ -141,6 +141,14 @@ export const api = {
     return req<Record<string, { t: string; v: number }[]>>(`/api/v1/metrics/${targetId}${qs}`);
   },
 
+  // ── Feedback ─────────────────────────────────────────────────────────────
+  feedback: (targetId: string, message: string, rating: "up" | "down") =>
+    req<{ ok: boolean }>("/api/v1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_id: targetId, message, rating }),
+    }),
+
   // ── Monitor ───────────────────────────────────────────────────────────────
 
   monitor: {

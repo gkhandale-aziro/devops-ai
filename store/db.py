@@ -82,6 +82,15 @@ class EventStore:
                 CREATE INDEX IF NOT EXISTS idx_events_object    ON events(object);
                 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC);
                 CREATE INDEX IF NOT EXISTS idx_events_level     ON events(level);
+                CREATE TABLE IF NOT EXISTS feedback (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp  TEXT NOT NULL,
+                    target_id  TEXT NOT NULL,
+                    message    TEXT NOT NULL,
+                    rating     TEXT NOT NULL,
+                    comment    TEXT DEFAULT ''
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_metrics_target_time
                     ON metrics(target_id, metric, timestamp DESC);
                 PRAGMA foreign_keys = ON;
@@ -308,6 +317,16 @@ class EventStore:
         ).isoformat()
         with self._conn() as c:
             c.execute("DELETE FROM metrics WHERE timestamp < ?", (cutoff,))
+
+    # ── feedback ──────────────────────────────────────────────────────────────
+
+    def save_feedback(self, target_id: str, message: str, rating: str, comment: str = ""):
+        """Save user feedback (thumbs up/down) for an AI response."""
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO feedback (timestamp, target_id, message, rating, comment) VALUES (?,?,?,?,?)",
+                (_now(), target_id, message[:2000], rating, comment[:500]),
+            )
 
     # ── maintenance ───────────────────────────────────────────────────────────
 

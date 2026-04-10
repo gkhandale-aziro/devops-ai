@@ -268,6 +268,7 @@ export function Dashboard({ target }: Props) {
                 loading={chatLoading}
                 onSend={send}
                 placeholder={`Ask about ${target.name}…`}
+                targetId={target.id}
               />
             </div>
           ) : activeTab === "__topology" ? (
