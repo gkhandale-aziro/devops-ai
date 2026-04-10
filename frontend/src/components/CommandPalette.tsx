@@ -41,6 +41,40 @@ const PAGES: Array<{ label: string; path: string; iconKey: string; accent: strin
   { label: "AI Chat",     path: "/chat",      iconKey: "chat",      accent: "var(--c-accent-hover)" },
 ];
 
+// Module-level callback so SearchBar can open the palette without prop drilling
+let _openPalette: (() => void) | null = null;
+
+/** Inline search bar for the top bar — clicks open the command palette */
+export function SearchBar() {
+  return (
+    <button
+      onClick={() => _openPalette?.()}
+      style={{
+        display: "flex", alignItems: "center", gap: 8,
+        background: "var(--c-bg-surface)", border: "1px solid var(--c-border)",
+        borderRadius: 8, padding: "6px 14px",
+        fontSize: 12, color: "var(--c-text-muted)", cursor: "pointer",
+        transition: "border-color .15s",
+        minWidth: 220,
+      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--c-accent)"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--c-border)"; }}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Search…
+      <kbd style={{
+        marginLeft: "auto", fontSize: 9, color: "var(--c-text-muted)",
+        background: "var(--c-bg-raised)", border: "1px solid var(--c-border)",
+        borderRadius: 3, padding: "1px 5px",
+      }}>
+        {navigator.platform.includes("Mac") ? "\u2318K" : "Ctrl+K"}
+      </kbd>
+    </button>
+  );
+}
+
 export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props) {
   const [open,    setOpen]    = useState(false);
   const [query,   setQuery]   = useState("");
@@ -49,6 +83,12 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const nav = useNavigate();
+
+  // Register module-level callback so SearchBar can open us
+  useEffect(() => {
+    _openPalette = () => { setOpen(true); setQuery(""); setActive(0); };
+    return () => { _openPalette = null; };
+  }, []);
 
   // Global keyboard shortcut
   useEffect(() => {
@@ -160,31 +200,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
     if (e.key === "Escape") setOpen(false);
   };
 
-  if (!open) return (
-    <button
-      onClick={() => setOpen(true)}
-      title="Command palette (Ctrl+K)"
-      style={{
-        position: "fixed", bottom: 20, right: 20, zIndex: 100,
-        background: "var(--c-bg-surface)", border: "1px solid var(--c-border)",
-        borderRadius: 8, padding: "7px 12px",
-        display: "flex", alignItems: "center", gap: 8,
-        fontSize: 12, color: "var(--c-text-muted)", cursor: "pointer",
-        boxShadow: "0 4px 20px #00000044",
-        transition: "all .15s",
-      }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--c-accent)"; e.currentTarget.style.color = "var(--c-accent-hover)"; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--c-border)"; e.currentTarget.style.color = "var(--c-text-muted)"; }}
-    >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
-      Search
-      <kbd style={{ fontSize: 9, color: "var(--c-text-muted)", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", borderRadius: 3, padding: "1px 4px" }}>
-        {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}
-      </kbd>
-    </button>
-  );
+  if (!open) return null;
 
   return (
     <>

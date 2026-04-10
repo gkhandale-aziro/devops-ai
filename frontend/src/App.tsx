@@ -10,7 +10,7 @@ import { History }    from "./pages/History";
 import { Chat }       from "./pages/Chat";
 import { Settings }   from "./pages/Settings";
 import { AddTargetModal } from "./components/AddTargetModal";
-import { CommandPalette } from "./components/CommandPalette";
+import { CommandPalette, SearchBar } from "./components/CommandPalette";
 import { ThemeProvider }  from "./components/ThemeContext";
 import { ConfirmDialog } from "./components/confirm-dialog";
 import { GLOBAL_KEYFRAMES } from "./utils/animations";
@@ -122,6 +122,16 @@ export default function App() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <ModelStatusBanner onModelChange={() => { window.location.href = "/settings"; }} />
+
+          {/* Top bar — search */}
+          <div style={{
+            padding: "8px 20px", borderBottom: "1px solid var(--c-border)",
+            display: "flex", alignItems: "center", justifyContent: "flex-end",
+            flexShrink: 0, background: "var(--c-bg-raised)",
+          }}>
+            <SearchBar />
+          </div>
+
           <Routes>
             <Route path="/"          element={<ErrorBoundary><Home targets={targets} monitorActive={monitorActive} /></ErrorBoundary>} />
             <Route path="/dashboard" element={<ErrorBoundary><Dashboard target={activeTarget} /></ErrorBoundary>} />
