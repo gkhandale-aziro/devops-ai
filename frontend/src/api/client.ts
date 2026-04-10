@@ -133,6 +133,14 @@ export const api = {
       }),
   },
 
+  // ── Metrics ──────────────────────────────────────────────────────────────
+  metrics: (targetId: string, params?: { metric?: string; range?: string }) => {
+    const qs = params ? "?" + new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined))
+    ) : "";
+    return req<Record<string, { t: string; v: number }[]>>(`/api/v1/metrics/${targetId}${qs}`);
+  },
+
   // ── Monitor ───────────────────────────────────────────────────────────────
 
   monitor: {

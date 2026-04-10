@@ -29,6 +29,7 @@ from targets   import TargetManager
 from agent     import needs_tools, AgentSession, Agent
 from monitor   import EventWatcher, Triage
 from store     import EventStore
+from store.metrics import MetricCollector
 from sandbox.redact import StreamRedactor
 from tools.kubectl  import setup_kubeconfig, check_cloud_auth
 
@@ -43,6 +44,7 @@ _targets  = TargetManager()
 _agent    = Agent(_llm, _tools)
 _session  = AgentSession()
 _store    = EventStore()
+_metric_collector = MetricCollector(_store)
 
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
@@ -847,6 +849,7 @@ def api_monitor_start(tid):
         watcher.on_event(lambda e: _store.save_event(e, _web_classify(e)) if e.get("type") == "Warning" else None)
         watcher.watch()
         _web_watchers[tid] = watcher
+        _metric_collector.start(tid, target, executor)
 
     return jsonify({"ok": True, "monitoring": tid})
 
@@ -860,7 +863,9 @@ def api_monitor_stop():
             w = _web_watchers.pop(tid, None)
             if w:
                 w.stop()
+            _metric_collector.stop(tid)
         else:
+            _metric_collector.stop_all()
             for w in _web_watchers.values():
                 w.stop()
             _web_watchers.clear()
@@ -899,6 +904,26 @@ def api_monitor_stream():
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/v1/metrics/<tid>")
+def api_metrics(tid):
+    """Query stored metric snapshots for a target.
+    ?metric=cpu_pct,mem_pct  (comma-separated, default: all)
+    ?range=1h|6h|24h|7d     (default: 1h)
+    """
+    import datetime
+
+    range_str = request.args.get("range", "1h").strip()
+    metric = request.args.get("metric", "").strip() or None
+
+    # Parse range to since timestamp
+    range_map = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
+    hours = range_map.get(range_str, 1)
+    since = (datetime.datetime.now() - datetime.timedelta(hours=hours)).isoformat()
+
+    data = _store.get_metrics(tid, metric=metric, since=since)
+    return jsonify(data)
 
 
 # ── general chat sessions ─────────────────────────────────────────────────────

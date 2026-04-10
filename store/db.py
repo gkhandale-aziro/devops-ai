@@ -71,9 +71,19 @@ class EventStore:
                     remediation TEXT    DEFAULT ''
                 );
 
+                CREATE TABLE IF NOT EXISTS metrics (
+                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                    target_id TEXT    NOT NULL,
+                    timestamp TEXT    NOT NULL,
+                    metric    TEXT    NOT NULL,
+                    value     REAL    NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_events_object    ON events(object);
                 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC);
                 CREATE INDEX IF NOT EXISTS idx_events_level     ON events(level);
+                CREATE INDEX IF NOT EXISTS idx_metrics_target_time
+                    ON metrics(target_id, metric, timestamp DESC);
                 PRAGMA foreign_keys = ON;
             """)
 
@@ -251,6 +261,53 @@ class EventStore:
                 ).fetchall()
             ]
         return {"counts": counts, "top_failing": top_failing, "recent": recent}
+
+    # ── metrics ───────────────────────────────────────────────────────────────
+
+    def save_metrics(self, target_id: str, metrics: list):
+        """Save a batch of metric readings. Each item: {metric: str, value: float}"""
+        now = _now()
+        with self._conn() as c:
+            c.executemany(
+                "INSERT INTO metrics (target_id, timestamp, metric, value) VALUES (?,?,?,?)",
+                [(target_id, now, m["metric"], m["value"]) for m in metrics],
+            )
+
+    def get_metrics(self, target_id: str, metric: str = None,
+                    since: str = None, step: str = None) -> dict:
+        """Query metric time-series. Returns {metric_name: [{t, v}, ...]}"""
+        where = ["target_id = ?"]
+        params = [target_id]
+        if metric:
+            metrics_list = [m.strip() for m in metric.split(",")]
+            where.append(f"metric IN ({','.join('?' * len(metrics_list))})")
+            params.extend(metrics_list)
+        if since:
+            where.append("timestamp >= ?")
+            params.append(since)
+
+        sql = f"""
+            SELECT metric, timestamp, value
+            FROM   metrics
+            WHERE  {' AND '.join(where)}
+            ORDER  BY timestamp ASC
+        """
+        result = {}
+        with self._conn() as c:
+            for row in c.execute(sql, params).fetchall():
+                m = row["metric"]
+                if m not in result:
+                    result[m] = []
+                result[m].append({"t": row["timestamp"], "v": row["value"]})
+        return result
+
+    def purge_old_metrics(self, days: int = 7):
+        """Delete metrics older than N days."""
+        cutoff = (
+            datetime.datetime.now() - datetime.timedelta(days=days)
+        ).isoformat()
+        with self._conn() as c:
+            c.execute("DELETE FROM metrics WHERE timestamp < ?", (cutoff,))
 
     # ── maintenance ───────────────────────────────────────────────────────────
 
