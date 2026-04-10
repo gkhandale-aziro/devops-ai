@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import { LayoutGrid, ChevronRight, RefreshCw, Grid3X3, MessageSquare, Network } from "lucide-react";
 import type { Target, TabId } from "../types";
 import { TABS_BY_TYPE }  from "../types";
 import { api }  from "../api/client";
+import { TARGET_META } from "../utils/targetIcons";
 import { useTargetChat } from "../hooks/useChat";
 import { ChatPanel } from "../components/ChatPanel";
 import { LogStream } from "../components/LogStream";
@@ -128,21 +130,19 @@ export function Dashboard({ target }: Props) {
         flexShrink: 0,
         background: "#0f1219",
       }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c8cf8" strokeWidth="2">
-          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-        </svg>
+        <LayoutGrid size={16} stroke="#7c8cf8" />
         <span style={{ fontSize: 11, color: "#475569", fontWeight: 500 }}>Dashboard</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
-        <strong style={{ fontSize: 15 }}>{target.name}</strong>
-        <span style={{ fontSize: 12, color: "#64748b", background: "#1a1d27", padding: "2px 8px", borderRadius: 4 }}>{target.type}</span>
+        <ChevronRight size={10} stroke="#334155" />
+        <strong style={{ fontSize: 15, color: "#f1f5f9" }}>{target.name}</strong>
+        <span style={{ fontSize: 12, color: "#64748b", background: "#1a1d27", padding: "2px 8px", borderRadius: 4, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {(() => { const meta = TARGET_META[target.type as keyof typeof TARGET_META]; if (meta) { const Icon = meta.icon; return <Icon size={11} />; } return null; })()}
+          {target.type}
+        </span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {/* Namespace selector for K8s targets */}
           {isK8s && activeTab !== "__chat" && activeTab !== "__topology" && (
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2">
-                <rect x="2" y="2" width="20" height="20" rx="4"/>
-                <path d="M8 2v20"/><path d="M16 2v20"/>
-              </svg>
+              <Grid3X3 size={12} stroke="#64748b" />
               <select
                 value={nsFilter}
                 onChange={e => setNsFilter(e.target.value)}
@@ -181,10 +181,7 @@ export function Dashboard({ target }: Props) {
               gap: 5, padding: "4px 8px", fontSize: 11, transition: BTN_TRANSITION,
               opacity: tabLoading ? 0.6 : 1,
             }}>
-              <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                style={tabLoading ? { animation: "spin 0.7s linear infinite" } : undefined}>
-                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
-              </svg>
+              <RefreshCw size={11} style={tabLoading ? { animation: "spin 0.7s linear infinite" } : undefined} />
               {tabLoading ? "Refreshing…" : "Refresh"}
             </button>
           )}
@@ -233,9 +230,7 @@ export function Dashboard({ target }: Props) {
             transition: TAB_TRANSITION,
           }}
         >
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+          <MessageSquare size={12} />
           AI Chat
         </button>
         {(target.type === "kubernetes" || target.type === "ssh" || target.type === "local") && (
@@ -255,10 +250,7 @@ export function Dashboard({ target }: Props) {
               transition: TAB_TRANSITION,
             }}
           >
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/>
-              <line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/>
-            </svg>
+            <Network size={12} />
             Topology
           </button>
         )}
@@ -425,7 +417,7 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
   if (tabId === "pods") {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <ContextualHint id="pods-diagnose">Unhealthy pods show a ✦ Diagnose button — click it for an instant AI diagnosis without opening chat.</ContextualHint>
+        <ContextualHint id="pods-diagnose">Unhealthy pods show a Diagnose button — click it for an instant AI diagnosis without opening chat.</ContextualHint>
         <PodTable raw={data.pods ?? data.output ?? ""} target={target} onStreamLogs={onStreamLogs} />
       </div>
     );

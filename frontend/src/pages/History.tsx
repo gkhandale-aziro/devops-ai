@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
+import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
 import type { StoredEvent, TriageLevel, Snapshot, Analysis, IncidentStatus } from "../types";
 import { LEVEL_COLORS, LEVEL_LABELS, levelColor } from "../types";
 import { api } from "../api/client";
@@ -264,7 +265,7 @@ export function History() {
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{e.reason}</div>
                           {e.last_diagnosis && (
                             <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
-                              ✦ {e.last_diagnosis.slice(0, 80)}{e.last_diagnosis.length > 80 ? "…" : ""}
+                              <Sparkles size={9} style={{ display: "inline", marginRight: 3 }} /> {e.last_diagnosis.slice(0, 80)}{e.last_diagnosis.length > 80 ? "…" : ""}
                             </div>
                           )}
                         </td>
@@ -292,7 +293,7 @@ export function History() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            ✦ AI
+                            <Sparkles size={10} style={{ marginRight: 3 }} /> AI
                           </button>
                         </td>
                       </tr>
@@ -321,7 +322,7 @@ export function History() {
                 {detail?.reason ?? "Loading…"}
               </strong>
               <button onClick={() => { setDetail(null); setSelectedId(null); }}
-                style={{ background: "none", border: "none", color: "#64748b", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>✕</button>
+                style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center" }}><X size={16} /></button>
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
@@ -387,7 +388,7 @@ export function History() {
                       gap: 8,
                     }}
                   >
-                    <span>✦</span> Ask AI to Explain
+                    <Sparkles size={14} /> Ask AI to Explain
                   </button>
 
                   {/* snapshots */}
@@ -420,7 +421,7 @@ export function History() {
                       onClick={() => { setObjInput(detail.object); setObjFilter(detail.object); setDetail(null); setSelectedId(null); }}
                       style={{ background: "none", border: "none", color: "#7c8cf8", fontSize: 12, cursor: "pointer", padding: 0 }}
                     >
-                      View all for {detail.object} →
+                      View all for {detail.object} <ArrowRight size={11} style={{ marginLeft: 3 }} />
                     </button>
                   </div>
                 </>
@@ -469,7 +470,7 @@ function CollapsibleSection({ label, children }: { label: string; children: Reac
         onClick={() => setOpen(o => !o)}
         style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "5px 0", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
       >
-        <span style={{ fontSize: 10, color: "#64748b" }}>{open ? "▼" : "▶"}</span>
+        <span style={{ color: "#64748b", display: "flex", alignItems: "center" }}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
         <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".5px", color: "#64748b" }}>{label}</span>
       </button>
       {open && children}

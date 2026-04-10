@@ -4,6 +4,7 @@ import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Wifi, X,
 import type { ReactNode } from "react";
 import type { Target } from "../types";
 import { ThemeToggle } from "./ThemeContext";
+import { TARGET_META } from "../utils/targetIcons";
 
 interface Props {
   targets:       Target[];
@@ -19,12 +20,6 @@ const TYPE_COLORS: Record<string, string> = {
   kubernetes: "#326CE5", ssh: "#22c55e", local: "#22c55e",
   docker: "#2496ED", aws: "#FF9900", gcp: "#4285F4",
   azure: "#0078D4", terraform: "#7B42BC",
-};
-
-// Proper abbreviations — legible at small sizes
-const TYPE_ICONS: Record<string, string> = {
-  kubernetes: "K8S", docker: "DOC", aws: "AWS", gcp: "GCP",
-  azure: "AZ", terraform: "TF", ssh: "SSH", local: "LCL",
 };
 
 export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel }: Props) {
@@ -163,9 +158,9 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                 background: `${typeColor}18`,
                 border: `1px solid ${typeColor}33`,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 9, fontWeight: 800, color: typeColor, letterSpacing: ".4px",
+                color: typeColor,
               }}>
-                {TYPE_ICONS[t.type] ?? t.type.slice(0, 3).toUpperCase()}
+                {(() => { const meta = TARGET_META[t.type as keyof typeof TARGET_META]; if (meta) { const Icon = meta.icon; return <Icon size={14} />; } return <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".4px" }}>{t.type.slice(0, 3).toUpperCase()}</span>; })()}
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>

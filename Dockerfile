@@ -94,6 +94,16 @@ COPY requirements.txt .
 RUN /app/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # =============================================================================
+# Stage: Frontend — build React SPA (runs parallel with CLI + Python stages)
+# =============================================================================
+FROM node:22-slim AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend/ .
+RUN npm run build
+
+# =============================================================================
 # Final stage — slim runtime with all CLIs + app
 # =============================================================================
 FROM python:3.12-slim
@@ -129,6 +139,9 @@ COPY --from=python-deps /app/venv /app/venv
 ENV PATH="/app/venv/bin:/usr/lib/google-cloud-sdk/bin:$PATH"
 
 COPY . .
+
+# ── Overwrite stale frontend_dist with freshly-built SPA from build stage ────
+COPY --from=frontend-build /app/frontend_dist /app/frontend_dist
 
 # ── Non-root user — runs the app with reduced privileges ────────────────────
 RUN groupadd -r aziro && useradd -r -g aziro -d /home/aziro -s /bin/false aziro && \

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Zap, Wifi, AlertTriangle, AlertCircle, Bell, LayoutGrid, MessageSquare, Clock, ArrowRight } from "lucide-react";
+import { TARGET_META } from "../utils/targetIcons";
 import type { Target, StoredEvent, TriageLevel } from "../types";
 import { LEVEL_COLORS } from "../types";
 import { api } from "../api/client";
@@ -303,12 +304,9 @@ export function Home({ targets, monitorActive }: Props) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 10 }}>
               {targets.map(t => {
                 const dotColor  = t.status === "online" ? "#22c55e" : t.status === "offline" ? "#ef4444" : "#64748b";
-                const typeColor: Record<string, string> = {
-                  kubernetes: "#326CE5", docker: "#2496ED", aws: "#FF9900",
-                  gcp: "#4285F4", azure: "#0078D4", terraform: "#7B42BC",
-                  ssh: "#22c55e", local: "#22c55e",
-                };
-                const tc = typeColor[t.type] ?? "#64748b";
+                const meta = TARGET_META[t.type as keyof typeof TARGET_META];
+                const tc = meta?.color ?? "#64748b";
+                const TypeIcon = meta?.icon;
                 return (
                   <Link
                     key={t.id}
@@ -338,7 +336,10 @@ export function Home({ targets, monitorActive }: Props) {
                     }} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                      <div style={{ fontSize: 10, color: tc, marginTop: 1, fontWeight: 600 }}>{t.type}</div>
+                      <div style={{ fontSize: 10, color: tc, marginTop: 1, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                        {TypeIcon && <TypeIcon size={10} />}
+                        {t.type}
+                      </div>
                     </div>
                   </Link>
                 );

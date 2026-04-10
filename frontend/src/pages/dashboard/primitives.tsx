@@ -3,6 +3,7 @@
  * Dashboard.tsx. Pure UI, no data fetching, no Target dependency.
  */
 import { useState, type ReactNode } from "react";
+import { Command, Sparkles, Target, Play, ChevronDown, ChevronRight } from "lucide-react";
 import { fadeInStyle, skeletonStyle } from "../../utils/animations";
 import { C } from "../../utils/theme";
 
@@ -102,7 +103,7 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
         </svg>
         {title}
         {hint && <span style={{ fontSize: 11, color: C.text.muted, fontWeight: 400 }}>· {hint}</span>}
-        <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 10, color: C.text.faint }}>{open ? "▼" : "▶"}</span>
+        <span aria-hidden="true" style={{ marginLeft: "auto", color: C.text.faint, display: "flex", alignItems: "center" }}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
       </div>
       <div
         role="region"
@@ -123,11 +124,11 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
 
 // ── No-target empty state ───────────────────────────────────────────────────
 
-const FEATURE_HINTS = [
-  { icon: "⌘K", label: "Command Palette", desc: "Jump to any resource instantly — press Cmd+K" },
-  { icon: "✦",  label: "AI Chat",         desc: "Ask your cluster anything in plain English" },
-  { icon: "◎",  label: "Topology",        desc: "Visualize Ingress → Service → Pod relationships" },
-  { icon: "▶",  label: "Live Logs",       desc: "Stream pod logs in real time with auto-scroll" },
+const FEATURE_HINTS: { icon: ReactNode; label: string; desc: string }[] = [
+  { icon: <Command size={14} />,  label: "Command Palette", desc: "Jump to any resource instantly — press Cmd+K" },
+  { icon: <Sparkles size={14} />, label: "AI Chat",         desc: "Ask your cluster anything in plain English" },
+  { icon: <Target size={14} />,   label: "Topology",        desc: "Visualize Ingress, Service, Pod relationships" },
+  { icon: <Play size={14} />,     label: "Live Logs",       desc: "Stream pod logs in real time with auto-scroll" },
 ];
 
 export function NoTargetEmptyState() {
@@ -161,7 +162,7 @@ export function NoTargetEmptyState() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {FEATURE_HINTS.map(f => (
             <div key={f.label} style={{ background: C.bg.panel, border: `1px solid ${C.border.subtle}`, borderRadius: 8, padding: "10px 12px", textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 14, width: 20, flexShrink: 0, color: C.accent.primary, fontWeight: 700 }}>{f.icon}</span>
+              <span style={{ width: 20, flexShrink: 0, color: C.accent.primary, display: "flex", alignItems: "center", justifyContent: "center" }}>{f.icon}</span>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 2 }}>{f.label}</div>
                 <div style={{ fontSize: 11, color: C.text.faint, lineHeight: 1.4 }}>{f.desc}</div>

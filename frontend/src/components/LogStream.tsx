@@ -4,6 +4,7 @@
  * Displayed as a bottom tray in Dashboard, inspired by Lens.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Play, Pause } from "lucide-react";
 import type { Target } from "../types";
 import { api } from "../api/client";
 
@@ -159,7 +160,7 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
             fontWeight: 700, cursor: "pointer",
           }}
         >
-          {paused ? "▶ Resume scroll" : "⏸ Scroll lock"}
+          {paused ? <><Play size={10} style={{ marginRight: 4 }} /> Resume scroll</> : <><Pause size={10} style={{ marginRight: 4 }} /> Scroll lock</>}
         </button>
 
         <button

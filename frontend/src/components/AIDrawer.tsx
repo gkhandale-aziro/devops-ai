@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { X } from "lucide-react";
 import { api, readSSE } from "../api/client";
 import { Markdown } from "./Markdown";
 
@@ -127,7 +128,7 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 16, flexShrink: 0,
             }}
-          >✕</button>
+          ><X size={16} /></button>
         </div>
 
         {/* Content area */}
