@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
-import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
+import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight, Clock } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { StoredEvent, TriageLevel, Snapshot, Analysis, IncidentStatus } from "../types";
 import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
@@ -9,6 +9,7 @@ import { AIDrawer }      from "../components/AIDrawer";
 import { skeletonStyle } from "../utils/animations";
 import { DataTable }     from "@/components/ui/data-table";
 import { Badge }         from "@/components/ui/badge";
+import { EmptyState }    from "@/components/ui/empty-state";
 
 const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 
@@ -335,13 +336,11 @@ export function History() {
             )}
 
             {!loading && !loadError && events.length === 0 && (
-              <div style={{ textAlign: "center", color: "var(--c-text-muted)", fontSize: 13, paddingTop: 80 }}>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--c-border-strong)" strokeWidth="1.2" style={{ marginBottom: 12 }}>
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-                <div>No incidents recorded yet.</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>Start monitoring a target to capture events.</div>
-              </div>
+              <EmptyState
+                icon={<Clock size={32} />}
+                title="No incidents recorded yet"
+                description="Start monitoring a target to capture events."
+              />
             )}
 
             {events.length > 0 && (

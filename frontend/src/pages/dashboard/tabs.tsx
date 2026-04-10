@@ -13,6 +13,7 @@ import type { Target } from '../../types';
 import { RingChart, Card, Pre } from './primitives';
 import { KubectlTable, ResourceModal, hasKubectlData, serviceTypeColorFn, pvStatusColorFn, type ColorFn } from './tables';
 import { MetricChart } from '../../components/ui/metric-chart';
+import { EmptyState } from '../../components/ui/empty-state';
 import { TimeRangePicker } from '../../components/ui/time-range-picker';
 import { api } from '../../api/client';
 import { useMetrics } from '../../hooks/useMetrics';
@@ -168,7 +169,7 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
 export function GenericTab({ data }: { data: Record<string, string> }) {
   if (data.error) return <div style={{ padding: 20, color: C.status.danger }}>{data.error}</div>;
   const entries = Object.entries(data);
-  if (!entries.length) return <div style={{ padding: 20, color: C.text.muted }}>No data</div>;
+  if (!entries.length) return <EmptyState icon={<Database size={32} />} title="No data" description="This tab returned no information for the selected target." />;
   return (
     <div style={{ overflowY: "auto", padding: 16, flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
       {entries.map(([key, val]) => (

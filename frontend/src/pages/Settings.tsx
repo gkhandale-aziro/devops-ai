@@ -6,6 +6,7 @@ import {
   Keyboard,
   Info,
 } from "lucide-react";
+import { EmptyState } from "../components/ui/empty-state";
 import {
   Card,
   CardHeader,
@@ -103,14 +104,11 @@ export function Settings({ targetCount }: Props) {
                   Loading models...
                 </p>
               ) : models.length === 0 ? (
-                <p
-                  style={{
-                    fontSize: 13,
-                    color: "var(--c-text-muted)",
-                  }}
-                >
-                  No models available from Ollama.
-                </p>
+                <EmptyState
+                  icon={<Bot size={32} />}
+                  title="No models available"
+                  description="Ollama is not running or has no models pulled. Start Ollama and pull a model to get started."
+                />
               ) : (
                 <div className={cn("flex flex-col gap-4")}>
                   {(

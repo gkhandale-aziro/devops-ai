@@ -18,12 +18,13 @@ import type { ColumnDef } from "@tanstack/react-table";
 import type { Target, PodStatus } from "../../types";
 import { api, readSSE } from "../../api/client";
 import { parseKubectl } from "../../utils/parseKubectl";
-import { Sparkles, Play } from "lucide-react";
+import { Sparkles, Play, FileText } from "lucide-react";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 import { C } from "../../utils/theme";
 import { DataTable } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Markdown } from "../../components/Markdown";
+import { EmptyState } from "@/components/ui/empty-state";
 
 // ── Node table ──────────────────────────────────────────────────────────────
 
@@ -650,7 +651,7 @@ export function LogsTab({ raw, target }: { raw: string; target: Target }) {
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
         {content ? <Pre>{content}</Pre> : (
-          <div style={{ color: C.text.faint, fontSize: 13, textAlign: "center", paddingTop: 40 }}>No logs found</div>
+          <EmptyState icon={<FileText size={32} />} title="No logs found" description="Select a filter above or check that the target is producing log output." />
         )}
       </div>
     </div>

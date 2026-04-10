@@ -5,6 +5,8 @@ import { api }           from "../api/client";
 import { useMonitorSSE } from "../hooks/useSSE";
 import { AlertCard }     from "../components/AlertCard";
 import { AIDrawer }      from "../components/AIDrawer";
+import { EmptyState }    from "../components/ui/empty-state";
+import { Bell }          from "lucide-react";
 
 interface Props {
   targets:         Target[];
@@ -197,16 +199,13 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
       {/* ── Alert feed ─────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
         {visible.length === 0 && (
-          <div style={{ textAlign: "center", color: "var(--c-text-muted)", fontSize: 13, paddingTop: 80 }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--c-border-strong)" strokeWidth="1.2" style={{ marginBottom: 12 }}>
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            <div>
-              {monitorActive
-                ? "No alerts yet. Waiting for events…"
-                : "Start monitoring a target to see live alerts here."}
-            </div>
-          </div>
+          <EmptyState
+            icon={<Bell size={32} />}
+            title={monitorActive ? "No alerts yet" : "Monitor not active"}
+            description={monitorActive
+              ? "Waiting for events from the monitored target."
+              : "Start monitoring a target to see live alerts here."}
+          />
         )}
         {visible.map(a => (
           <AlertCard key={a.id} alert={a} onClick={() => openAIForAlert(a)} />
