@@ -22,7 +22,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: 
     if (ratings[msgIndex]) return; // already rated
     setRatings(prev => ({ ...prev, [msgIndex]: rating }));
     if (targetId) {
-      api.feedback(targetId, content, rating).catch(() => {});
+      api.feedback(targetId, content, rating).catch(e => console.warn("[Feedback] save failed:", e));
     }
   }
   const feedRef = useRef<HTMLDivElement>(null);
@@ -59,10 +59,10 @@ export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: 
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, color: "var(--c-text-muted)", paddingTop: 40 }}>
             <div style={{
               width: 52, height: 52, borderRadius: 14,
-              background: "#6366f118", border: "1px solid #6366f133",
+              background: `${C.accent.primary}18`, border: `1px solid ${C.accent.primary}33`,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.8">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.accent.light} strokeWidth="1.8">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
             </div>
@@ -82,7 +82,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: 
           return (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4, animation: "fadeIn .2s ease-out" }}>
               {/* Role label */}
-              <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 600, paddingLeft: isUser ? 0 : 4 }}>
+              <div style={{ fontSize: 10, color: C.text.faint, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 600, paddingLeft: isUser ? 0 : 4 }}>
                 {isUser ? "You" : "Aziro AI"}
               </div>
 
@@ -163,7 +163,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: 
                   background: "var(--c-bg-panel)", border: "1px solid var(--c-border)",
                   borderRadius: 6, padding: "6px 10px",
                   fontSize: 11, fontFamily: "'Cascadia Code','Consolas',monospace",
-                  color: "#22c55e", maxWidth: "82%",
+                  color: C.status.success, maxWidth: "82%",
                 }}>
                   {m.cmds.map((c, ci) => <div key={ci}>$ {c}</div>)}
                 </div>
@@ -227,7 +227,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: 
             )}
           </button>
         </div>
-        <div style={{ fontSize: 10, color: "#374151", marginTop: 6, textAlign: "center" }}>
+        <div style={{ fontSize: 10, color: C.text.dim, marginTop: 6, textAlign: "center" }}>
           Enter to send · Shift+Enter for new line
         </div>
       </div>
@@ -239,7 +239,7 @@ function ToolCallBlock({ tool }: { tool: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
 
   const statusIcon = tool.status === "running"
-    ? <span style={{ width: 12, height: 12, border: "2px solid #818cf844", borderTopColor: "#818cf8", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
+    ? <span style={{ width: 12, height: 12, border: `2px solid ${C.accent.light}44`, borderTopColor: C.accent.light, borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
     : tool.status === "error"
     ? <XIcon size={12} color={C.status.danger} />
     : <Check size={12} color={C.status.success} />;
@@ -299,7 +299,7 @@ function ThinkingDots() {
       {[0, 1, 2].map(i => (
         <span key={i} style={{
           width: 6, height: 6, borderRadius: "50%",
-          background: "#818cf8", display: "inline-block",
+          background: C.accent.light, display: "inline-block",
           animation: `bounce 1.2s ${i * 0.2}s infinite`,
         }} />
       ))}
