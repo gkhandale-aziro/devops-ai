@@ -304,24 +304,66 @@ class LLMClient:
     """
 
     def __init__(self):
-        _default          = os.environ.get("AI_MODEL", "ollama/llama3.1:8b")
-        self.tool_model   = os.environ.get("TOOL_MODEL",   _default)
-        self.answer_model = os.environ.get("ANSWER_MODEL", self.tool_model)
-
         # Override from saved config (survives container restarts)
         saved = _load_config()
-        if saved.get("tool_model"):
-            self.tool_model = saved["tool_model"]
-        if saved.get("answer_model"):
-            self.answer_model = saved["answer_model"]
         if saved.get("ollama_api_base"):
             os.environ["OLLAMA_API_BASE"] = saved["ollama_api_base"]
+
+        # Priority: saved config > env vars > auto-discover best available
+        if saved.get("tool_model"):
+            self.tool_model = saved["tool_model"]
+            self.answer_model = saved.get("answer_model", self.tool_model)
+        elif os.environ.get("AI_MODEL") or os.environ.get("TOOL_MODEL"):
+            _default = os.environ.get("AI_MODEL", "ollama/llama3.1:8b")
+            self.tool_model = os.environ.get("TOOL_MODEL", _default)
+            self.answer_model = os.environ.get("ANSWER_MODEL", self.tool_model)
+        else:
+            # Auto-discover: try cloud models first, then Ollama
+            self.tool_model, self.answer_model = self._auto_select_best()
 
         self.health       = ModelHealth()
         self.health.primary_tool   = self.tool_model
         self.health.primary_answer = self.answer_model
         self._monitor_thread: threading.Thread | None = None
         self._monitor_stop = threading.Event()
+
+    @staticmethod
+    def _auto_select_best() -> tuple[str, str]:
+        """Pick the best available model on startup. Cloud > Ollama."""
+        # 1. Try cloud models — test the first (fastest) from each provider
+        _CLOUD_PRIORITY = [
+            ("GEMINI_API_KEY",    "gemini/gemini-2.5-flash"),
+            ("OPENAI_API_KEY",    "openai/gpt-4o-mini"),
+            ("ANTHROPIC_API_KEY", "anthropic/claude-haiku-4-20250414"),
+        ]
+        for env_key, model in _CLOUD_PRIORITY:
+            if os.environ.get(env_key):
+                print(f"  [AI] Testing {model}...")
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        future = pool.submit(
+                            litellm.completion,
+                            model=model,
+                            messages=[{"role": "user", "content": "ping"}],
+                            max_tokens=5, num_retries=0, timeout=TIMEOUT_PROBE,
+                        )
+                        future.result(timeout=TIMEOUT_PROBE + 5)
+                    print(f"  [AI] Auto-selected: {model}")
+                    return model, model
+                except Exception as e:
+                    print(f"  [AI] {model} unavailable: {str(e)[:100]}")
+
+        # 2. Try Ollama
+        ollama_models = _discover_ollama_models()
+        if ollama_models:
+            tool = f"ollama/{_pick_best_fallback(ollama_models, _PREFERRED_TOOL_FALLBACKS)}"
+            answer = f"ollama/{_pick_best_fallback(ollama_models, _PREFERRED_ANSWER_FALLBACKS)}"
+            print(f"  [AI] Auto-selected Ollama: tool={tool} answer={answer}")
+            return tool, answer
+
+        # 3. Fallback default
+        print("  [AI] No models discovered — defaulting to ollama/llama3.1:8b")
+        return "ollama/llama3.1:8b", "ollama/llama3.1:8b"
 
     def switch_model(self, tool_model: str | None = None,
                      answer_model: str | None = None,
