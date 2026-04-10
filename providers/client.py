@@ -66,6 +66,17 @@ def _is_quota_error(exc: Exception) -> bool:
     return any(kw.lower() in msg for kw in _QUOTA_KEYWORDS)
 
 
+# Preferred fallback models, best-first for DevOps tool-calling workloads.
+_PREFERRED_FALLBACKS = [
+    "qwen2.5:7b",
+    "qwen2.5:3b",
+    "llama3.1:8b",
+    "gemma3:latest",
+    "qwen2.5:14b",    # good but slow on CPU
+    "llama3.2:latest",
+]
+
+
 def _discover_ollama_models() -> list[str]:
     """Return available Ollama model names, or [] if Ollama is not reachable."""
     try:
@@ -80,6 +91,14 @@ def _discover_ollama_models() -> list[str]:
         return models
     except Exception:
         return []
+
+
+def _pick_best_fallback(available: list[str]) -> str:
+    """Pick the best fallback model from available Ollama models."""
+    for preferred in _PREFERRED_FALLBACKS:
+        if preferred in available:
+            return preferred
+    return available[0] if available else ""
 
 
 # ── Model health state ────────────────────────────────────────────────────────
@@ -211,12 +230,12 @@ class LLMClient:
             return False
 
     def _activate_fallback(self, error: Exception):
-        """Detect Ollama, switch to fallback if available."""
+        """Detect Ollama, switch to best available fallback model."""
         ollama_models = _discover_ollama_models()
         if ollama_models:
-            fallback = ollama_models[0]
+            fallback = _pick_best_fallback(ollama_models)
             print(f"  [AI] Quota exhausted — falling back to Ollama: {fallback}")
-            self.health.set_degraded(str(error), fallback_model=fallback)
+            self.health.set_degraded(str(error), fallback_model=f"ollama/{fallback}")
         else:
             print(f"  [AI] Quota exhausted — no Ollama available")
             self.health.set_degraded(str(error))
