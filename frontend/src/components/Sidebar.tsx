@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Settings, Wifi, X, Plus, RotateCcw } from "lucide-react";
+import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Settings, Wifi, X, Plus, RotateCcw, ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Target } from "../types";
 import { ThemeToggle } from "./ThemeContext";
 import { TARGET_META } from "../utils/targetIcons";
+import { api } from "../api/client";
 
 interface Props {
   targets:       Target[];
@@ -14,6 +15,7 @@ interface Props {
   onAddClick:    () => void;
   monitorActive: boolean;
   aiModel:       string;
+  onModelChange?: (model: string) => void;
   modelStatus?:  "healthy" | "degraded" | "fallback" | "unavailable";
 }
 
@@ -27,10 +29,51 @@ const STATUS_COLORS: Record<string, string> = {
   healthy: "#22c55e", degraded: "#f59e0b", fallback: "#f59e0b", unavailable: "#ef4444",
 };
 
-export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel, modelStatus = "healthy" }: Props) {
+export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel, onModelChange, modelStatus = "healthy" }: Props) {
   const loc = useLocation();
   const nav = useNavigate();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelLoading, setModelLoading] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!showModelPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowModelPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showModelPicker]);
+
+  function openModelPicker() {
+    setShowModelPicker(true);
+    setModelLoading(true);
+    api.models.list().then(data => {
+      const models: string[] = [];
+      // Add current model first
+      if (aiModel && !models.includes(aiModel)) models.push(aiModel);
+      // Add Ollama models
+      if (data.ollama) {
+        for (const m of data.ollama) {
+          const full = `ollama/${m}`;
+          if (!models.includes(full)) models.push(full);
+        }
+      }
+      setAvailableModels(models);
+    }).catch(() => {}).finally(() => setModelLoading(false));
+  }
+
+  function selectModel(model: string) {
+    setShowModelPicker(false);
+    api.models.update({ ai_model: model }).then(() => {
+      onModelChange?.(model);
+    }).catch(e => console.warn("[Sidebar] model switch failed:", e));
+  }
 
   const navItem = (to: string, label: string, icon: ReactNode, badge?: ReactNode): ReactNode => {
     const active = loc.pathname === to;
@@ -274,28 +317,86 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         flexShrink: 0,
         display: "flex", flexDirection: "column", gap: 6,
       }}>
-        {/* AI model + theme toggle in one row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* AI model selector + theme toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative" }} ref={pickerRef}>
           {aiModel && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+            <button
+              onClick={openModelPicker}
+              style={{
+                display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0,
+                background: "none", border: "1px solid transparent", borderRadius: 5,
+                padding: "3px 6px", cursor: "pointer", transition: "all .15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "var(--c-bg-raised,#0f1629)"; e.currentTarget.style.borderColor = "var(--c-border,#1a2235)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.borderColor = "transparent"; }}
+              title="Click to change AI model"
+            >
               <span style={{
                 width: 6, height: 6, borderRadius: "50%",
                 background: STATUS_COLORS[modelStatus] ?? "#22c55e",
                 boxShadow: `0 0 6px ${STATUS_COLORS[modelStatus] ?? "#22c55e"}88`,
                 flexShrink: 0, animation: "pulse 2s infinite",
               }} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{
-                  fontSize: 10, fontWeight: 600,
-                  color: "var(--c-accent-hover,#818cf8)",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }} title={aiModel}>
-                  {aiModel.replace("gemini/", "").replace("ollama/", "").replace("openai/", "")}
-                </div>
+              <div style={{
+                fontSize: 10, fontWeight: 600,
+                color: "var(--c-accent-hover,#818cf8)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                flex: 1, textAlign: "left",
+              }}>
+                {aiModel.replace("gemini/", "").replace("ollama/", "").replace("openai/", "")}
               </div>
-            </div>
+              <ChevronDown size={10} color="var(--c-text-faint,#475569)" style={{ flexShrink: 0 }} />
+            </button>
           )}
           <ThemeToggle />
+
+          {/* Model picker dropdown */}
+          {showModelPicker && (
+            <div style={{
+              position: "absolute", bottom: "100%", left: 0, right: 0,
+              marginBottom: 4, background: "var(--c-bg-raised,#0f1629)",
+              border: "1px solid var(--c-border,#1a2235)", borderRadius: 8,
+              boxShadow: "0 8px 24px #00000066", zIndex: 50,
+              maxHeight: 240, overflowY: "auto",
+            }}>
+              <div style={{ padding: "8px 10px 4px", fontSize: 9, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 700 }}>
+                Select Model
+              </div>
+              {modelLoading ? (
+                <div style={{ padding: "12px 10px", fontSize: 11, color: "var(--c-text-muted,#64748b)", textAlign: "center" }}>Loading…</div>
+              ) : availableModels.length === 0 ? (
+                <div style={{ padding: "12px 10px", fontSize: 11, color: "var(--c-text-muted,#64748b)", textAlign: "center" }}>No models found</div>
+              ) : availableModels.map(m => {
+                const isActive = m === aiModel;
+                const display = m.replace("gemini/", "").replace("ollama/", "").replace("openai/", "");
+                const provider = m.split("/")[0];
+                return (
+                  <button
+                    key={m}
+                    onClick={() => selectModel(m)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, width: "100%",
+                      padding: "7px 10px", background: isActive ? "var(--c-accent-dim,#6366f122)" : "transparent",
+                      border: "none", borderLeft: isActive ? "2px solid var(--c-accent,#6366f1)" : "2px solid transparent",
+                      cursor: "pointer", transition: "background .1s", textAlign: "left",
+                    }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "var(--c-bg-surface,#0a0f1e)"; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: isActive ? 600 : 400, color: isActive ? "var(--c-text-primary,#f1f5f9)" : "var(--c-text-secondary,#94a3b8)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {display}
+                      </div>
+                      <div style={{ fontSize: 9, color: "var(--c-text-faint,#475569)", marginTop: 1 }}>
+                        {provider}
+                      </div>
+                    </div>
+                    {isActive && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         {/* Restore tips */}
         <button

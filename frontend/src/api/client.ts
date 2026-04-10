@@ -215,7 +215,7 @@ export const api = {
   models: {
     list: () =>
       req<{ ollama: string[]; current: { tool_model: string; answer_model: string } }>("/api/v1/models"),
-    update: (body: { tool_model?: string; answer_model?: string }) =>
+    update: (body: { tool_model?: string; answer_model?: string; ai_model?: string }) =>
       req<{ tool_model: string; answer_model: string }>("/api/v1/models", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

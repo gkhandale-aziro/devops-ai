@@ -117,6 +117,7 @@ export default function App() {
           onAddClick={() => setShowAdd(true)}
           monitorActive={monitorActive}
           aiModel={aiModel}
+          onModelChange={(m) => { setAiModel(m); pollHealth(); }}
           modelStatus={health?.status ?? "healthy"}
         />
 
