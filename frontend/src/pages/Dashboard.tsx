@@ -429,12 +429,12 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
   }
 
   // Kubernetes rich tabs
-  if (tabId === "events")      return <EventsTab      data={data} />;
-  if (tabId === "services")    return <ServicesTab    data={data} />;
-  if (tabId === "workloads")   return <WorkloadsTab   data={data} />;
-  if (tabId === "k8s_storage") return <K8sStorageTab  data={data} />;
-  if (tabId === "ingress")     return <IngressTab     data={data} />;
-  if (tabId === "network")     return <NetworkTab     data={data} />;
+  if (tabId === "events")      return <EventsTab      data={data} target={target} />;
+  if (tabId === "services")    return <ServicesTab    data={data} target={target} />;
+  if (tabId === "workloads")   return <WorkloadsTab   data={data} target={target} />;
+  if (tabId === "k8s_storage") return <K8sStorageTab  data={data} target={target} />;
+  if (tabId === "ingress")     return <IngressTab     data={data} target={target} />;
+  if (tabId === "network")     return <NetworkTab     data={data} target={target} />;
 
   // Docker rich tabs
   if (tabId === "containers")  return <DockerContainersTab data={data} />;

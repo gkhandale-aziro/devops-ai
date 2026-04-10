@@ -1,16 +1,50 @@
 /**
  * dashboard/tabs.tsx — per-tab content components extracted from Dashboard.tsx.
  */
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useCallback, type ReactNode } from 'react';
 import {
   Globe, Link2, Lock, ExternalLink, Rocket, Database, RefreshCw,
   ClipboardList, Zap, Clock, Package, HardDrive, Tag, BarChart3,
   Shield, MapPin, Plug, Map, Radio, Search, Check, X as XIcon,
   ChevronDown, ChevronRight,
 } from 'lucide-react';
+import type { Target } from '../../types';
 import { RingChart, Card, Pre } from './primitives';
-import { KubectlTable, hasKubectlData, serviceTypeColorFn, pvStatusColorFn, type ColorFn } from './tables';
+import { KubectlTable, ResourceModal, hasKubectlData, serviceTypeColorFn, pvStatusColorFn, type ColorFn } from './tables';
+import { api } from '../../api/client';
 import { C } from '../../utils/theme';
+
+// ── Resource detail helpers ──────────────────────────────────────────────────
+
+/** Hook managing ResourceModal state — fetches describe/logs/AI data on open. */
+function useResourceDetail(targetId: string) {
+  const [resource, setResource] = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const open = useCallback(async (kind: string, name: string, ns: string) => {
+    setLoading(true);
+    try {
+      const d = await api.resource(targetId, kind, name, ns);
+      setResource({ kind, name, ns, data: d });
+    } finally {
+      setLoading(false);
+    }
+  }, [targetId]);
+
+  const close = useCallback(() => setResource(null), []);
+
+  return { resource, loading, open, close };
+}
+
+/** Extracts name and namespace from a KubectlTable row click. */
+function extractResourceFromRow(cols: string[], headers: string[]): { name: string; ns: string } {
+  const nsIdx = headers.findIndex(h => h.toUpperCase() === 'NAMESPACE');
+  const nameIdx = headers.findIndex(h => h.toUpperCase() === 'NAME');
+  return {
+    ns: nsIdx >= 0 ? cols[nsIdx] : '',
+    name: nameIdx >= 0 ? cols[nameIdx] : cols[nsIdx >= 0 ? 1 : 0] ?? '',
+  };
+}
 
 // ── Overview metric cards ─────────────────────────────────────────────────────
 
@@ -117,7 +151,8 @@ export function GenericTab({ data }: { data: Record<string, string> }) {
 
 /** Kubernetes events tab — summary pills (normal vs warning) + `KubectlTable`.
  *  Warning/Error rows are colorized via a TYPE-column ColorFn. */
-export function EventsTab({ data }: { data: Record<string, string> }) {
+export function EventsTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
   const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {
     if (col.toUpperCase() === "TYPE") {
@@ -169,7 +204,18 @@ export function EventsTab({ data }: { data: Record<string, string> }) {
           </>
         )}
       </div>
-      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No events in this namespace" />
+      <KubectlTable
+        raw={raw}
+        colorFn={colorFn}
+        emptyMessage="No events in this namespace"
+        onRowClick={target ? (cols, headers) => {
+          const { name, ns } = extractResourceFromRow(cols, headers);
+          detail.open("event", name, ns);
+        } : undefined}
+      />
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
@@ -178,7 +224,8 @@ export function EventsTab({ data }: { data: Record<string, string> }) {
 
 /** Kubernetes services tab — summary pills per TYPE (LoadBalancer, NodePort,
  *  ClusterIP, ExternalName) + colorized `KubectlTable`. */
-export function ServicesTab({ data }: { data: Record<string, string> }) {
+export function ServicesTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
   const raw = data.services ?? "";
 
   const counts = useMemo(() => {
@@ -223,7 +270,18 @@ export function ServicesTab({ data }: { data: Record<string, string> }) {
           </div>
         ))}
       </div>
-      <KubectlTable raw={raw} colorFn={serviceTypeColorFn} emptyMessage="No services found" />
+      <KubectlTable
+        raw={raw}
+        colorFn={serviceTypeColorFn}
+        emptyMessage="No services found"
+        onRowClick={target ? (cols, headers) => {
+          const { name, ns } = extractResourceFromRow(cols, headers);
+          detail.open("service", name, ns);
+        } : undefined}
+      />
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
@@ -278,7 +336,18 @@ export function parseWorkloadCounts(raw: string, label: string): { total: number
  *  3-column cards with total + ready/notReady counts and a per-workload
  *  health bar. Clicking a card expands its `KubectlTable` in-place. The
  *  top-right global health bar pulses red when any workload has failures. */
-export function WorkloadsTab({ data }: { data: Record<string, string> }) {
+/** Kind mapping from section key to singular K8s resource kind. */
+const WORKLOAD_KIND_MAP: Record<string, string> = {
+  deployments:  "deployment",
+  statefulsets:  "statefulset",
+  daemonsets:    "daemonset",
+  replicasets:   "replicaset",
+  jobs:          "job",
+  cronjobs:      "cronjob",
+};
+
+export function WorkloadsTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
   const readyColor: ColorFn = (val, col) => {
     if (col.toUpperCase() === "READY" || col.toUpperCase() === "AVAILABLE") {
       if (val.includes("0/") || val === "0") return C.status.danger;
@@ -419,13 +488,24 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
             </div>
             <div style={{ overflowX: "auto" }}>
               {hasData
-                ? <KubectlTable raw={raw} colorFn={readyColor} />
+                ? <KubectlTable
+                    raw={raw}
+                    colorFn={readyColor}
+                    onRowClick={target ? (cols, headers) => {
+                      const { name, ns } = extractResourceFromRow(cols, headers);
+                      const kind = WORKLOAD_KIND_MAP[s.key] ?? s.key;
+                      detail.open(kind, name, ns);
+                    } : undefined}
+                  />
                 : <div style={{ padding: 20, color: C.text.faint, fontSize: 13 }}>No {s.label.toLowerCase()} found</div>
               }
             </div>
           </div>
         );
       })()}
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
@@ -434,7 +514,8 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
 
 /** Kubernetes storage tab — PVCs, PVs, and StorageClasses in three sections.
  *  PVC/PV STATUS column is colorized via `pvStatusColorFn` (Bound/Pending/Lost). */
-export function K8sStorageTab({ data }: { data: Record<string, string> }) {
+export function K8sStorageTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
 
   const counts = useMemo(() => {
     const c = { bound: 0, pending: 0, lost: 0, pvcs: 0, pvs: 0, sc: 0 };
@@ -501,15 +582,24 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
       </div>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <Card title="Persistent Volume Claims" hint={`${counts.pvcs}`} defaultOpen={true}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvStatusColorFn} emptyMessage="No persistent volume claims" /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvcs ?? ""} colorFn={pvStatusColorFn} emptyMessage="No persistent volume claims"
+            onRowClick={target ? (cols, headers) => { const { name, ns } = extractResourceFromRow(cols, headers); detail.open("pvc", name, ns); } : undefined}
+          /></div>
         </Card>
         <Card title="Persistent Volumes" hint={`${counts.pvs}`} defaultOpen={false}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvStatusColorFn} emptyMessage="No persistent volumes" /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.pvs ?? ""} colorFn={pvStatusColorFn} emptyMessage="No persistent volumes"
+            onRowClick={target ? (cols, headers) => { const { name, ns } = extractResourceFromRow(cols, headers); detail.open("pv", name, ns); } : undefined}
+          /></div>
         </Card>
         <Card title="Storage Classes" hint={`${counts.sc}`} defaultOpen={false}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.storageclasses ?? ""} emptyMessage="No storage classes" /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.storageclasses ?? ""} emptyMessage="No storage classes"
+            onRowClick={target ? (cols, headers) => { const { name, ns } = extractResourceFromRow(cols, headers); detail.open("storageclass", name, ns); } : undefined}
+          /></div>
         </Card>
       </div>
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
@@ -517,7 +607,8 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
 // ── Ingress tab ───────────────────────────────────────────────────────────────
 
 /** Kubernetes ingress tab — ingresses + ingress classes with summary pills. */
-export function IngressTab({ data }: { data: Record<string, string> }) {
+export function IngressTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
   const counts = useMemo(() => {
     let ingresses = 0, classes = 0;
     const ingRaw = data.ingresses ?? "";
@@ -555,12 +646,19 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
       </div>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <Card title="Ingresses" hint={`${counts.ingresses}`} defaultOpen={true}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses ?? ""} emptyMessage="No ingresses found" /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingresses ?? ""} emptyMessage="No ingresses found"
+            onRowClick={target ? (cols, headers) => { const { name, ns } = extractResourceFromRow(cols, headers); detail.open("ingress", name, ns); } : undefined}
+          /></div>
         </Card>
         <Card title="Ingress Classes" hint={`${counts.classes}`} defaultOpen={false}>
-          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingressclasses ?? ""} emptyMessage="No ingress classes" /></div>
+          <div style={{ overflowX: "auto" }}><KubectlTable raw={data.ingressclasses ?? ""} emptyMessage="No ingress classes"
+            onRowClick={target ? (cols, headers) => { const { name, ns } = extractResourceFromRow(cols, headers); detail.open("ingressclass", name, ns); } : undefined}
+          /></div>
         </Card>
       </div>
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
@@ -570,7 +668,16 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
 /** Consolidated network view — services / ingresses / netpolicies / endpoints
  *  as collapsible Cards, plus pre-formatted ports/routes/interfaces/dns on
  *  ssh/local targets. */
-export function NetworkTab({ data }: { data: Record<string, string> }) {
+/** Kind mapping from network section key to singular K8s resource kind. */
+const NETWORK_KIND_MAP: Record<string, string> = {
+  services:    "service",
+  ingresses:   "ingress",
+  netpolicies: "networkpolicy",
+  endpoints:   "endpoints",
+};
+
+export function NetworkTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
 
   const countLines = (raw?: string): number => {
     if (!raw || !hasKubectlData(raw)) return 0;
@@ -612,7 +719,13 @@ export function NetworkTab({ data }: { data: Record<string, string> }) {
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         {sections.map(s => (
           <Card key={s.key} title={s.label} hint={`${s.count}`} defaultOpen={s.defaultOpen}>
-            <div style={{ overflowX: "auto" }}><KubectlTable raw={data[s.key] ?? ""} colorFn={s.colorFn} emptyMessage={`No ${s.label.toLowerCase()}`} /></div>
+            <div style={{ overflowX: "auto" }}><KubectlTable raw={data[s.key] ?? ""} colorFn={s.colorFn} emptyMessage={`No ${s.label.toLowerCase()}`}
+              onRowClick={target ? (cols, headers) => {
+                const { name, ns } = extractResourceFromRow(cols, headers);
+                const kind = NETWORK_KIND_MAP[s.key] ?? s.key;
+                detail.open(kind, name, ns);
+              } : undefined}
+            /></div>
           </Card>
         ))}
         {preItems.map(p => (
@@ -621,6 +734,9 @@ export function NetworkTab({ data }: { data: Record<string, string> }) {
           </Card>
         ))}
       </div>
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
