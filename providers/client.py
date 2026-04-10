@@ -19,13 +19,19 @@ Examples:
   TOOL_MODEL=ollama/llama3.1:8b ANSWER_MODEL=ollama/gemma3 python3 main.py
 """
 import os
+import sys
 import json
 import time
 import threading
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 import litellm
 
 litellm.telemetry = False
+
+# Force unbuffered output so Docker logs show [AI] lines immediately
+import functools
+print = functools.partial(print, flush=True)
 
 # ── Tool definition ──────────────────────────────────────────────────────────
 
@@ -287,16 +293,22 @@ class LLMClient:
 
         print(f"  [AI] Recovery probe — testing {self.tool_model}...")
         try:
-            litellm.completion(
-                model=self.tool_model,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=5,
-                num_retries=0,
-                timeout=TIMEOUT_PROBE,
-            )
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(
+                    litellm.completion,
+                    model=self.tool_model,
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=5,
+                    num_retries=0,
+                    timeout=TIMEOUT_PROBE,
+                )
+                future.result(timeout=TIMEOUT_PROBE + 5)
             print(f"  [AI] Recovery OK — switching back to {self.tool_model}")
             self.health.set_healthy()
             return True
+        except FuturesTimeout:
+            print(f"  [AI] Recovery probe timed out")
+            return False
         except Exception as e:
             if _is_quota_error(e):
                 print(f"  [AI] Recovery failed — still quota-limited")
@@ -324,7 +336,7 @@ class LLMClient:
 
     def _handle_error(self, error: Exception) -> bool:
         """Handle an API error. Returns True if fallback was activated (caller should retry)."""
-        if _is_quota_error(error):
+        if _is_quota_error(error) or isinstance(error, TimeoutError):
             if self.health.status == ModelHealth.HEALTHY:
                 self._activate_fallback(error)
             return self.health.status == ModelHealth.FALLBACK
@@ -353,7 +365,7 @@ class LLMClient:
             return self._retry_transient(lambda: self._chat_once(messages, use_tools), e)
 
     def _chat_once(self, messages, use_tools):
-        """Single API call with timeout. Never retried internally."""
+        """Single API call with hard wall-clock timeout. Never retried internally."""
         model  = self._effective_model(use_tools)
         kwargs = {
             "model": model,
@@ -364,14 +376,24 @@ class LLMClient:
         if use_tools:
             kwargs["tools"] = TOOLS
 
-        t0       = time.time()
-        response = litellm.completion(**kwargs)
+        t0 = time.time()
+        print(f"  [AI] Calling {model} | tools={'yes' if use_tools else 'no'}...")
+
+        # Hard wall-clock timeout — LiteLLM's timeout param is unreliable
+        # for some providers. This guarantees we never hang.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(litellm.completion, **kwargs)
+            try:
+                response = future.result(timeout=TIMEOUT_CHAT + 5)
+            except FuturesTimeout:
+                future.cancel()
+                raise TimeoutError(f"AI call to {model} timed out after {TIMEOUT_CHAT}s")
+
         elapsed  = time.time() - t0
         choice   = response.choices[0]
         tokens   = response.usage.total_tokens if response.usage else "?"
         print(f"  [AI] {model} | tools={'yes' if use_tools else 'no'} | {elapsed:.1f}s | tokens={tokens}")
 
-        # Successful call — if we were in fallback using primary, recover
         if self.health.status != ModelHealth.HEALTHY:
             if model in (self.tool_model, self.answer_model):
                 self.health.set_healthy()
@@ -409,8 +431,10 @@ class LLMClient:
                 yield from self._stream_once(kwargs, fb)
                 return
 
-            if _is_quota_error(e) or _is_timeout_error(e):
-                raise  # propagate — no retries for these
+            if _is_quota_error(e):
+                raise  # no fallback available, propagate
+            if isinstance(e, TimeoutError) or _is_timeout_error(e):
+                raise  # timeouts don't benefit from retry
 
             # Transient error -> one retry
             try:
@@ -422,8 +446,19 @@ class LLMClient:
 
     def _stream_once(self, kwargs, model):
         """Execute a single streaming call. Yields text chunks."""
-        t0       = time.time()
-        response = litellm.completion(**kwargs)
+        t0 = time.time()
+        print(f"  [AI] Calling {model} | stream...")
+
+        # Hard timeout on the initial connection — this is where hangs happen.
+        # Once streaming starts, chunks flow on their own.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(litellm.completion, **kwargs)
+            try:
+                response = future.result(timeout=TIMEOUT_STREAM + 5)
+            except FuturesTimeout:
+                future.cancel()
+                raise TimeoutError(f"AI stream to {model} timed out after {TIMEOUT_STREAM}s")
+
         for chunk in response:
             delta = chunk.choices[0].delta
             if delta and delta.content:
