@@ -7,6 +7,7 @@ import {
   ClipboardList, Zap, Clock, Package, HardDrive, Tag, BarChart3,
   Shield, MapPin, Plug, Map, Radio, Search, Check, X as XIcon,
   ChevronDown, ChevronRight,
+  Users, FileText, AlertTriangle,
 } from 'lucide-react';
 import type { Target } from '../../types';
 import { RingChart, Card, Pre } from './primitives';
@@ -914,6 +915,338 @@ export function DockerStatsTab({ data, target }: { data: Record<string, string>;
       {(detail.resource || detail.loading) && (
         <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
       )}
+    </div>
+  );
+}
+
+// ── SSH Services tab ──────────────────────────────────────────────────────────
+
+/** Parse systemctl service status counts from `systemctl list-units` output.
+ *  Each data line is scanned for `active running`, `failed`, and `active exited`. */
+function parseServiceCounts(raw: string): { running: number; failed: number; exited: number; total: number } {
+  let running = 0, failed = 0, exited = 0, total = 0;
+  const lines = raw.split("\n").slice(1).filter(l => l.trim()); // skip header
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    total++;
+    if (/\bactive\b.*\brunning\b/i.test(line)) running++;
+    else if (/\bfailed\b/i.test(line)) failed++;
+    else if (/\bactive\b.*\bexited\b/i.test(line)) exited++;
+  }
+  return { running, failed, exited, total };
+}
+
+/** SSH/local target services tab.
+ *  Shows a summary bar with running / failed / exited counts, then collapsible
+ *  cards for Failed Services, All Services, and Scheduled Timers. Clicking a
+ *  row opens `ResourceModal` (systemctl status + journalctl). */
+export function SSHServicesTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
+
+  const counts = useMemo(() => parseServiceCounts(data.all ?? ""), [data.all]);
+
+  const serviceColorFn: ColorFn = (val, col) => {
+    if (col.toUpperCase() === "SUB") {
+      if (val === "running") return C.status.success;
+      if (val === "failed")  return C.status.danger;
+      if (val === "exited")  return C.status.warning;
+      if (val === "dead")    return C.text.muted;
+    }
+    return null;
+  };
+
+  const failedHasContent = !!(data.failed ?? "").trim();
+
+  return (
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* TIER 1 — Summary bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 22, fontWeight: 800, color: C.text.primary, lineHeight: 1 }}>{counts.total}</span>
+        <span style={{ fontSize: 12, color: C.text.muted }}>Services</span>
+        <div style={{ width: 1, height: 20, background: C.border.muted }} />
+
+        {counts.running > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.success, boxShadow: `0 0 5px ${C.status.success}88` }} />
+            <span style={{ fontSize: 12, color: C.status.success, fontWeight: 600 }}>{counts.running}</span>
+            <span style={{ fontSize: 11, color: C.text.muted }}>Running</span>
+          </div>
+        )}
+        {counts.failed > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.danger, animation: "pulse 2s ease-in-out infinite" }} />
+            <span style={{ fontSize: 12, color: C.status.danger, fontWeight: 600 }}>{counts.failed}</span>
+            <span style={{ fontSize: 11, color: C.text.muted }}>Failed</span>
+          </div>
+        )}
+        {counts.exited > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.warning }} />
+            <span style={{ fontSize: 12, color: C.status.warning, fontWeight: 600 }}>{counts.exited}</span>
+            <span style={{ fontSize: 11, color: C.text.muted }}>Exited</span>
+          </div>
+        )}
+
+        {/* health bar */}
+        {counts.total > 0 && (
+          <>
+            <div style={{ flex: 1 }} />
+            <div style={{ width: 120, height: 6, borderRadius: 3, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
+              <div style={{ width: `${counts.running / counts.total * 100}%`, background: C.status.success, transition: "width .5s" }} />
+              <div style={{ width: `${counts.failed / counts.total * 100}%`, background: C.status.danger, transition: "width .5s" }} />
+              <div style={{ width: `${counts.exited / counts.total * 100}%`, background: C.status.warning, transition: "width .5s" }} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* TIER 2 — Cards */}
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        <Card title={`Failed Services (${counts.failed})`} defaultOpen={counts.failed > 0}>
+          {failedHasContent
+            ? <div style={{ overflowX: "auto" }}><KubectlTable raw={data.failed ?? ""} emptyMessage="No failed services" /></div>
+            : <div style={{ color: C.status.success, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+                All services healthy <Check size={13} />
+              </div>
+          }
+        </Card>
+
+        <Card title="All Services" defaultOpen={true}>
+          <div style={{ overflowX: "auto" }}>
+            <KubectlTable
+              raw={data.all ?? ""}
+              colorFn={serviceColorFn}
+              emptyMessage="No services found"
+              onRowClick={(cols) => {
+                const unitName = cols[0] ?? "";
+                if (unitName) detail.open("service", unitName, "");
+              }}
+            />
+          </div>
+        </Card>
+
+        <Card title="Scheduled Timers" defaultOpen={false}>
+          <div style={{ overflowX: "auto" }}>
+            <KubectlTable raw={data.timers ?? ""} emptyMessage="No scheduled timers" />
+          </div>
+        </Card>
+      </div>
+
+      {/* TIER 3 — ResourceModal */}
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
+    </div>
+  );
+}
+
+// ── Processes tab ─────────────────────────────────────────────────────────────
+
+/** Colorize CPU or MEM percentage columns: >50% → danger, >20% → warning, >0% → success. */
+const pctColorFn: ColorFn = (val) => {
+  const n = parseFloat(val);
+  if (isNaN(n)) return null;
+  if (n > 50) return C.status.danger;
+  if (n > 20) return C.status.warning;
+  if (n > 0)  return C.status.success;
+  return null;
+};
+
+/** Extract the last whitespace-delimited token from a line (used for COMMAND). */
+function lastToken(line: string): string {
+  return line.trim().split(/\s+/).pop() ?? "";
+}
+
+/** SSH/local target processes tab.
+ *  Shows a 4-card metric row (load average, total processes, top CPU, top MEM)
+ *  followed by two collapsible tables. */
+export function ProcessesTab({ data }: { data: Record<string, string> }) {
+  const loadMatch = (data.load ?? "").match(/load average:\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)/);
+  const load1  = loadMatch ? parseFloat(loadMatch[1]) : null;
+  const load5  = loadMatch ? loadMatch[2] : "—";
+  const load15 = loadMatch ? loadMatch[3] : "—";
+  const loadColor = load1 === null ? C.text.muted : load1 >= 4.0 ? C.status.danger : load1 >= 2.0 ? C.status.warning : C.status.success;
+
+  const totalProcs = parseInt(data.count ?? "0") || 0;
+
+  // First data line from top_cpu (skip header)
+  const cpuLines = (data.top_cpu ?? "").split("\n").filter(l => l.trim());
+  const cpuDataLine = cpuLines.length > 1 ? cpuLines[1] : "";
+  const cpuCols = cpuDataLine.trim().split(/\s+/);
+  const topCpuCmd = lastToken(cpuDataLine);
+  const topCpuPct = cpuCols[2] ?? "—"; // %CPU is typically col index 2 in `ps` output
+
+  const memLines = (data.top_mem ?? "").split("\n").filter(l => l.trim());
+  const memDataLine = memLines.length > 1 ? memLines[1] : "";
+  const memCols = memDataLine.trim().split(/\s+/);
+  const topMemCmd = lastToken(memDataLine);
+  const topMemPct = memCols[3] ?? "—"; // %MEM is typically col index 3 in `ps` output
+
+  const cpuPctNum = parseFloat(topCpuPct);
+  const memPctNum = parseFloat(topMemPct);
+  const cpuStatColor = isNaN(cpuPctNum) ? C.text.muted : cpuPctNum > 50 ? C.status.danger : cpuPctNum > 20 ? C.status.warning : C.status.success;
+  const memStatColor = isNaN(memPctNum) ? C.text.muted : memPctNum > 50 ? C.status.danger : memPctNum > 20 ? C.status.warning : C.status.success;
+
+  const metricCardStyle = {
+    background: C.bg.card,
+    border: `1px solid ${C.border.muted}`,
+    borderRadius: 10,
+    padding: "14px 16px",
+    flex: 1,
+    minWidth: 0,
+  } as const;
+
+  return (
+    <div style={{ overflowY: "auto", flex: 1, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* TIER 1 — Metric cards row */}
+      <div style={{ display: "flex", gap: 12 }}>
+        {/* Load Average */}
+        <div style={metricCardStyle}>
+          <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Load Average</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: loadColor, lineHeight: 1 }}>
+            {load1 !== null ? load1.toFixed(2) : "—"}
+          </div>
+          <div style={{ fontSize: 11, color: C.text.faint, marginTop: 4 }}>
+            5m: {load5} · 15m: {load15}
+          </div>
+        </div>
+
+        {/* Total Processes */}
+        <div style={metricCardStyle}>
+          <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Total Processes</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent.light, lineHeight: 1 }}>{totalProcs}</div>
+          <div style={{ fontSize: 11, color: C.text.faint, marginTop: 4 }}>active processes</div>
+        </div>
+
+        {/* Top CPU */}
+        <div style={metricCardStyle}>
+          <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Top CPU Consumer</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: cpuStatColor, lineHeight: 1 }}>{topCpuPct}%</div>
+          <div style={{ fontSize: 11, color: C.text.faint, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {topCpuCmd || "—"}
+          </div>
+        </div>
+
+        {/* Top Memory */}
+        <div style={metricCardStyle}>
+          <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Top Memory Consumer</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: memStatColor, lineHeight: 1 }}>{topMemPct}%</div>
+          <div style={{ fontSize: 11, color: C.text.faint, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {topMemCmd || "—"}
+          </div>
+        </div>
+      </div>
+
+      {/* TIER 2 — Tables */}
+      <Card title="Top CPU Consumers" defaultOpen={true}>
+        <div style={{ overflowX: "auto" }}>
+          <KubectlTable raw={data.top_cpu ?? ""} colorFn={pctColorFn} emptyMessage="No process data" />
+        </div>
+      </Card>
+      <Card title="Top Memory Consumers" defaultOpen={true}>
+        <div style={{ overflowX: "auto" }}>
+          <KubectlTable raw={data.top_mem ?? ""} colorFn={pctColorFn} emptyMessage="No process data" />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── Security tab ──────────────────────────────────────────────────────────────
+
+/** Detect firewall status from raw firewall output.
+ *  Supports ufw ("Status: active"), iptables (has "Chain"), or none. */
+function detectFirewallStatus(raw: string): { label: string; color: string } {
+  if (!raw || !raw.trim()) return { label: "Not Detected", color: C.status.warning };
+  if (/Status:\s*active/i.test(raw)) return { label: "Active", color: C.status.success };
+  if (/\bChain\b/.test(raw)) return { label: "Active", color: C.status.success };
+  if (/Status:\s*inactive/i.test(raw)) return { label: "Inactive", color: C.status.danger };
+  return { label: "Not Detected", color: C.status.warning };
+}
+
+/** Count non-empty lines in a block of text. */
+function countLines(raw: string): number {
+  return (raw ?? "").split("\n").filter(l => l.trim()).length;
+}
+
+/** SSH/local target security tab.
+ *  Shows a summary bar (active users, recent logins, failed attempts, firewall
+ *  status) then collapsible cards for each data source. */
+export function SecurityTab({ data }: { data: Record<string, string> }) {
+  const activeUserCount  = useMemo(() => countLines(data.active_users ?? ""), [data.active_users]);
+  const recentLoginCount = useMemo(() => countLines(data.last_logins ?? ""), [data.last_logins]);
+  const failedCount      = useMemo(() => countLines(data.failed_logins ?? ""), [data.failed_logins]);
+  const firewall         = useMemo(() => detectFirewallStatus(data.firewall ?? ""), [data.firewall]);
+
+  return (
+    <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* TIER 1 — Summary bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", flexWrap: "wrap",
+        background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
+      }}>
+        {/* Label */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 4 }}>
+          <Shield size={14} stroke={C.accent.light} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: C.text.primary }}>Security Overview</span>
+        </div>
+        <div style={{ width: 1, height: 20, background: C.border.muted }} />
+
+        {/* Active users pill */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: 6 }}>
+          <Users size={11} stroke={C.accent.light} />
+          <span style={{ fontSize: 12, color: C.accent.light, fontWeight: 600 }}>{activeUserCount}</span>
+          <span style={{ fontSize: 11, color: C.text.secondary }}>Active Users</span>
+        </div>
+
+        {/* Recent logins pill */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", background: `${C.status.info}15`, border: `1px solid ${C.status.info}33`, borderRadius: 6 }}>
+          <FileText size={11} stroke={C.status.info} />
+          <span style={{ fontSize: 12, color: C.status.info, fontWeight: 600 }}>{recentLoginCount}</span>
+          <span style={{ fontSize: 11, color: C.text.secondary }}>Recent Logins</span>
+        </div>
+
+        {/* Failed attempts pill */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", background: `${C.status.danger}15`, border: `1px solid ${C.status.danger}33`, borderRadius: 6 }}>
+          <AlertTriangle size={11} stroke={C.status.danger} style={failedCount > 0 ? { animation: "pulse 2s ease-in-out infinite" } : undefined} />
+          <span style={{ fontSize: 12, color: C.status.danger, fontWeight: 600 }}>{failedCount}</span>
+          <span style={{ fontSize: 11, color: C.text.secondary }}>Failed Attempts</span>
+        </div>
+
+        {/* Firewall status pill */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", background: `${firewall.color}15`, border: `1px solid ${firewall.color}33`, borderRadius: 6 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: firewall.color, flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: firewall.color, fontWeight: 600 }}>Firewall</span>
+          <span style={{ fontSize: 11, color: C.text.secondary }}>{firewall.label}</span>
+        </div>
+      </div>
+
+      {/* TIER 2 — Cards */}
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        <Card title="Active Users" defaultOpen={true}>
+          <Pre>{data.active_users ?? "No data"}</Pre>
+        </Card>
+
+        <Card title="Recent Logins" defaultOpen={true}>
+          <Pre>{data.last_logins ?? "No data"}</Pre>
+        </Card>
+
+        <Card title={`Failed SSH Attempts (${failedCount})`} defaultOpen={failedCount > 0}>
+          {failedCount > 0
+            ? <div style={{ background: `${C.status.danger}08`, borderRadius: 6, padding: 8 }}>
+                <Pre>{data.failed_logins ?? ""}</Pre>
+              </div>
+            : <Pre>{data.failed_logins ?? "No failed login attempts"}</Pre>
+          }
+        </Card>
+
+        <Card title="Firewall Rules" defaultOpen={false}>
+          <Pre>{data.firewall ?? "No firewall data"}</Pre>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   OverviewTab, GenericTab, EventsTab, ServicesTab, WorkloadsTab,
   K8sStorageTab, IngressTab, NetworkTab,
   DockerContainersTab, DockerVolumesTab, DockerImagesTab, DockerStatsTab,
+  SSHServicesTab, ProcessesTab, SecurityTab,
 } from "./dashboard/tabs";
 
 interface Props {
@@ -402,6 +403,12 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
   }
 
   const ttype = target.type;
+
+  // SSH/local specific tabs — must come before K8s "services" check
+  if ((ttype === "ssh" || ttype === "local") && tabId === "services")
+    return <SSHServicesTab data={data} target={target} />;
+  if (tabId === "processes") return <ProcessesTab data={data} />;
+  if (tabId === "security")  return <SecurityTab data={data} />;
 
   // Overview — rich metric cards for SSH/local
   if ((ttype === "ssh" || ttype === "local") && tabId === "overview") {

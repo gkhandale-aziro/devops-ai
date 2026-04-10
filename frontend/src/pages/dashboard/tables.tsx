@@ -23,6 +23,7 @@ import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 import { C } from "../../utils/theme";
 import { DataTable } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
+import { Markdown } from "../../components/Markdown";
 
 // ── Node table ──────────────────────────────────────────────────────────────
 
@@ -525,7 +526,7 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
     if (!resource) return;
     setAiLoading(true);
     setAiText("");
-    const prompt = `Analyze this Kubernetes ${resource.kind} "${resource.name}"${resource.ns ? " in namespace " + resource.ns : ""}.\n\nDescribe:\n${(resource.data.describe ?? "").slice(0, 3000)}\n\n${resource.data.logs ? "Recent logs:\n" + resource.data.logs.slice(-1000) : ""}`;
+    const prompt = `Analyze this ${resource.kind} "${resource.name}"${resource.ns ? " in namespace " + resource.ns : ""}.\n\nDescribe:\n${(resource.data.describe ?? "").slice(0, 3000)}\n\n${resource.data.logs ? "Recent logs:\n" + resource.data.logs.slice(-1500) : ""}`;
     try {
       const res = await api.analyzeStream(prompt);
       for await (const evt of readSSE(res)) {
@@ -588,7 +589,7 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
             </div>
             <div style={{ flex: 1, overflow: "auto", padding: 16, minHeight: 0 }}>
               {tab === "ai"
-                ? (aiLoading ? <LoadingSpinner /> : <div style={{ fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{aiText}</div>)
+                ? (aiLoading ? <LoadingSpinner /> : <Markdown>{aiText}</Markdown>)
                 : <Pre>{resource.data[tab === "previous" ? "previous" : tab] ?? "—"}</Pre>
               }
             </div>
