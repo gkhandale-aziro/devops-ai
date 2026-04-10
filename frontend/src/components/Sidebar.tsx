@@ -14,6 +14,7 @@ interface Props {
   onAddClick:    () => void;
   monitorActive: boolean;
   aiModel:       string;
+  modelStatus?:  "healthy" | "degraded" | "fallback" | "unavailable";
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -22,7 +23,11 @@ const TYPE_COLORS: Record<string, string> = {
   azure: "#0078D4", terraform: "#7B42BC",
 };
 
-export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel }: Props) {
+const STATUS_COLORS: Record<string, string> = {
+  healthy: "#22c55e", degraded: "#f59e0b", fallback: "#f59e0b", unavailable: "#ef4444",
+};
+
+export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel, modelStatus = "healthy" }: Props) {
   const loc = useLocation();
   const nav = useNavigate();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -275,7 +280,8 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
             <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
               <span style={{
                 width: 6, height: 6, borderRadius: "50%",
-                background: "#22c55e", boxShadow: "0 0 6px #22c55e88",
+                background: STATUS_COLORS[modelStatus] ?? "#22c55e",
+                boxShadow: `0 0 6px ${STATUS_COLORS[modelStatus] ?? "#22c55e"}88`,
                 flexShrink: 0, animation: "pulse 2s infinite",
               }} />
               <div style={{ minWidth: 0, flex: 1 }}>

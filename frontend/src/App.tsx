@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import type { Target } from "./types";
-import { api }        from "./api/client";
+import { api, type ModelHealthStatus } from "./api/client";
 import { Sidebar }    from "./components/Sidebar";
 import { Home }       from "./pages/Home";
 import { Dashboard }  from "./pages/Dashboard";
@@ -25,15 +25,32 @@ export default function App() {
   const [monitorActive, setMonitorActive] = useState(false);
   const [showAdd,       setShowAdd]       = useState(false);
   const [aiModel,       setAiModel]       = useState("");
+  const [health,        setHealth]        = useState<ModelHealthStatus | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+
+  const pollHealth = useCallback(() => {
+    api.modelHealth().then(h => {
+      setHealth(h);
+      // Show the model actually being used right now
+      if (h.status === "fallback" && h.fallback_model) {
+        setAiModel(h.fallback_model.split(" / ")[0]); // show tool model
+      } else if (h.primary_answer) {
+        setAiModel(h.primary_answer);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     loadTargets();
     api.monitor.status().then(s => setMonitorActive(s.active))
       .catch(e => console.warn("[App] monitor.status failed:", (e as Error)?.message));
+    // Initial load + poll health every 30s
     api.info().then(i => setAiModel(i.answer_model))
       .catch(e => console.warn("[App] info failed:", (e as Error)?.message));
-  }, []);
+    pollHealth();
+    const t = setInterval(pollHealth, 30_000);
+    return () => clearInterval(t);
+  }, [pollHealth]);
 
   async function loadTargets() {
     try {
@@ -100,6 +117,7 @@ export default function App() {
           onAddClick={() => setShowAdd(true)}
           monitorActive={monitorActive}
           aiModel={aiModel}
+          modelStatus={health?.status ?? "healthy"}
         />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
