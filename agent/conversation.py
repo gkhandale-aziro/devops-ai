@@ -9,6 +9,7 @@ Two modes:
 """
 import re
 import json
+import time
 import queue as _queue
 from tools.filter      import is_destructive
 from agent.needs_tools import needs_tools
@@ -148,10 +149,26 @@ class Agent:
 
     def run(self, messages, target, session, target_id):
         """SSE generator for web streaming. Auto-proceeds on destructive commands."""
+        _current_cmd = None
+        _cmd_start = None
+
         for event in self._run_internal(messages, target, session, target_id):
             t = event["type"]
             if t == "cmd":
+                # Backward compat: old cmd event
                 yield f"data: {json.dumps({'cmd': event['cmd']})}\n\n"
+                # New: tool_start event for expandable tool-call blocks
+                yield f"data: {json.dumps({'tool_start': {'cmd': event['cmd']}})}\n\n"
+                _current_cmd = event["cmd"]
+                _cmd_start = time.time()
+            elif t == "tool_output":
+                duration_ms = int((time.time() - _cmd_start) * 1000) if _cmd_start else 0
+                output = event.get("output", "")
+                truncated = output[:500] if output else ""
+                status = "error" if "error" in output.lower()[:100] else "done"
+                yield f"data: {json.dumps({'tool_end': {'cmd': _current_cmd, 'output': truncated, 'duration_ms': duration_ms, 'status': status}})}\n\n"
+                _current_cmd = None
+                _cmd_start = None
             elif t == "text":
                 yield f"data: {json.dumps({'t': event['text']})}\n\n"
             elif t == "error":

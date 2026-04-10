@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import type { ChatMsg } from "../hooks/useChat";
+import { Check, X as XIcon, ChevronDown, ChevronRight } from "lucide-react";
+import type { ChatMsg, ToolCall } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
+import { C } from "../utils/theme";
 
 interface Props {
   messages:     ChatMsg[];
@@ -93,8 +95,14 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
                 ) : "—"}
               </div>
 
-              {/* Commands */}
-              {m.cmds && m.cmds.length > 0 && (
+              {/* Tool calls — expandable blocks */}
+              {m.tools && m.tools.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: "82%" }}>
+                  {m.tools.map((tool, ti) => <ToolCallBlock key={ti} tool={tool} />)}
+                </div>
+              )}
+              {/* Backward compat — old cmds without tool data */}
+              {(!m.tools || m.tools.length === 0) && m.cmds && m.cmds.length > 0 && (
                 <div style={{
                   background: "var(--c-bg-panel)", border: "1px solid var(--c-border)",
                   borderRadius: 6, padding: "6px 10px",
@@ -167,6 +175,64 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
           Enter to send · Shift+Enter for new line
         </div>
       </div>
+    </div>
+  );
+}
+
+function ToolCallBlock({ tool }: { tool: ToolCall }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const statusIcon = tool.status === "running"
+    ? <span style={{ width: 12, height: 12, border: "2px solid #818cf844", borderTopColor: "#818cf8", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
+    : tool.status === "error"
+    ? <XIcon size={12} color={C.status.danger} />
+    : <Check size={12} color={C.status.success} />;
+
+  const durationStr = tool.duration != null ? `${(tool.duration / 1000).toFixed(1)}s` : "";
+
+  return (
+    <div style={{
+      background: C.bg.panel,
+      border: `1px solid ${tool.status === "error" ? C.status.danger + "44" : C.border.subtle}`,
+      borderRadius: 6,
+      overflow: "hidden",
+      ...(tool.status === "running" ? { animation: "glow-pulse 2s infinite" } : {}),
+    }}>
+      <div
+        onClick={() => tool.output && setExpanded(!expanded)}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 10px",
+          cursor: tool.output ? "pointer" : "default",
+          fontSize: 11,
+          fontFamily: "'Cascadia Code','Consolas',monospace",
+        }}
+      >
+        {tool.output && (
+          expanded
+            ? <ChevronDown size={12} color={C.text.muted} />
+            : <ChevronRight size={12} color={C.text.muted} />
+        )}
+        <span style={{ color: C.text.muted }}>$</span>
+        <span style={{ color: C.status.success, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool.cmd}</span>
+        {durationStr && <span style={{ color: C.text.faint, fontSize: 10, flexShrink: 0 }}>{durationStr}</span>}
+        <span style={{ flexShrink: 0 }}>{statusIcon}</span>
+      </div>
+      {expanded && tool.output && (
+        <div style={{
+          borderTop: `1px solid ${C.border.subtle}`,
+          padding: "8px 10px",
+          fontSize: 11,
+          fontFamily: "'Cascadia Code','Consolas',monospace",
+          color: C.text.secondary,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+          maxHeight: 200,
+          overflowY: "auto",
+        }}>
+          {tool.output}
+        </div>
+      )}
     </div>
   );
 }

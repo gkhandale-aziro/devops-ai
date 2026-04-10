@@ -1,10 +1,18 @@
 import { useState, useCallback, useRef } from "react";
 import { api, readSSE } from "../api/client";
 
+export interface ToolCall {
+  cmd:       string;
+  output?:   string;        // truncated (first 500 chars)
+  duration?: number;        // milliseconds
+  status:    "running" | "done" | "error";
+}
+
 export interface ChatMsg {
   role:    "user" | "assistant";
   content: string;
-  cmds?:   string[];
+  cmds?:   string[];       // backward compat
+  tools?:  ToolCall[];
 }
 
 export function useTargetChat(targetId: string | null) {
@@ -23,7 +31,7 @@ export function useTargetChat(targetId: string | null) {
     setMessages((prev: ChatMsg[]) => [...prev, { role: "user", content: text }]);
     setLoading(true);
 
-    const placeholder: ChatMsg = { role: "assistant", content: "", cmds: [] };
+    const placeholder: ChatMsg = { role: "assistant", content: "", cmds: [], tools: [] };
     setMessages((prev: ChatMsg[]) => [...prev, placeholder]);
 
     try {
@@ -31,6 +39,7 @@ export function useTargetChat(targetId: string | null) {
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       let full = "";
       const cmds: string[] = [];
+      const tools: ToolCall[] = [];
 
       for await (const evt of readSSE(res)) {
         if (signal.aborted) break;
@@ -46,15 +55,39 @@ export function useTargetChat(targetId: string | null) {
           full += evt.t;
           setMessages((prev: ChatMsg[]) => {
             const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: full, cmds };
+            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools] };
             return next;
           });
         }
+        // Backward compat: old cmd event
         if (typeof evt.cmd === "string") {
           cmds.push(evt.cmd);
+        }
+        // New: tool_start — add a running tool call
+        if (evt.tool_start) {
+          const tc = evt.tool_start as { cmd: string };
+          tools.push({ cmd: tc.cmd, status: "running" });
           setMessages((prev: ChatMsg[]) => {
             const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds] };
+            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools] };
+            return next;
+          });
+        }
+        // New: tool_end — finalize the matching tool call
+        if (evt.tool_end) {
+          const tc = evt.tool_end as { cmd: string; output?: string; duration_ms?: number; status?: string };
+          const idx = tools.findIndex(t => t.cmd === tc.cmd && t.status === "running");
+          if (idx >= 0) {
+            tools[idx] = {
+              cmd: tc.cmd,
+              output: tc.output,
+              duration: tc.duration_ms,
+              status: (tc.status === "error" ? "error" : "done") as ToolCall["status"],
+            };
+          }
+          setMessages((prev: ChatMsg[]) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools] };
             return next;
           });
         }
