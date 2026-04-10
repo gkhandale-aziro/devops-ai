@@ -79,15 +79,15 @@
   --c-bg-card:       #f1f5f9;
   --c-bg-panel:      #ffffff;
 
-  --c-border:        #e2e8f0;
-  --c-border-strong: #cbd5e1;
-  --c-border-subtle: #f1f5f9;
+  --c-border:        #cbd5e1;
+  --c-border-strong: #94a3b8;
+  --c-border-subtle: #e2e8f0;
 
-  --c-text-primary:  #0f172a;
-  --c-text-secondary:#475569;
-  --c-text-muted:    #64748b;
-  --c-text-faint:    #94a3b8;
-  --c-text-dim:      #cbd5e1;
+  --c-text-primary:  #020617;
+  --c-text-secondary:#334155;
+  --c-text-muted:    #475569;
+  --c-text-faint:    #64748b;
+  --c-text-dim:      #94a3b8;
 
   --c-sev1:          #dc2626;
   --c-sev1-bg:       #fef2f2;
