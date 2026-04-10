@@ -13,6 +13,7 @@ vi.mock("../api/client", () => ({
         .fn()
         .mockResolvedValue({ tool_model: "gemma2", answer_model: "llama3" }),
     },
+    modelHealth: vi.fn().mockResolvedValue({ status: "healthy", primary_tool: "llama3", primary_answer: "llama3", fallback_model: "", error_message: "", since: 0 }),
   },
 }));
 

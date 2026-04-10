@@ -108,22 +108,31 @@ export const api = {
   // ── Chat (target-scoped) ───────────────────────────────────────────────────
 
   /** Returns a ReadableStream of SSE data — caller reads chunks */
-  chatStream: (targetId: string, message: string, signal?: AbortSignal) =>
-    fetch(`/api/v1/chat/${targetId}/stream`, {
+  chatStream: (targetId: string, message: string, signal?: AbortSignal) => {
+    // useChat.ts manages its own timed abort; this is a safety net
+    return fetch(`/api/v1/chat/${targetId}/stream`, {
       method:  "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body:    JSON.stringify({ message }),
       signal,
-    }),
+    });
+  },
 
   // ── AI analysis ───────────────────────────────────────────────────────────
 
-  analyzeStream: (prompt: string) =>
-    fetch("/api/v1/analyze/stream", {
+  analyzeStream: (prompt: string, signal?: AbortSignal) => {
+    // 90s timeout — covers backend AI call (30s) + tool execution + streaming
+    const timeout = AbortSignal.timeout(90_000);
+    const combined = signal
+      ? AbortSignal.any([signal, timeout])
+      : timeout;
+    return fetch("/api/v1/analyze/stream", {
       method:  "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body:    JSON.stringify({ prompt }),
-    }),
+      signal:  combined,
+    });
+  },
 
   // ── General chat sessions ──────────────────────────────────────────────────
 

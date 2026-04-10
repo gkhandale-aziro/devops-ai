@@ -21,24 +21,32 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
     if (!open || !context) return;
     setText("");
     setLoading(true);
-    let cancelled = false;
+    const abort = new AbortController();
 
     (async () => {
       try {
-        const res = await api.analyzeStream(context);
+        const res = await api.analyzeStream(context, abort.signal);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         let full = "";
         for await (const evt of readSSE(res)) {
-          if (cancelled) break;
+          if (abort.signal.aborted) break;
+          if (typeof evt.error === "string") { setText(`Error: ${evt.error}`); return; }
           if (typeof evt.t === "string") { full += evt.t; setText(full); }
         }
-      } catch {
-        if (!cancelled) setText("Failed to get AI analysis. Check your AI model config.");
+      } catch (e) {
+        if (abort.signal.aborted) return;
+        const msg = String((e as Error)?.message ?? e);
+        if (msg.includes("timeout") || msg.includes("Timeout")) {
+          setText("AI analysis timed out. The model may be overloaded — try again.");
+        } else {
+          setText("Failed to get AI analysis. Check your AI model config.");
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!abort.signal.aborted) setLoading(false);
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => { abort.abort(); };
   }, [open, context]);
 
   // Auto-scroll as text streams in
@@ -54,13 +62,20 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
     const prompt = `${context}\n\nPrevious analysis:\n${text}\n\nFollow-up: ${q}`;
     try {
       const res = await api.analyzeStream(prompt);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       let full  = text + `\n\n---\n\n**Q: ${q}**\n\n`;
       setText(full);
       for await (const evt of readSSE(res)) {
+        if (typeof evt.error === "string") { setText(prev => prev + `\n\nError: ${evt.error}`); return; }
         if (typeof evt.t === "string") { full += evt.t; setText(full); }
       }
-    } catch {
-      setText(prev => prev + "\n\nFailed to get response.");
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e);
+      if (msg.includes("timeout") || msg.includes("Timeout")) {
+        setText(prev => prev + "\n\nRequest timed out. Try again.");
+      } else {
+        setText(prev => prev + "\n\nFailed to get response.");
+      }
     } finally {
       setLoading(false);
     }

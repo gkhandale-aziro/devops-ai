@@ -3,16 +3,51 @@ import { api, readSSE } from "../api/client";
 
 export interface ToolCall {
   cmd:       string;
-  output?:   string;        // truncated (first 500 chars)
-  duration?: number;        // milliseconds
+  output?:   string;
+  duration?: number;
   status:    "running" | "done" | "error";
 }
 
 export interface ChatMsg {
   role:    "user" | "assistant";
   content: string;
-  cmds?:   string[];       // backward compat
+  cmds?:   string[];
   tools?:  ToolCall[];
+}
+
+/** Timeout for initial server response (covers AI model latency + failover). */
+const RESPONSE_TIMEOUT_MS = 45_000;
+
+/** Timeout for silence during SSE streaming (no data for this long = stall). */
+const STREAM_STALL_MS = 60_000;
+
+/**
+ * Create an AbortController that auto-aborts after `ms` milliseconds.
+ * Returns [controller, resetTimer] — call resetTimer() on each SSE chunk
+ * to prevent stall timeout while data is still flowing.
+ */
+function createTimedAbort(existingSignal: AbortSignal, ms: number): [AbortController, () => void] {
+  const controller = new AbortController();
+  let timer = setTimeout(() => controller.abort(new Error("Request timed out")), ms);
+
+  // If the parent signal aborts, abort this one too
+  existingSignal.addEventListener("abort", () => controller.abort(existingSignal.reason));
+
+  const reset = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(new Error("Stream stalled — no data received")), STREAM_STALL_MS);
+  };
+
+  return [controller, reset];
+}
+
+function setError(setMessages: React.Dispatch<React.SetStateAction<ChatMsg[]>>, msg: string) {
+  setMessages(prev => {
+    if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
+    const next = [...prev];
+    next[next.length - 1] = { role: "assistant", content: msg };
+    return next;
+  });
 }
 
 export function useTargetChat(targetId: string | null) {
@@ -23,10 +58,9 @@ export function useTargetChat(targetId: string | null) {
   const send = useCallback(async (text: string) => {
     if (!targetId || !text.trim()) return;
 
-    // Cancel any in-flight request before starting a new one
     abortRef.current?.abort();
     abortRef.current = new AbortController();
-    const signal = abortRef.current.signal;
+    const userSignal = abortRef.current.signal;
 
     setMessages((prev: ChatMsg[]) => [...prev, { role: "user", content: text }]);
     setLoading(true);
@@ -34,21 +68,21 @@ export function useTargetChat(targetId: string | null) {
     const placeholder: ChatMsg = { role: "assistant", content: "", cmds: [], tools: [] };
     setMessages((prev: ChatMsg[]) => [...prev, placeholder]);
 
+    const [timedController, resetTimer] = createTimedAbort(userSignal, RESPONSE_TIMEOUT_MS);
+
     try {
-      const res = await api.chatStream(targetId, text, signal);
+      const res = await api.chatStream(targetId, text, timedController.signal);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       let full = "";
       const cmds: string[] = [];
       const tools: ToolCall[] = [];
 
       for await (const evt of readSSE(res)) {
-        if (signal.aborted) break;
+        if (timedController.signal.aborted) break;
+        resetTimer(); // got data, reset stall timer
+
         if (typeof evt.error === "string") {
-          setMessages((prev: ChatMsg[]) => {
-            const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: `⚠ ${evt.error}` };
-            return next;
-          });
+          setError(setMessages, `Error: ${evt.error}`);
           return;
         }
         if (typeof evt.t === "string") {
@@ -59,11 +93,9 @@ export function useTargetChat(targetId: string | null) {
             return next;
           });
         }
-        // Backward compat: old cmd event
         if (typeof evt.cmd === "string") {
           cmds.push(evt.cmd);
         }
-        // New: tool_start — add a running tool call
         if (evt.tool_start) {
           const tc = evt.tool_start as { cmd: string };
           tools.push({ cmd: tc.cmd, status: "running" });
@@ -73,7 +105,6 @@ export function useTargetChat(targetId: string | null) {
             return next;
           });
         }
-        // New: tool_end — finalize the matching tool call
         if (evt.tool_end) {
           const tc = evt.tool_end as { cmd: string; output?: string; duration_ms?: number; status?: string };
           const idx = tools.findIndex(t => t.cmd === tc.cmd && t.status === "running");
@@ -93,13 +124,14 @@ export function useTargetChat(targetId: string | null) {
         }
       }
     } catch (e) {
-      if ((e as Error)?.name === "AbortError") return;
-      setMessages((prev: ChatMsg[]) => {
-        if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
-        const next = [...prev];
-        next[next.length - 1] = { role: "assistant", content: `Error: ${String(e)}` };
-        return next;
-      });
+      if ((e as Error)?.name === "AbortError") {
+        // Check if this was a timeout abort (not user-initiated)
+        if (!userSignal.aborted) {
+          setError(setMessages, "Error: Request timed out — AI model may be overloaded. Try again.");
+        }
+        return;
+      }
+      setError(setMessages, `Error: ${String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -123,7 +155,7 @@ export function useSessionChat(sessionId: string | null) {
 
     abortRef.current?.abort();
     abortRef.current = new AbortController();
-    const signal = abortRef.current.signal;
+    const userSignal = abortRef.current.signal;
 
     setMessages(prev => [...prev, { role: "user", content: text }]);
     setLoading(true);
@@ -131,19 +163,19 @@ export function useSessionChat(sessionId: string | null) {
     const placeholder: ChatMsg = { role: "assistant", content: "" };
     setMessages(prev => [...prev, placeholder]);
 
+    const [timedController, resetTimer] = createTimedAbort(userSignal, RESPONSE_TIMEOUT_MS);
+
     try {
-      const res = await api.sessions.chatStream(sessionId, text, signal);
+      const res = await api.sessions.chatStream(sessionId, text, timedController.signal);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       let full = "";
 
       for await (const evt of readSSE(res)) {
-        if (signal.aborted) break;
+        if (timedController.signal.aborted) break;
+        resetTimer();
+
         if (typeof evt.error === "string") {
-          setMessages(prev => {
-            const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: `⚠ ${evt.error}` };
-            return next;
-          });
+          setError(setMessages, `Error: ${evt.error}`);
           return;
         }
         if (typeof evt.t === "string") {
@@ -156,13 +188,13 @@ export function useSessionChat(sessionId: string | null) {
         }
       }
     } catch (e) {
-      if ((e as Error)?.name === "AbortError") return;
-      setMessages(prev => {
-        if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
-        const next = [...prev];
-        next[next.length - 1] = { role: "assistant", content: `Error: ${String(e)}` };
-        return next;
-      });
+      if ((e as Error)?.name === "AbortError") {
+        if (!userSignal.aborted) {
+          setError(setMessages, "Error: Request timed out — AI model may be overloaded. Try again.");
+        }
+        return;
+      }
+      setError(setMessages, `Error: ${String(e)}`);
     } finally {
       setLoading(false);
     }

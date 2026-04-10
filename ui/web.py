@@ -38,6 +38,7 @@ from tools.kubectl  import setup_kubeconfig, check_cloud_auth
 # Mirrors kubectl-ai's top-level struct fields in cmd/main.go.
 
 _llm      = LLMClient()
+_llm.start_health_monitor()
 _tools    = ToolExecutor()
 _sessions = SessionManager()
 _targets  = TargetManager()

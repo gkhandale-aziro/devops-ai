@@ -1,16 +1,18 @@
 """
-providers/client.py — AI provider layer using LiteLLM with native tool calling.
+providers/client.py — Production-grade AI provider layer using LiteLLM.
 
 Two-model setup (optional):
   TOOL_MODEL   — fast model for deciding which commands to run
   ANSWER_MODEL — smarter model for writing the final analysis
 
-Resilience:
-  - Retries with backoff (0s / 10s / 20s / 60s)
-  - Detects quota/rate-limit errors (HTTP 429, quota exceeded)
+Resilience (industry-standard):
+  - Circuit breaker: instant failover on quota/rate-limit (no retries on 429)
+  - Hard timeouts on every API call (30s non-streaming, 60s streaming)
   - Auto-fallback to Ollama when cloud model is exhausted
-  - Auto-recovery: retries primary every 5 minutes
-  - Exposes health state for UI banners
+  - Proactive background health monitor (pings primary every 5 min)
+  - Auto-recovery: switches back when primary is healthy again
+  - Transient error retries: 3 attempts with short backoff (non-quota only)
+  - Exposes health state for UI banners via ModelHealth
 
 Examples:
   AI_MODEL=gemini/gemini-2.5-flash python3 main.py
@@ -25,7 +27,8 @@ import litellm
 
 litellm.telemetry = False
 
-# Tool definition — same structure as kubectl-ai's FunctionDefinition
+# ── Tool definition ──────────────────────────────────────────────────────────
+
 TOOLS = [
     {
         "type": "function",
@@ -52,7 +55,13 @@ TOOLS = [
     }
 ]
 
-# ── Quota / rate-limit error detection ────────────────────────────────────────
+# ── Timeouts ─────────────────────────────────────────────────────────────────
+
+TIMEOUT_CHAT    = 30   # seconds — non-streaming API calls
+TIMEOUT_STREAM  = 60   # seconds — streaming API calls (first token)
+TIMEOUT_PROBE   = 10   # seconds — health probe / recovery ping
+
+# ── Quota / rate-limit error detection ───────────────────────────────────────
 
 _QUOTA_KEYWORDS = [
     "quota", "rate_limit", "rate limit", "429", "resource_exhausted",
@@ -60,13 +69,21 @@ _QUOTA_KEYWORDS = [
     "insufficient_quota", "RateLimitError",
 ]
 
+
 def _is_quota_error(exc: Exception) -> bool:
     """Detect if an exception is a quota/rate-limit error."""
     msg = str(exc).lower()
     return any(kw.lower() in msg for kw in _QUOTA_KEYWORDS)
 
 
-# Preferred fallback models for tool calls (fast, good at structured output).
+def _is_timeout_error(exc: Exception) -> bool:
+    """Detect if an exception is a timeout."""
+    msg = str(exc).lower()
+    return any(kw in msg for kw in ["timeout", "timed out", "deadline"])
+
+
+# ── Ollama model discovery ───────────────────────────────────────────────────
+
 _PREFERRED_TOOL_FALLBACKS = [
     "qwen2.5:7b",
     "qwen2.5:3b",
@@ -75,13 +92,12 @@ _PREFERRED_TOOL_FALLBACKS = [
     "llama3.2:latest",
 ]
 
-# Preferred fallback models for answers (smarter, better reasoning).
 _PREFERRED_ANSWER_FALLBACKS = [
     "qwen2.5:14b",
     "qwen2.5:7b",
     "llama3.1:8b",
     "gemma3:latest",
-    "mixtral:8x7b",   # strong reasoning but slow on CPU
+    "mixtral:8x7b",
 ]
 
 
@@ -89,7 +105,6 @@ def _discover_ollama_models() -> list[str]:
     """Return available Ollama model names via HTTP API or CLI fallback."""
     import urllib.request
 
-    # Try HTTP API first (works inside Docker via OLLAMA_API_BASE)
     base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
     try:
         req = urllib.request.Request(f"{base}/api/tags", method="GET")
@@ -99,7 +114,6 @@ def _discover_ollama_models() -> list[str]:
     except Exception:
         pass
 
-    # Fallback to CLI (works when Ollama is installed locally)
     try:
         out = subprocess.run(
             ["ollama", "list"], capture_output=True, text=True, timeout=5,
@@ -122,18 +136,18 @@ def _pick_best_fallback(available: list[str], preference: list[str]) -> str:
     return available[0] if available else ""
 
 
-# ── Model health state ────────────────────────────────────────────────────────
+# ── Model health state ───────────────────────────────────────────────────────
 
 class ModelHealth:
     """
-    Tracks model health state machine:
-      HEALTHY → DEGRADED → FALLBACK (auto) or UNAVAILABLE (no Ollama)
-      Any state → HEALTHY (when primary recovers)
+    Thread-safe health state machine:
+      HEALTHY -> FALLBACK (Ollama found) or UNAVAILABLE (no Ollama)
+      Any state -> HEALTHY (primary recovered)
     """
     HEALTHY     = "healthy"
-    DEGRADED    = "degraded"       # quota hit, retrying
-    FALLBACK    = "fallback"       # using Ollama automatically
-    UNAVAILABLE = "unavailable"    # quota hit, no Ollama available
+    DEGRADED    = "degraded"
+    FALLBACK    = "fallback"
+    UNAVAILABLE = "unavailable"
 
     def __init__(self):
         self.status: str = self.HEALTHY
@@ -141,7 +155,7 @@ class ModelHealth:
         self.primary_answer: str = ""
         self.fallback_tool: str = ""
         self.fallback_answer: str = ""
-        self.fallback_model: str = ""       # display label for UI
+        self.fallback_model: str = ""
         self.error_message: str = ""
         self.last_error_time: float = 0
         self.last_recovery_check: float = 0
@@ -149,7 +163,6 @@ class ModelHealth:
         self._listeners: list = []
 
     def on_change(self, callback):
-        """Register a callback for status changes: callback(health_dict)."""
         self._listeners.append(callback)
 
     def _notify(self):
@@ -169,7 +182,6 @@ class ModelHealth:
                 self.status = self.FALLBACK
                 self.fallback_tool = fallback_tool
                 self.fallback_answer = fallback_answer or fallback_tool
-                # Display label: show both if different
                 if self.fallback_tool == self.fallback_answer:
                     self.fallback_model = self.fallback_tool
                 else:
@@ -203,19 +215,23 @@ class ModelHealth:
             }
 
 
-# ── LLM Client ───────────────────────────────────────────────────────────────
+# ── LLM Client ──────────────────────────────────────────────────────────────
 
-RECOVERY_INTERVAL = 300  # 5 minutes between recovery attempts
+RECOVERY_INTERVAL = 300  # 5 min between recovery probes
+TRANSIENT_RETRIES = 2    # retry transient (non-quota) errors this many times
+TRANSIENT_DELAY   = 3    # seconds between transient retries
+
 
 class LLMClient:
     """
-    Wraps LiteLLM with auto-fallback to Ollama on quota exhaustion.
+    Production-grade LLM client with circuit-breaker failover.
 
-    Attributes
-    ----------
-    tool_model   : model used when tool calling is enabled  (fast)
-    answer_model : model used for final streaming answer    (smart)
-    health       : ModelHealth state for UI consumption
+    Guarantees:
+      - Every API call has a hard timeout (never hangs)
+      - Quota errors fail-fast and trigger immediate Ollama fallback
+      - Transient errors get 2 retries with 3s delay
+      - Background thread proactively monitors primary health
+      - Auto-recovers when primary comes back
     """
 
     def __init__(self):
@@ -225,9 +241,34 @@ class LLMClient:
         self.health       = ModelHealth()
         self.health.primary_tool   = self.tool_model
         self.health.primary_answer = self.answer_model
+        self._monitor_thread: threading.Thread | None = None
+        self._monitor_stop = threading.Event()
+
+    def start_health_monitor(self):
+        """Start background thread that proactively checks primary model health."""
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            return
+        self._monitor_stop.clear()
+        self._monitor_thread = threading.Thread(
+            target=self._health_monitor_loop, daemon=True, name="ai-health-monitor"
+        )
+        self._monitor_thread.start()
+        print(f"  [AI] Health monitor started (checks every {RECOVERY_INTERVAL}s)")
+
+    def stop_health_monitor(self):
+        """Stop the background health monitor."""
+        self._monitor_stop.set()
+
+    def _health_monitor_loop(self):
+        """Background loop — proactively tests primary model recovery."""
+        while not self._monitor_stop.wait(timeout=RECOVERY_INTERVAL):
+            if self.health.status in (ModelHealth.FALLBACK, ModelHealth.UNAVAILABLE):
+                self._try_recovery()
+
+    # ── Model routing ────────────────────────────────────────────────────────
 
     def _effective_model(self, use_tools: bool) -> str:
-        """Return the model to actually use, accounting for fallback state."""
+        """Return the model to use, accounting for fallback state."""
         if self.health.status == ModelHealth.FALLBACK:
             if use_tools and self.health.fallback_tool:
                 return self.health.fallback_tool
@@ -235,44 +276,43 @@ class LLMClient:
                 return self.health.fallback_answer
         return self.tool_model if use_tools else self.answer_model
 
+    # ── Recovery ─────────────────────────────────────────────────────────────
+
     def _try_recovery(self) -> bool:
-        """
-        If in fallback, periodically test if primary model is back.
-        Returns True if recovery succeeded (primary is healthy again).
-        """
-        if self.health.status not in (ModelHealth.FALLBACK, ModelHealth.UNAVAILABLE):
-            return False
+        """Test if primary model is back online. Returns True on success."""
         now = time.time()
         if now - self.health.last_recovery_check < RECOVERY_INTERVAL:
             return False
         self.health.last_recovery_check = now
 
-        print(f"  [AI] Recovery check — testing primary model {self.tool_model}...")
+        print(f"  [AI] Recovery probe — testing {self.tool_model}...")
         try:
             litellm.completion(
                 model=self.tool_model,
                 messages=[{"role": "user", "content": "ping"}],
                 max_tokens=5,
+                num_retries=0,
+                timeout=TIMEOUT_PROBE,
             )
-            print(f"  [AI] Recovery succeeded — switching back to {self.tool_model}")
+            print(f"  [AI] Recovery OK — switching back to {self.tool_model}")
             self.health.set_healthy()
             return True
         except Exception as e:
             if _is_quota_error(e):
-                print(f"  [AI] Recovery failed — still quota-limited: {e}")
+                print(f"  [AI] Recovery failed — still quota-limited")
             else:
-                # Non-quota error on recovery — might be a different issue,
-                # but primary could still work for real requests
-                print(f"  [AI] Recovery probe got non-quota error: {e}")
+                print(f"  [AI] Recovery probe error: {e}")
             return False
 
+    # ── Fallback activation ──────────────────────────────────────────────────
+
     def _activate_fallback(self, error: Exception):
-        """Detect Ollama, switch to best available fallback models (tool + answer)."""
+        """Discover Ollama models and switch to best available."""
         ollama_models = _discover_ollama_models()
         if ollama_models:
             tool_fb   = _pick_best_fallback(ollama_models, _PREFERRED_TOOL_FALLBACKS)
             answer_fb = _pick_best_fallback(ollama_models, _PREFERRED_ANSWER_FALLBACKS)
-            print(f"  [AI] Quota exhausted — fallback tool: ollama/{tool_fb}, answer: ollama/{answer_fb}")
+            print(f"  [AI] Quota exhausted — fallback: ollama/{tool_fb} (tools), ollama/{answer_fb} (answer)")
             self.health.set_degraded(
                 str(error),
                 fallback_tool=f"ollama/{tool_fb}",
@@ -282,51 +322,45 @@ class LLMClient:
             print(f"  [AI] Quota exhausted — no Ollama available")
             self.health.set_degraded(str(error))
 
-    # ── non-streaming ────────────────────────────────────────────────────────
+    def _handle_error(self, error: Exception) -> bool:
+        """Handle an API error. Returns True if fallback was activated (caller should retry)."""
+        if _is_quota_error(error):
+            if self.health.status == ModelHealth.HEALTHY:
+                self._activate_fallback(error)
+            return self.health.status == ModelHealth.FALLBACK
+        return False
+
+    # ── Non-streaming ────────────────────────────────────────────────────────
 
     def chat(self, messages, use_tools=True):
         """
-        Send messages to AI with retry + auto-fallback on quota errors.
-        Returns (reply_text, command_or_None, tool_call_id_or_None).
-        """
-        # Check if primary recovered
-        self._try_recovery()
+        Send messages to AI. Returns (reply_text, command_or_None, tool_call_id_or_None).
 
-        delays    = [0, 10, 20, 60]
-        last_err  = None
-        for attempt, delay in enumerate(delays):
-            if delay:
-                print(f"  [AI] retry {attempt}/{len(delays)-1} — waiting {delay}s...")
-                time.sleep(delay)
-            try:
-                result = self._chat_once(messages, use_tools)
-                # If we were in fallback and this succeeded, good
-                if self.health.status != ModelHealth.HEALTHY:
-                    model = self._effective_model(use_tools)
-                    if model == self.tool_model or model == self.answer_model:
-                        self.health.set_healthy()
-                return result
-            except Exception as e:
-                last_err = e
-                if _is_quota_error(e):
-                    print(f"  [AI] Quota/rate-limit error: {e}")
-                    if self.health.status == ModelHealth.HEALTHY:
-                        self._activate_fallback(e)
-                    # If fallback is active, retry immediately with fallback model
-                    if self.health.status == ModelHealth.FALLBACK:
-                        try:
-                            return self._chat_once(messages, use_tools)
-                        except Exception as e2:
-                            last_err = e2
-                    break  # don't retry quota errors with same model
-                if attempt < len(delays) - 1:
-                    print(f"  [AI] attempt {attempt+1} failed: {e}")
-        raise last_err
+        Circuit breaker: quota errors trigger immediate fallback, no retry loop.
+        Transient errors: up to 2 retries with 3s delay.
+        """
+        try:
+            return self._chat_once(messages, use_tools)
+        except Exception as e:
+            if self._handle_error(e):
+                # Quota error + fallback activated -> retry once with fallback
+                return self._chat_once(messages, use_tools)
+
+            if _is_quota_error(e):
+                raise  # no fallback available, propagate
+
+            # Transient error -> retry with backoff
+            return self._retry_transient(lambda: self._chat_once(messages, use_tools), e)
 
     def _chat_once(self, messages, use_tools):
-        """Single (non-retried) AI call."""
+        """Single API call with timeout. Never retried internally."""
         model  = self._effective_model(use_tools)
-        kwargs = {"model": model, "messages": messages}
+        kwargs = {
+            "model": model,
+            "messages": messages,
+            "num_retries": 0,
+            "timeout": TIMEOUT_CHAT,
+        }
         if use_tools:
             kwargs["tools"] = TOOLS
 
@@ -334,7 +368,13 @@ class LLMClient:
         response = litellm.completion(**kwargs)
         elapsed  = time.time() - t0
         choice   = response.choices[0]
-        print(f"  [AI] {model} | tools={'yes' if use_tools else 'no'} | {elapsed:.1f}s | tokens={response.usage.total_tokens if response.usage else '?'}")
+        tokens   = response.usage.total_tokens if response.usage else "?"
+        print(f"  [AI] {model} | tools={'yes' if use_tools else 'no'} | {elapsed:.1f}s | tokens={tokens}")
+
+        # Successful call — if we were in fallback using primary, recover
+        if self.health.status != ModelHealth.HEALTHY:
+            if model in (self.tool_model, self.answer_model):
+                self.health.set_healthy()
 
         if choice.message.tool_calls:
             tool_call = choice.message.tool_calls[0]
@@ -345,43 +385,69 @@ class LLMClient:
 
         return choice.message.content or "", None, None
 
-    # ── streaming ────────────────────────────────────────────────────────────
+    # ── Streaming ────────────────────────────────────────────────────────────
 
     def chat_stream(self, messages, use_tools=False):
-        """Stream AI response token by token. Yields text chunks."""
-        self._try_recovery()
-
-        model    = self._effective_model(use_tools)
-        kwargs   = {"model": model, "messages": messages, "stream": True}
+        """Stream AI response. Yields text chunks. Circuit-breaker on quota errors."""
+        model  = self._effective_model(use_tools)
+        kwargs = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "num_retries": 0,
+            "timeout": TIMEOUT_STREAM,
+        }
 
         try:
-            t0       = time.time()
-            response = litellm.completion(**kwargs)
-            for chunk in response:
-                delta = chunk.choices[0].delta
-                if delta and delta.content:
-                    yield delta.content
-            elapsed = time.time() - t0
-            print(f"  [AI] {model} | stream | {elapsed:.1f}s")
-            # Successful stream — if we were degraded, we recovered
-            if self.health.status != ModelHealth.HEALTHY:
-                if model == self.tool_model or model == self.answer_model:
-                    self.health.set_healthy()
+            yield from self._stream_once(kwargs, model)
+            return
         except Exception as e:
-            if _is_quota_error(e):
-                if self.health.status == ModelHealth.HEALTHY:
-                    self._activate_fallback(e)
-                # Retry with fallback
-                if self.health.status == ModelHealth.FALLBACK:
-                    fb = self.health.fallback_tool if use_tools else self.health.fallback_answer
-                    kwargs["model"] = fb
-                    t0 = time.time()
-                    response = litellm.completion(**kwargs)
-                    for chunk in response:
-                        delta = chunk.choices[0].delta
-                        if delta and delta.content:
-                            yield delta.content
-                    elapsed = time.time() - t0
-                    print(f"  [AI] {fb} | stream (fallback) | {elapsed:.1f}s")
-                    return
-            raise
+            if self._handle_error(e):
+                # Fallback activated -> retry with fallback model
+                fb = self._effective_model(use_tools)
+                kwargs["model"] = fb
+                yield from self._stream_once(kwargs, fb)
+                return
+
+            if _is_quota_error(e) or _is_timeout_error(e):
+                raise  # propagate — no retries for these
+
+            # Transient error -> one retry
+            try:
+                time.sleep(TRANSIENT_DELAY)
+                yield from self._stream_once(kwargs, model)
+                return
+            except Exception:
+                raise e  # raise original
+
+    def _stream_once(self, kwargs, model):
+        """Execute a single streaming call. Yields text chunks."""
+        t0       = time.time()
+        response = litellm.completion(**kwargs)
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                yield delta.content
+        elapsed = time.time() - t0
+        print(f"  [AI] {model} | stream | {elapsed:.1f}s")
+
+        if self.health.status != ModelHealth.HEALTHY:
+            if model in (self.tool_model, self.answer_model):
+                self.health.set_healthy()
+
+    # ── Transient retry helper ───────────────────────────────────────────────
+
+    def _retry_transient(self, fn, original_error):
+        """Retry a callable up to TRANSIENT_RETRIES times for non-quota errors."""
+        for attempt in range(TRANSIENT_RETRIES):
+            time.sleep(TRANSIENT_DELAY)
+            print(f"  [AI] Transient retry {attempt + 1}/{TRANSIENT_RETRIES}")
+            try:
+                return fn()
+            except Exception as e:
+                if _is_quota_error(e):
+                    if self._handle_error(e):
+                        return fn()
+                    raise
+                original_error = e
+        raise original_error

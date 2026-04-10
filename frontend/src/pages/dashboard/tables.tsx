@@ -422,11 +422,13 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
     setBadgeLoading(prev => ({ ...prev, [key]: true }));
     try {
       const res = await api.analyzeStream(`Quick 1-sentence diagnosis for pod "${name}" in namespace "${ns}" with status "${status}". Be concise.`);
+      if (!res.ok) throw new Error(`${res.status}`);
       let text = "";
       for await (const evt of readSSE(res)) {
+        if (typeof evt.error === "string") { text = evt.error; break; }
         if (typeof evt.t === "string") text += evt.t;
       }
-      setAiBadges(prev => ({ ...prev, [key]: text.slice(0, 120) }));
+      setAiBadges(prev => ({ ...prev, [key]: text.slice(0, 120) || "AI unavailable" }));
     } catch {
       setAiBadges(prev => ({ ...prev, [key]: "AI unavailable" }));
     } finally {
@@ -530,8 +532,17 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
     const prompt = `Analyze this ${resource.kind} "${resource.name}"${resource.ns ? " in namespace " + resource.ns : ""}.\n\nDescribe:\n${(resource.data.describe ?? "").slice(0, 3000)}\n\n${resource.data.logs ? "Recent logs:\n" + resource.data.logs.slice(-1500) : ""}`;
     try {
       const res = await api.analyzeStream(prompt);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       for await (const evt of readSSE(res)) {
+        if (typeof evt.error === "string") { setAiText(`Error: ${evt.error}`); return; }
         if (typeof evt.t === "string") setAiText(prev => prev + evt.t);
+      }
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e);
+      if (msg.includes("timeout") || msg.includes("Timeout")) {
+        setAiText("Analysis timed out. The AI model may be overloaded — try again.");
+      } else {
+        setAiText(`AI analysis failed: ${msg}`);
       }
     } finally {
       setAiLoading(false);
