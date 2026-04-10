@@ -1,84 +1,39 @@
 /**
- * ThemeContext.tsx — P5: Color theme switcher.
- * Themes: Default (Indigo), Tron (Cyan/Green), Sapphire (Blue).
- * Applies CSS custom properties on :root so all existing code Just Works™.
+ * ThemeContext.tsx — Day / Night two-theme system.
+ * Follows prefers-color-scheme by default. User override persists in localStorage.
+ * Applies data-theme="day"|"night" on <html> so CSS custom properties switch.
  */
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { Sun, Moon } from "lucide-react";
 
-export type ThemeName = "default" | "tron" | "sapphire";
+export type ThemeName = "day" | "night";
 
 interface ThemeCtx {
   theme:    ThemeName;
   setTheme: (t: ThemeName) => void;
 }
 
-const ThemeContext = createContext<ThemeCtx>({ theme: "default", setTheme: () => {} });
+const ThemeContext = createContext<ThemeCtx>({ theme: "night", setTheme: () => {} });
 
 export function useTheme() { return useContext(ThemeContext); }
 
-const THEMES: Record<ThemeName, Record<string, string>> = {
-  default: {
-    "--c-accent":        "#6366f1",
-    "--c-accent-dim":    "#6366f122",
-    "--c-accent-hover":  "#818cf8",
-    "--c-bg-base":       "#020617",
-    "--c-bg-surface":    "#0a0f1e",
-    "--c-bg-raised":     "#0f1629",
-    "--c-bg-overlay":    "#182035",
-    "--c-border":        "#1a2235",
-    "--c-border-strong": "#263050",
-    "--c-text-primary":  "#f1f5f9",
-    "--c-text-secondary":"#94a3b8",
-    "--c-text-muted":    "#64748b",
-    "--c-text-faint":    "#475569",
-  },
-  tron: {
-    "--c-accent":        "#06b6d4",
-    "--c-accent-dim":    "#06b6d422",
-    "--c-accent-hover":  "#22d3ee",
-    "--c-bg-base":       "#050a0e",
-    "--c-bg-surface":    "#0a1118",
-    "--c-bg-raised":     "#0f1a24",
-    "--c-bg-overlay":    "#162230",
-    "--c-border":        "#0e2a3a",
-    "--c-border-strong": "#164050",
-    "--c-text-primary":  "#d4f0f8",
-    "--c-text-secondary":"#7ec8d8",
-    "--c-text-muted":    "#4a8898",
-    "--c-text-faint":    "#2a5868",
-  },
-  sapphire: {
-    "--c-accent":        "#3b82f6",
-    "--c-accent-dim":    "#3b82f622",
-    "--c-accent-hover":  "#60a5fa",
-    "--c-bg-base":       "#080c16",
-    "--c-bg-surface":    "#0c1222",
-    "--c-bg-raised":     "#121d34",
-    "--c-bg-overlay":    "#1a2744",
-    "--c-border":        "#1a2744",
-    "--c-border-strong": "#2a3d64",
-    "--c-text-primary":  "#dbe7f8",
-    "--c-text-secondary":"#8bacd4",
-    "--c-text-muted":    "#5580a8",
-    "--c-text-faint":    "#3a5a7a",
-  },
-};
-
-export const THEME_META: Record<ThemeName, { label: string; preview: string }> = {
-  default:  { label: "Indigo",   preview: "#6366f1" },
-  tron:     { label: "Tron",     preview: "#06b6d4" },
-  sapphire: { label: "Sapphire", preview: "#3b82f6" },
-};
-
 const STORAGE_KEY = "aziro-theme";
+
+function systemPreference(): ThemeName {
+  try {
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "day" : "night";
+  } catch {
+    return "night";
+  }
+}
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeName>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored && stored in THEMES) return stored as ThemeName;
+      if (stored === "day" || stored === "night") return stored;
     } catch { /* SSR safe */ }
-    return "default";
+    return systemPreference();
   });
 
   const setTheme = (t: ThemeName) => {
@@ -86,13 +41,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(STORAGE_KEY, t); } catch { /* ignore */ }
   };
 
-  // Apply CSS variables on <html>
   useEffect(() => {
-    const vars = THEMES[theme];
-    const root = document.documentElement;
-    for (const [key, val] of Object.entries(vars)) {
-      root.style.setProperty(key, val);
-    }
+    document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
   return (
@@ -102,32 +52,34 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * ThemeSwitcher — small widget for the sidebar footer.
- */
-export function ThemeSwitcher() {
+export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const isDay = theme === "day";
 
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-      <span style={{ fontSize: 9, color: "var(--c-text-faint)", textTransform: "uppercase", letterSpacing: ".6px" }}>
-        Theme
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{
+        fontSize: 9, color: "var(--c-text-faint)", textTransform: "uppercase",
+        letterSpacing: ".6px", fontWeight: 600,
+      }}>
+        {isDay ? "Day" : "Night"}
       </span>
-      {(Object.entries(THEME_META) as [ThemeName, { label: string; preview: string }][]).map(([key, meta]) => (
-        <button
-          key={key}
-          onClick={() => setTheme(key)}
-          title={meta.label}
-          style={{
-            width: 16, height: 16, borderRadius: 4,
-            background: meta.preview,
-            border: theme === key ? "2px solid #fff" : "2px solid transparent",
-            cursor: "pointer",
-            opacity: theme === key ? 1 : 0.5,
-            transition: "all .15s",
-          }}
-        />
-      ))}
+      <button
+        onClick={() => setTheme(isDay ? "night" : "day")}
+        aria-label={isDay ? "Switch to night mode" : "Switch to day mode"}
+        title={isDay ? "Switch to night mode" : "Switch to day mode"}
+        style={{
+          width: 32, height: 32, borderRadius: 8,
+          background: "var(--c-bg-raised)",
+          border: "1px solid var(--c-border)",
+          cursor: "pointer", display: "flex",
+          alignItems: "center", justifyContent: "center",
+          color: "var(--c-text-secondary)",
+          transition: "all .15s",
+        }}
+      >
+        {isDay ? <Moon size={14} /> : <Sun size={14} />}
+      </button>
     </div>
   );
 }

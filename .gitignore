@@ -17,3 +17,18 @@ aziro.db
 frontend/test-results/
 frontend/playwright-report/
 frontend/.playwright/
+
+# Editor / tooling
+.vscode/
+.idea/
+.claude/
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Documents
+*.docx
+
+# Planning artifacts
+docs/superpowers/

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Wifi, X, Plus, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Target } from "../types";
-import { ThemeSwitcher } from "./ThemeContext";
+import { ThemeToggle } from "./ThemeContext";
+import { TARGET_META } from "../utils/targetIcons";
 
 interface Props {
   targets:       Target[];
@@ -18,12 +20,6 @@ const TYPE_COLORS: Record<string, string> = {
   kubernetes: "#326CE5", ssh: "#22c55e", local: "#22c55e",
   docker: "#2496ED", aws: "#FF9900", gcp: "#4285F4",
   azure: "#0078D4", terraform: "#7B42BC",
-};
-
-// Proper abbreviations — legible at small sizes
-const TYPE_ICONS: Record<string, string> = {
-  kubernetes: "K8S", docker: "DOC", aws: "AWS", gcp: "GCP",
-  azure: "AZ", terraform: "TF", ssh: "SSH", local: "LCL",
 };
 
 export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel }: Props) {
@@ -82,9 +78,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           flexShrink: 0,
           boxShadow: "0 0 16px #6366f144, 0 2px 8px #6366f133",
         }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-          </svg>
+          <Zap size={16} fill="white" stroke="white" />
         </div>
         <div>
           {/* Brand name */}
@@ -128,12 +122,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
               display: "flex", alignItems: "center", justifyContent: "center",
               margin: "0 auto 10px",
             }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-faint,#475569)" strokeWidth="1.5">
-                <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-                <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-                <line x1="12" y1="20" x2="12.01" y2="20"/>
-              </svg>
+              <Wifi size={18} stroke="var(--c-text-faint,#475569)" strokeWidth={1.5} />
             </div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-secondary,#94a3b8)", marginBottom: 4 }}>No connections yet</div>
             <div style={{ fontSize: 11, color: "var(--c-text-faint,#475569)", lineHeight: 1.5 }}>Add a cluster or server below to get started</div>
@@ -169,9 +158,9 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                 background: `${typeColor}18`,
                 border: `1px solid ${typeColor}33`,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 9, fontWeight: 800, color: typeColor, letterSpacing: ".4px",
+                color: typeColor,
               }}>
-                {TYPE_ICONS[t.type] ?? t.type.slice(0, 3).toUpperCase()}
+                {(() => { const meta = TARGET_META[t.type as keyof typeof TARGET_META]; if (meta) { const Icon = meta.icon; return <Icon size={14} />; } return <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".4px" }}>{t.type.slice(0, 3).toUpperCase()}</span>; })()}
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -217,9 +206,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                 onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
                 onMouseLeave={e => (e.currentTarget.style.color = "var(--c-text-faint,#475569)")}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
+                <X size={12} strokeWidth={2.5} />
               </button>
             </div>
           );
@@ -251,9 +238,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
             e.currentTarget.style.boxShadow  = "none";
           }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
+          <Plus size={13} strokeWidth={2.5} />
           Add Connection
         </button>
       </div>
@@ -261,22 +246,13 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
       {/* ── Nav ────────────────────────────────────────────────────────────── */}
       <div style={{ borderTop: "1px solid var(--c-border,#1a2235)", padding: "10px 8px 6px", display: "flex", flexDirection: "column", gap: 2 }}>
         {navItem("/", "Home",
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-            <polyline points="9 22 9 12 15 12 15 22"/>
-          </svg>
+          <HomeIcon size={15} />
         )}
         {navItem("/dashboard", "Dashboard",
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-          </svg>
+          <LayoutGrid size={15} />
         )}
         {navItem("/alerts", "Live Alerts",
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>,
+          <Bell size={15} />,
           monitorActive && (
             <span style={{
               width: 7, height: 7, borderRadius: "50%",
@@ -287,14 +263,10 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           )
         )}
         {navItem("/history", "History",
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-          </svg>
+          <Clock size={15} />
         )}
         {navItem("/chat", "AI Chat",
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+          <MessageSquare size={15} />
         )}
       </div>
 
@@ -326,7 +298,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           </div>
         )}
         {/* Theme switcher */}
-        <ThemeSwitcher />
+        <ThemeToggle />
         {/* Restore dismissed tips */}
         <button
           onClick={() => {
@@ -346,9 +318,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
             textTransform: "uppercase", letterSpacing: ".4px", fontWeight: 600,
           }}
         >
-          <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
-          </svg>
+          <RotateCcw size={11} aria-hidden="true" />
           Restore tips
         </button>
       </div>

@@ -18,6 +18,7 @@ import {
 import type { Target, PodStatus } from "../../types";
 import { api, readSSE } from "../../api/client";
 import { parseKubectl } from "../../utils/parseKubectl";
+import { Sparkles, Play } from "lucide-react";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 import { C } from "../../utils/theme";
 
@@ -182,7 +183,7 @@ const PodRow = memo(function PodRow({
               fontSize: 11, fontWeight: 600, cursor: "pointer", verticalAlign: "middle",
             }}
           >
-            ✦ Diagnose
+            <Sparkles size={10} style={{ marginRight: 3 }} /> Diagnose
           </button>
         )}
         {isBadgeLoading && (
@@ -194,7 +195,7 @@ const PodRow = memo(function PodRow({
             background: "#1e2240", border: `1px solid ${C.accent.primary}33`,
             borderRadius: 4, padding: "3px 7px", maxWidth: 400,
           }}>
-            ✦ {aiBadge}
+            <Sparkles size={10} style={{ display: "inline", marginRight: 3 }} /> {aiBadge}
           </div>
         )}
       </td>
@@ -220,7 +221,7 @@ const PodRow = memo(function PodRow({
               fontSize: 10, fontWeight: 600, cursor: "pointer",
             }}
           >
-            ▶ Logs
+            <Play size={9} style={{ marginRight: 3 }} /> Logs
           </button>
         )}
       </td>

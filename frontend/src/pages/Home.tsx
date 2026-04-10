@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Zap, Wifi, AlertTriangle, AlertCircle, Bell, LayoutGrid, MessageSquare, Clock, ArrowRight } from "lucide-react";
+import { TARGET_META } from "../utils/targetIcons";
 import type { Target, StoredEvent, TriageLevel } from "../types";
 import { LEVEL_COLORS } from "../types";
 import { api } from "../api/client";
@@ -53,15 +55,6 @@ function Sparkline({ values, color, width = 80, height = 28 }: {
   );
 }
 
-/** Deterministic fake-trend based on a seed value for decorative sparklines */
-function trendData(seed: number, len = 10, direction: "up" | "down" | "flat" = "flat"): number[] {
-  const base = seed || 1;
-  return Array.from({ length: len }, (_, i) => {
-    const noise = Math.sin(i * 1.7 + base) * 0.3 + Math.cos(i * 0.9 + base * 0.3) * 0.2;
-    const trend = direction === "up" ? i * 0.1 : direction === "down" ? -i * 0.1 : 0;
-    return Math.max(0, base + noise + trend);
-  });
-}
 
 export function Home({ targets, monitorActive }: Props) {
   const [recent,   setRecent]   = useState<StoredEvent[]>([]);
@@ -98,9 +91,7 @@ export function Home({ targets, monitorActive }: Props) {
               boxShadow: "0 0 24px #6366f144, 0 4px 12px #6366f133",
               flexShrink: 0,
             }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-              </svg>
+              <Zap size={20} fill="white" stroke="white" />
             </div>
             <div>
               <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--c-text-primary)", letterSpacing: "-.5px", lineHeight: 1.2 }}>
@@ -132,16 +123,11 @@ export function Home({ targets, monitorActive }: Props) {
             value={targets.length}
             sub={online > 0 ? `${online} online` : "none online"}
             color="#6366f1"
-            sparkData={trendData(targets.length, 10, targets.length > 2 ? "up" : "flat")}
+
             warn={offline > 0 ? `${offline} offline` : undefined}
             loading={loading}
             icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-                <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-                <line x1="12" y1="20" x2="12.01" y2="20"/>
-              </svg>
+              <Wifi size={16} />
             }
           />
           <StatCard
@@ -149,15 +135,11 @@ export function Home({ targets, monitorActive }: Props) {
             value={loading ? "—" : criticals}
             sub="requiring action"
             color={criticals > 0 ? "#f43f5e" : "#22c55e"}
-            sparkData={trendData(criticals + 1, 10, criticals > 0 ? "up" : "down")}
+
             pulse={criticals > 0}
             loading={loading}
             icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
+              <AlertTriangle size={16} />
             }
           />
           <StatCard
@@ -165,14 +147,10 @@ export function Home({ targets, monitorActive }: Props) {
             value={loading ? "—" : warnings}
             sub="needs investigation"
             color={warnings > 0 ? "#f59e0b" : "#22c55e"}
-            sparkData={trendData(warnings + 1, 10, warnings > 3 ? "up" : "flat")}
+
             loading={loading}
             icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
+              <AlertCircle size={16} />
             }
           />
           <StatCard
@@ -180,14 +158,11 @@ export function Home({ targets, monitorActive }: Props) {
             value={monitorActive ? "Active" : "Idle"}
             sub={monitorActive ? "Watching live events" : "Start to capture events"}
             color={monitorActive ? "#22c55e" : "#64748b"}
-            sparkData={trendData(3, 10, monitorActive ? "up" : "flat")}
+
             pulse={monitorActive}
             loading={false}
             icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
+              <Bell size={16} />
             }
           />
         </div>
@@ -201,10 +176,7 @@ export function Home({ targets, monitorActive }: Props) {
               desc="Monitor infrastructure in real-time and get notified instantly"
               accent="#f43f5e"
               icon={
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                </svg>
+                <Bell size={22} strokeWidth={1.8} />
               }
             />
             <ActionCard
@@ -213,10 +185,7 @@ export function Home({ targets, monitorActive }: Props) {
               desc="Inspect pods, nodes, deployments and resource details"
               accent="#6366f1"
               icon={
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                  <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-                </svg>
+                <LayoutGrid size={22} strokeWidth={1.8} />
               }
             />
             <ActionCard
@@ -225,9 +194,7 @@ export function Home({ targets, monitorActive }: Props) {
               desc="Ask your AI assistant about infrastructure, incidents or DevOps"
               accent="#818cf8"
               icon={
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
+                <MessageSquare size={22} strokeWidth={1.8} />
               }
             />
           </div>
@@ -256,9 +223,7 @@ export function Home({ targets, monitorActive }: Props) {
               </div>
             ) : recent.length === 0 ? (
               <div style={{ padding: "48px 18px", textAlign: "center" }}>
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#263050" strokeWidth="1.2" style={{ marginBottom: 12 }}>
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
+                <Clock size={44} stroke="#263050" strokeWidth={1.2} style={{ marginBottom: 12 }} />
                 <div style={{ fontSize: 14, color: "var(--c-text-secondary)", fontWeight: 600, marginBottom: 4 }}>No incidents recorded yet</div>
                 <div style={{ fontSize: 12, color: "var(--c-text-muted)" }}>Start monitoring a target to capture events.</div>
               </div>
@@ -327,9 +292,7 @@ export function Home({ targets, monitorActive }: Props) {
                 onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
               >
                 View all incidents
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-                </svg>
+                <ArrowRight size={12} strokeWidth={2.5} />
               </Link>
             )}
           </div>
@@ -341,12 +304,9 @@ export function Home({ targets, monitorActive }: Props) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 10 }}>
               {targets.map(t => {
                 const dotColor  = t.status === "online" ? "#22c55e" : t.status === "offline" ? "#ef4444" : "#64748b";
-                const typeColor: Record<string, string> = {
-                  kubernetes: "#326CE5", docker: "#2496ED", aws: "#FF9900",
-                  gcp: "#4285F4", azure: "#0078D4", terraform: "#7B42BC",
-                  ssh: "#22c55e", local: "#22c55e",
-                };
-                const tc = typeColor[t.type] ?? "#64748b";
+                const meta = TARGET_META[t.type as keyof typeof TARGET_META];
+                const tc = meta?.color ?? "#64748b";
+                const TypeIcon = meta?.icon;
                 return (
                   <Link
                     key={t.id}
@@ -376,7 +336,10 @@ export function Home({ targets, monitorActive }: Props) {
                     }} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                      <div style={{ fontSize: 10, color: tc, marginTop: 1, fontWeight: 600 }}>{t.type}</div>
+                      <div style={{ fontSize: 10, color: tc, marginTop: 1, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                        {TypeIcon && <TypeIcon size={10} />}
+                        {t.type}
+                      </div>
                     </div>
                   </Link>
                 );
@@ -502,9 +465,7 @@ function ActionCard({ to, label, desc, accent, icon }: {
       </div>
       <div style={{ fontSize: 12, color: accent, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, marginTop: "auto" }}>
         Open
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-        </svg>
+        <ArrowRight size={12} strokeWidth={2.5} />
       </div>
     </Link>
   );

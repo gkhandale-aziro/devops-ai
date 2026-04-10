@@ -6,7 +6,7 @@ const BASE_DELAY   = 1000;   // 1s
 const MAX_DELAY    = 60_000; // 60s
 
 /**
- * Subscribes to /api/monitor/stream and calls onEvent for each alert.
+ * Subscribes to /api/v1/monitor/stream and calls onEvent for each alert.
  * Reconnects with exponential backoff; stops after MAX_RETRIES failures.
  */
 export function useMonitorSSE(
@@ -21,7 +21,7 @@ export function useMonitorSSE(
 
   const connect = useCallback(() => {
     if (esRef.current) esRef.current.close();
-    const es = new EventSource("/api/monitor/stream");
+    const es = new EventSource("/api/v1/monitor/stream");
 
     es.onopen = () => {
       retryRef.current = 0;  // reset backoff on successful connection

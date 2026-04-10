@@ -1,7 +1,13 @@
 /**
  * dashboard/tabs.tsx — per-tab content components extracted from Dashboard.tsx.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
+import {
+  Globe, Link2, Lock, ExternalLink, Rocket, Database, RefreshCw,
+  ClipboardList, Zap, Clock, Package, HardDrive, Tag, BarChart3,
+  Shield, MapPin, Plug, Map, Radio, Search, Check, X as XIcon,
+  ChevronDown, ChevronRight,
+} from 'lucide-react';
 import { RingChart, Card, Pre } from './primitives';
 import { KubectlTable, hasKubectlData, serviceTypeColorFn, pvStatusColorFn, type ColorFn } from './tables';
 import { C } from '../../utils/theme';
@@ -74,7 +80,7 @@ export function OverviewTab({ data }: { data: Record<string, string> }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Card title={`Failed Services (${failed.length})`}>
           {failed.length === 0
-            ? <div style={{ color: C.status.success, fontSize: 13 }}>All services healthy ✓</div>
+            ? <div style={{ color: C.status.success, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>All services healthy <Check size={13} /></div>
             : failed.map((s, i) => <div key={i} style={{ fontSize: 13, color: C.status.danger, marginBottom: 3 }}>• {s}</div>)
           }
         </Card>
@@ -191,10 +197,10 @@ export function ServicesTab({ data }: { data: Record<string, string> }) {
   }, [raw]);
 
   const pills = [
-    { label: "LoadBalancer", count: counts.lb,  color: C.accent.light, icon: "🌐" },
-    { label: "NodePort",     count: counts.np,  color: C.status.info, icon: "🔗" },
-    { label: "ClusterIP",    count: counts.cip, color: C.text.muted, icon: "🔒" },
-    { label: "ExternalName", count: counts.ext, color: C.status.warning, icon: "↗" },
+    { label: "LoadBalancer", count: counts.lb,  color: C.accent.light, icon: <Globe size={14} /> },
+    { label: "NodePort",     count: counts.np,  color: C.status.info, icon: <Link2 size={14} /> },
+    { label: "ClusterIP",    count: counts.cip, color: C.text.muted, icon: <Lock size={14} /> },
+    { label: "ExternalName", count: counts.ext, color: C.status.warning, icon: <ExternalLink size={14} /> },
   ];
 
   return (
@@ -227,7 +233,7 @@ export function ServicesTab({ data }: { data: Record<string, string> }) {
 interface WorkloadCounts {
   label:    string;
   key:      string;
-  icon:     string;
+  icon:     ReactNode;
   color:    string;
   total:    number;
   ready:    number;
@@ -281,12 +287,12 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
   };
 
   const sections: WorkloadCounts[] = useMemo(() => [
-    { label: "Deployments",  key: "deployments",  icon: "🚀", color: C.accent.light, ...parseWorkloadCounts(data.deployments  ?? "", "Deployments")  },
-    { label: "StatefulSets", key: "statefulsets", icon: "🗄",  color: C.status.info, ...parseWorkloadCounts(data.statefulsets ?? "", "StatefulSets") },
-    { label: "DaemonSets",   key: "daemonsets",   icon: "🔁", color: C.accent.soft, ...parseWorkloadCounts(data.daemonsets   ?? "", "DaemonSets")   },
-    { label: "ReplicaSets",  key: "replicasets",  icon: "📋", color: C.text.muted, ...parseWorkloadCounts(data.replicasets  ?? "", "ReplicaSets")  },
-    { label: "Jobs",         key: "jobs",         icon: "⚡", color: C.status.warning, ...parseWorkloadCounts(data.jobs         ?? "", "Jobs")         },
-    { label: "CronJobs",     key: "cronjobs",     icon: "🕐", color: "#22d3ee", ...parseWorkloadCounts(data.cronjobs     ?? "", "CronJobs")     },
+    { label: "Deployments",  key: "deployments",  icon: <Rocket size={16} />,        color: C.accent.light, ...parseWorkloadCounts(data.deployments  ?? "", "Deployments")  },
+    { label: "StatefulSets", key: "statefulsets", icon: <Database size={16} />,      color: C.status.info, ...parseWorkloadCounts(data.statefulsets ?? "", "StatefulSets") },
+    { label: "DaemonSets",   key: "daemonsets",   icon: <RefreshCw size={16} />,     color: C.accent.soft, ...parseWorkloadCounts(data.daemonsets   ?? "", "DaemonSets")   },
+    { label: "ReplicaSets",  key: "replicasets",  icon: <ClipboardList size={16} />, color: C.text.muted, ...parseWorkloadCounts(data.replicasets  ?? "", "ReplicaSets")  },
+    { label: "Jobs",         key: "jobs",         icon: <Zap size={16} />,           color: C.status.warning, ...parseWorkloadCounts(data.jobs         ?? "", "Jobs")         },
+    { label: "CronJobs",     key: "cronjobs",     icon: <Clock size={16} />,         color: "#22d3ee", ...parseWorkloadCounts(data.cronjobs     ?? "", "CronJobs")     },
   ], [data]);
 
   const totalAll  = sections.reduce((s, w) => s + w.total, 0);
@@ -363,9 +369,9 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.total > 0 ? s.color : C.border.muted }} />
 
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <span style={{ fontSize: 18 }}>{s.icon}</span>
+                <span style={{ color: s.color, display: "flex", alignItems: "center" }}>{s.icon}</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{s.label}</span>
-                <span style={{ marginLeft: "auto", fontSize: 10, color: C.text.faint }}>{isActive ? "▼" : "▶"}</span>
+                <span style={{ marginLeft: "auto", color: C.text.faint, display: "flex", alignItems: "center" }}>{isActive ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
               </div>
 
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
@@ -374,8 +380,8 @@ export function WorkloadsTab({ data }: { data: Record<string, string> }) {
                 </span>
                 {s.total > 0 && (
                   <div style={{ display: "flex", gap: 8, fontSize: 11 }}>
-                    <span style={{ color: C.status.success }}>✓ {s.ready}</span>
-                    {s.notReady > 0 && <span style={{ color: C.status.danger }}>✗ {s.notReady}</span>}
+                    <span style={{ color: C.status.success, display: "inline-flex", alignItems: "center", gap: 2 }}><Check size={11} /> {s.ready}</span>
+                    {s.notReady > 0 && <span style={{ color: C.status.danger, display: "inline-flex", alignItems: "center", gap: 2 }}><XIcon size={11} /> {s.notReady}</span>}
                   </div>
                 )}
               </div>
@@ -452,9 +458,9 @@ export function K8sStorageTab({ data }: { data: Record<string, string> }) {
   }, [data]);
 
   const pills = [
-    { label: "PVCs",    count: counts.pvcs, color: C.accent.light, icon: "📦" },
-    { label: "PVs",     count: counts.pvs,  color: C.status.info, icon: "💾" },
-    { label: "Classes", count: counts.sc,   color: C.text.muted, icon: "🏷" },
+    { label: "PVCs",    count: counts.pvcs, color: C.accent.light, icon: <Package size={14} /> },
+    { label: "PVs",     count: counts.pvs,  color: C.status.info, icon: <HardDrive size={14} /> },
+    { label: "Classes", count: counts.sc,   color: C.text.muted, icon: <Tag size={14} /> },
   ];
 
   const statusPills = [
@@ -534,7 +540,7 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
           display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
           background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: 6,
         }}>
-          <span style={{ fontSize: 11 }}>🌐</span>
+          <Globe size={11} />
           <span style={{ fontSize: 12, color: C.accent.light, fontWeight: 600 }}>{counts.ingresses}</span>
           <span style={{ fontSize: 11, color: C.text.secondary }}>Ingresses</span>
         </div>
@@ -542,7 +548,7 @@ export function IngressTab({ data }: { data: Record<string, string> }) {
           display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
           background: `${C.text.muted}15`, border: `1px solid ${C.text.muted}33`, borderRadius: 6,
         }}>
-          <span style={{ fontSize: 11 }}>🏷</span>
+          <Tag size={11} />
           <span style={{ fontSize: 12, color: C.text.muted, fontWeight: 600 }}>{counts.classes}</span>
           <span style={{ fontSize: 11, color: C.text.secondary }}>Classes</span>
         </div>
@@ -572,17 +578,17 @@ export function NetworkTab({ data }: { data: Record<string, string> }) {
   };
 
   const sections = useMemo(() => [
-    { key: "services",    label: "Services",         icon: "🔗", color: C.accent.light, count: countLines(data.services),    colorFn: serviceTypeColorFn, defaultOpen: true  },
-    { key: "ingresses",   label: "Ingresses",        icon: "🌐", color: C.status.info, count: countLines(data.ingresses),   defaultOpen: false },
-    { key: "netpolicies", label: "Network Policies",  icon: "🛡", color: C.accent.soft, count: countLines(data.netpolicies), defaultOpen: false },
-    { key: "endpoints",   label: "Endpoints",         icon: "📍", color: C.text.muted, count: countLines(data.endpoints),   defaultOpen: false },
+    { key: "services",    label: "Services",         icon: <Link2 size={14} /> as ReactNode, color: C.accent.light, count: countLines(data.services),    colorFn: serviceTypeColorFn, defaultOpen: true  },
+    { key: "ingresses",   label: "Ingresses",        icon: <Globe size={14} /> as ReactNode, color: C.status.info, count: countLines(data.ingresses),   defaultOpen: false },
+    { key: "netpolicies", label: "Network Policies",  icon: <Shield size={14} /> as ReactNode, color: C.accent.soft, count: countLines(data.netpolicies), defaultOpen: false },
+    { key: "endpoints",   label: "Endpoints",         icon: <MapPin size={14} /> as ReactNode, color: C.text.muted, count: countLines(data.endpoints),   defaultOpen: false },
   ].filter(s => data[s.key]), [data]);
 
   const preItems = useMemo(() => [
-    { key: "ports",      label: "Listening Ports", icon: "🔌" },
-    { key: "routes",     label: "Routes",          icon: "🗺" },
-    { key: "interfaces", label: "Interfaces",      icon: "📡" },
-    { key: "dns",        label: "DNS",             icon: "🔎" },
+    { key: "ports",      label: "Listening Ports", icon: <Plug size={14} /> as ReactNode },
+    { key: "routes",     label: "Routes",          icon: <Map size={14} /> as ReactNode },
+    { key: "interfaces", label: "Interfaces",      icon: <Radio size={14} /> as ReactNode },
+    { key: "dns",        label: "DNS",             icon: <Search size={14} /> as ReactNode },
   ].filter(p => data[p.key]), [data]);
 
   return (
@@ -692,7 +698,7 @@ export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
           display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
           background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: 6,
         }}>
-          <span style={{ fontSize: 11 }}>💾</span>
+          <HardDrive size={11} />
           <span style={{ fontSize: 12, color: C.accent.light, fontWeight: 600 }}>{count}</span>
           <span style={{ fontSize: 11, color: C.text.secondary }}>Volumes</span>
         </div>
@@ -719,7 +725,7 @@ export function DockerImagesTab({ data }: { data: Record<string, string> }) {
           display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
           background: `${C.status.info}15`, border: `1px solid ${C.status.info}33`, borderRadius: 6,
         }}>
-          <span style={{ fontSize: 11 }}>📦</span>
+          <Package size={11} />
           <span style={{ fontSize: 12, color: C.status.info, fontWeight: 600 }}>{count}</span>
           <span style={{ fontSize: 11, color: C.text.secondary }}>Images</span>
         </div>
@@ -750,7 +756,7 @@ export function DockerStatsTab({ data }: { data: Record<string, string> }) {
         display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>📊 Container Stats</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary, display: "inline-flex", alignItems: "center", gap: 6 }}><BarChart3 size={14} /> Container Stats</span>
         <span style={{ fontSize: 11, color: C.text.faint }}>CPU & memory usage (live snapshot)</span>
       </div>
       <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No container stats available" />

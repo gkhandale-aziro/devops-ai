@@ -12,6 +12,9 @@ import { AddTargetModal } from "./components/AddTargetModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeProvider }  from "./components/ThemeContext";
 import { GLOBAL_KEYFRAMES } from "./utils/animations";
+import { Toaster } from "sonner";
+import { toast } from "./utils/toast";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export default function App() {
   const [targets,       setTargets]       = useState<Target[]>([]);
@@ -46,10 +49,12 @@ export default function App() {
   async function doRemove() {
     if (!confirmRemove) return;
     const id = confirmRemove;
+    const name = targets.find(t => t.id === id)?.name ?? "target";
     setConfirmRemove(null);
     await api.targets.remove(id);
     if (activeTarget?.id === id) setActiveTarget(null);
     await loadTargets();
+    toast.info(`Removed ${name}`);
   }
 
   async function handleAdd(name: string, type: Target["type"], config: Record<string, string>) {
@@ -57,11 +62,13 @@ export default function App() {
     const test = await api.targets.test(t.id);
     if (test.status !== "online") {
       await api.targets.remove(t.id);
+      toast.error(`Connection failed: ${test.message?.split("\n")[0] ?? "unreachable"}`);
       throw new Error(`Connection failed: ${test.message?.split("\n")[0] ?? "unreachable"}`);
     }
     setShowAdd(false);
     await loadTargets();
     setActiveTarget(t);
+    toast.success(`Connected to ${name}`);
   }
 
   const targetName = targets.find(t => t.id === confirmRemove)?.name ?? "";
@@ -70,6 +77,17 @@ export default function App() {
     <ThemeProvider>
     <BrowserRouter>
       <style>{GLOBAL_KEYFRAMES}</style>
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: "var(--c-bg-surface)",
+            color: "var(--c-text-primary)",
+            border: "1px solid var(--c-border)",
+            fontSize: 13,
+          },
+        }}
+      />
       <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--c-bg-base, #0d1117)", color: "var(--c-text-primary, #e2e8f0)" }}>
         <Sidebar
           targets={targets}
@@ -83,17 +101,17 @@ export default function App() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Routes>
-            <Route path="/"          element={<Home targets={targets} monitorActive={monitorActive} />} />
-            <Route path="/dashboard" element={<Dashboard target={activeTarget} />} />
+            <Route path="/"          element={<ErrorBoundary><Home targets={targets} monitorActive={monitorActive} /></ErrorBoundary>} />
+            <Route path="/dashboard" element={<ErrorBoundary><Dashboard target={activeTarget} /></ErrorBoundary>} />
             <Route path="/alerts"    element={
-              <Alerts
+              <ErrorBoundary><Alerts
                 targets={targets}
                 monitorActive={monitorActive}
                 onMonitorChange={setMonitorActive}
-              />
+              /></ErrorBoundary>
             } />
-            <Route path="/history" element={<History />} />
-            <Route path="/chat"    element={<Chat targets={targets} activeTarget={activeTarget} />} />
+            <Route path="/history" element={<ErrorBoundary><History /></ErrorBoundary>} />
+            <Route path="/chat"    element={<ErrorBoundary><Chat targets={targets} activeTarget={activeTarget} /></ErrorBoundary>} />
             <Route path="*"        element={
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "#64748b" }}>
                 <div style={{ fontSize: 48, color: "#2d3148" }}>404</div>

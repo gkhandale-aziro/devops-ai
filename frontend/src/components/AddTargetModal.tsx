@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, type ReactNode, type ChangeEvent } from "react";
+import { X, Loader2, CheckCircle2, XCircle, KeyRound, Cloud, CloudCog, MonitorCloud, Laptop, ArrowLeft } from "lucide-react";
 import type { TargetType } from "../types";
+import { TARGET_META } from "../utils/targetIcons";
 import { api } from "../api/client";
 
 interface Props {
@@ -11,21 +13,21 @@ type Step = "type" | "k8s_provider" | "details";
 type K8sProvider = "local" | "eks" | "gke" | "aks";
 type AuthState = "idle" | "checking" | "ok" | "fail";
 
-const TYPE_CARDS: { type: TargetType; label: string; icon: string; color: string }[] = [
-  { type: "ssh",        label: "Linux / SSH",  icon: "🖥",  color: "#56d364" },
-  { type: "kubernetes", label: "Kubernetes",   icon: "⎈",   color: "#326CE5" },
-  { type: "docker",     label: "Docker",       icon: "🐳",  color: "#2496ED" },
-  { type: "aws",        label: "AWS",          icon: "☁",   color: "#FF9900" },
-  { type: "gcp",        label: "GCP",          icon: "☁",   color: "#4285F4" },
-  { type: "azure",      label: "Azure",        icon: "☁",   color: "#0078D4" },
-  { type: "terraform",  label: "Terraform",    icon: "🏗",  color: "#7B42BC" },
+const TYPE_CARDS: { type: TargetType; label: string; color: string }[] = [
+  { type: "ssh",        label: "Linux / SSH",  color: "#22c55e" },
+  { type: "kubernetes", label: "Kubernetes",   color: "#326CE5" },
+  { type: "docker",     label: "Docker",       color: "#2496ED" },
+  { type: "aws",        label: "AWS",          color: "#FF9900" },
+  { type: "gcp",        label: "GCP",          color: "#4285F4" },
+  { type: "azure",      label: "Azure",        color: "#0078D4" },
+  { type: "terraform",  label: "Terraform",    color: "#7B42BC" },
 ];
 
-const K8S_PROVIDERS: { id: K8sProvider; label: string; desc: string; icon: string; color: string }[] = [
-  { id: "local", label: "Local / kubeconfig",    desc: "Docker Desktop, minikube, kind, k3s, or any existing kubeconfig", icon: "💻", color: "#326CE5" },
-  { id: "eks",   label: "AWS EKS",               desc: "Amazon Elastic Kubernetes Service",                               icon: "☁",  color: "#FF9900" },
-  { id: "gke",   label: "Google GKE",            desc: "Google Kubernetes Engine",                                         icon: "☁",  color: "#4285F4" },
-  { id: "aks",   label: "Azure AKS",             desc: "Azure Kubernetes Service",                                         icon: "☁",  color: "#0078D4" },
+const K8S_PROVIDERS: { id: K8sProvider; label: string; desc: string; icon: ReactNode; color: string }[] = [
+  { id: "local", label: "Local / kubeconfig",    desc: "Docker Desktop, minikube, kind, k3s, or any existing kubeconfig", icon: <Laptop size={20} />,       color: "#326CE5" },
+  { id: "eks",   label: "AWS EKS",               desc: "Amazon Elastic Kubernetes Service",                               icon: <Cloud size={20} />,        color: "#FF9900" },
+  { id: "gke",   label: "Google GKE",            desc: "Google Kubernetes Engine",                                         icon: <CloudCog size={20} />,     color: "#4285F4" },
+  { id: "aks",   label: "Azure AKS",             desc: "Azure Kubernetes Service",                                         icon: <MonitorCloud size={20} />, color: "#0078D4" },
 ];
 
 /** Step-by-step login instructions per cloud provider */
@@ -202,8 +204,11 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
           background: authState === "ok" ? "#0d2818" : authState === "fail" ? "#2a0011" : "#12141f",
           border: `1px solid ${authState === "ok" ? "#166534" : authState === "fail" ? "#7f1d1d" : "#1e2235"}`,
         }}>
-          <span style={{ fontSize: 14 }}>
-            {authState === "checking" ? "⏳" : authState === "ok" ? "✅" : authState === "fail" ? "❌" : "🔑"}
+          <span style={{ display: "flex", alignItems: "center" }}>
+            {authState === "checking" ? <Loader2 size={14} className="animate-spin" style={{ color: "#94a3b8" }} />
+              : authState === "ok" ? <CheckCircle2 size={14} style={{ color: "#4ade80" }} />
+              : authState === "fail" ? <XCircle size={14} style={{ color: "#fb7185" }} />
+              : <KeyRound size={14} style={{ color: "#94a3b8" }} />}
           </span>
           <div style={{ flex: 1 }}>
             {authState === "checking" && (
@@ -374,12 +379,12 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
     <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={box}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-          <strong style={{ fontSize: 14 }}>
+          <strong style={{ fontSize: 14, color: "#e2e8f0" }}>
             {step === "type" ? "Add Connection"
               : step === "k8s_provider" ? "Kubernetes Provider"
               : selType === "kubernetes" ? `Connect — ${providerLabel}` : `Connect to ${selType}`}
           </strong>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", color: "#64748b", fontSize: 18, cursor: "pointer" }}>✕</button>
+          <button onClick={onClose} aria-label="Close" style={{ marginLeft: "auto", background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center" }}><X size={18} /></button>
         </div>
 
         {step === "type" && (
@@ -392,8 +397,10 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
                 onMouseEnter={e => (e.currentTarget.style.borderColor = tc.color)}
                 onMouseLeave={e => (e.currentTarget.style.borderColor = "#2d3148")}
               >
-                <span style={{ fontSize: 22 }}>{tc.icon}</span>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{tc.label}</span>
+                <span style={{ color: tc.color, display: "flex", alignItems: "center" }}>
+                  {(() => { const Icon = TARGET_META[tc.type].icon; return <Icon size={20} />; })()}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: "#e2e8f0" }}>{tc.label}</span>
               </div>
             ))}
           </div>
@@ -413,16 +420,16 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
                   onMouseEnter={e => (e.currentTarget.style.borderColor = p.color)}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = "#2d3148")}
                 >
-                  <span style={{ fontSize: 20 }}>{p.icon}</span>
+                  <span style={{ color: p.color, display: "flex", alignItems: "center" }}>{p.icon}</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{p.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "#e2e8f0" }}>{p.label}</div>
                     <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{p.desc}</div>
                   </div>
                 </div>
               ))}
             </div>
             <button onClick={() => setStep("type")} style={{ marginTop: 12, width: "100%", background: "#1a1d27", border: "1px solid #2d3148", color: "#94a3b8", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
-              ← Back
+              <ArrowLeft size={12} style={{ marginRight: 4 }} /> Back
             </button>
           </>
         )}
@@ -454,7 +461,7 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
 
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
               <button onClick={() => setStep(selType === "kubernetes" ? "k8s_provider" : "type")} style={{ flex: 1, background: "#1a1d27", border: "1px solid #2d3148", color: "#94a3b8", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
-                ← Back
+                <ArrowLeft size={12} style={{ marginRight: 4 }} /> Back
               </button>
               <button onClick={submit} disabled={busy} style={{ flex: 2, background: busy ? "#374151" : "#4f46e5", border: "none", color: "#fff", borderRadius: 6, padding: 8, fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer" }}>
                 {busy ? "Connecting…" : "Connect"}
