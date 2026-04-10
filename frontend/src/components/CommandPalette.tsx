@@ -34,11 +34,11 @@ const PAGE_ICONS: Record<string, string> = {
 };
 
 const PAGES: Array<{ label: string; path: string; iconKey: string; accent: string }> = [
-  { label: "Home",        path: "/",          iconKey: "home",      accent: "#6366f1" },
-  { label: "Dashboard",   path: "/dashboard", iconKey: "dashboard", accent: "#818cf8" },
+  { label: "Home",        path: "/",          iconKey: "home",      accent: "var(--c-accent)" },
+  { label: "Dashboard",   path: "/dashboard", iconKey: "dashboard", accent: "var(--c-accent-hover)" },
   { label: "Live Alerts", path: "/alerts",    iconKey: "alerts",    accent: "#f43f5e" },
   { label: "History",     path: "/history",   iconKey: "history",   accent: "#06b6d4" },
-  { label: "AI Chat",     path: "/chat",      iconKey: "chat",      accent: "#818cf8" },
+  { label: "AI Chat",     path: "/chat",      iconKey: "chat",      accent: "var(--c-accent-hover)" },
 ];
 
 export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props) {
@@ -115,7 +115,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
       icon: PAGE_ICONS.ai,
       label: `Ask AI: "${q}"`,
       sub: "Open AI Chat",
-      accent: "#818cf8",
+      accent: "var(--c-accent-hover)",
       action: () => { nav(`/chat`); setOpen(false); },
     });
 
@@ -130,13 +130,13 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
         const { results: kres } = await api.search(activeTarget.id, q);
         if (controller.signal.aborted) return;
         const kindIcons: Record<string, string> = { pod: "◈", node: "◆", deployment: "⬡" };
-        const kindColors: Record<string, string> = { pod: "#22c55e", node: "#6366f1", deployment: "#f59e0b" };
+        const kindColors: Record<string, string> = { pod: "#22c55e", node: "var(--c-accent)", deployment: "#f59e0b" };
         const k8sResults: Result[] = kres.map(r => ({
           id:     `k8s-${r.kind}-${r.name}`,
           icon:   kindIcons[r.kind] ?? "◈",
           label:  r.name,
           sub:    `${r.kind}${r.namespace ? " · " + r.namespace : ""} · ${r.status}`,
-          accent: kindColors[r.kind] ?? "#64748b",
+          accent: kindColors[r.kind] ?? "var(--c-text-muted)",
           action: () => { nav("/dashboard"); setOpen(false); },
         }));
         setResults(prev => [...prev.filter(r => r.id !== "__ai__"), ...k8sResults, prev.find(r => r.id === "__ai__")!].filter(Boolean));
@@ -166,21 +166,21 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
       title="Command palette (Ctrl+K)"
       style={{
         position: "fixed", bottom: 20, right: 20, zIndex: 100,
-        background: "#161b27", border: "1px solid #2d3555",
+        background: "var(--c-bg-surface)", border: "1px solid var(--c-border)",
         borderRadius: 8, padding: "7px 12px",
         display: "flex", alignItems: "center", gap: 8,
-        fontSize: 12, color: "#64748b", cursor: "pointer",
+        fontSize: 12, color: "var(--c-text-muted)", cursor: "pointer",
         boxShadow: "0 4px 20px #00000044",
         transition: "all .15s",
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = "#6366f1"; e.currentTarget.style.color = "#818cf8"; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = "#2d3555"; e.currentTarget.style.color = "#64748b"; }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--c-accent)"; e.currentTarget.style.color = "var(--c-accent-hover)"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--c-border)"; e.currentTarget.style.color = "var(--c-text-muted)"; }}
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
       Search
-      <kbd style={{ fontSize: 9, color: "#475569", background: "#0b0d14", border: "1px solid #2d3555", borderRadius: 3, padding: "1px 4px" }}>
+      <kbd style={{ fontSize: 9, color: "var(--c-text-muted)", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", borderRadius: 3, padding: "1px 4px" }}>
         {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}
       </kbd>
     </button>
@@ -198,20 +198,20 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
       <div style={{
         position: "fixed", top: "18%", left: "50%", transform: "translateX(-50%)",
         width: 580, maxWidth: "90vw",
-        background: "#0f1219",
-        border: "1px solid #2d3555",
+        background: "var(--c-bg-raised)",
+        border: "1px solid var(--c-border)",
         borderRadius: 12,
-        boxShadow: "0 24px 80px #00000088, 0 0 0 1px #6366f108",
+        boxShadow: "0 24px 80px #00000088, 0 0 0 1px color-mix(in srgb, var(--c-accent) 3%, transparent)",
         zIndex: 201,
         overflow: "hidden",
         animation: "fadeIn .15s ease-out",
       }}>
         {/* Input */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid #1e2235" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--c-bg-active)" }}>
           {loading ? (
-            <span style={{ width: 16, height: 16, border: "2px solid #1e2235", borderTopColor: "#6366f1", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite", flexShrink: 0 }} />
+            <span style={{ width: 16, height: 16, border: "2px solid var(--c-bg-active)", borderTopColor: "var(--c-accent)", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite", flexShrink: 0 }} />
           ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" style={{ flexShrink: 0 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2" style={{ flexShrink: 0 }}>
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
           )}
@@ -223,16 +223,16 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
             placeholder="Search pages, targets, pods, nodes…"
             style={{
               flex: 1, background: "transparent", border: "none", outline: "none",
-              color: "#e2e8f0", fontSize: 15, fontFamily: "inherit",
+              color: "var(--c-text-primary)", fontSize: 15, fontFamily: "inherit",
             }}
           />
-          <kbd style={{ fontSize: 10, color: "#475569", background: "#161b27", border: "1px solid #2d3555", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>Esc</kbd>
+          <kbd style={{ fontSize: 10, color: "var(--c-text-muted)", background: "var(--c-bg-surface)", border: "1px solid var(--c-border)", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>Esc</kbd>
         </div>
 
         {/* Results */}
         <div style={{ maxHeight: 380, overflowY: "auto" }}>
           {results.length === 0 && (
-            <div style={{ padding: "24px 16px", textAlign: "center", color: "#475569", fontSize: 13 }}>No results</div>
+            <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--c-text-muted)", fontSize: 13 }}>No results</div>
           )}
           {results.map((r, i) => (
             <div
@@ -242,29 +242,29 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
               style={{
                 display: "flex", alignItems: "center", gap: 12,
                 padding: "10px 16px", cursor: "pointer",
-                background: active === i ? "#1e2340" : "transparent",
-                borderLeft: active === i ? `2px solid ${r.accent ?? "#6366f1"}` : "2px solid transparent",
+                background: active === i ? "var(--c-bg-active)" : "transparent",
+                borderLeft: active === i ? `2px solid ${r.accent ?? "var(--c-accent)"}` : "2px solid transparent",
                 transition: "background .08s",
               }}
             >
-              <span style={{ color: r.accent ?? "#64748b", width: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: r.icon }} />
+              <span style={{ color: r.accent ?? "var(--c-text-muted)", width: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: r.icon }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
-                {r.sub && <div style={{ fontSize: 11, color: "#475569", marginTop: 1 }}>{r.sub}</div>}
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
+                {r.sub && <div style={{ fontSize: 11, color: "var(--c-text-muted)", marginTop: 1 }}>{r.sub}</div>}
               </div>
               {active === i && (
-                <kbd style={{ fontSize: 10, color: "#475569", background: "#0b0d14", border: "1px solid #2d3555", borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>↵</kbd>
+                <kbd style={{ fontSize: 10, color: "var(--c-text-muted)", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>↵</kbd>
               )}
             </div>
           ))}
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "8px 16px", borderTop: "1px solid #1e2235", display: "flex", gap: 16, fontSize: 10, color: "#374151" }}>
+        <div style={{ padding: "8px 16px", borderTop: "1px solid var(--c-bg-active)", display: "flex", gap: 16, fontSize: 10, color: "var(--c-text-muted)" }}>
           <span>↑↓ navigate</span>
           <span>↵ select</span>
           <span>Esc close</span>
-          {activeTarget && <span style={{ marginLeft: "auto" }}>Searching in <strong style={{ color: "#6366f1" }}>{activeTarget.name}</strong></span>}
+          {activeTarget && <span style={{ marginLeft: "auto" }}>Searching in <strong style={{ color: "var(--c-accent)" }}>{activeTarget.name}</strong></span>}
         </div>
       </div>
     </>

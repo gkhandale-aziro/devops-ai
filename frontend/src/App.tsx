@@ -90,7 +90,7 @@ export default function App() {
           },
         }}
       />
-      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--c-bg-base, #0d1117)", color: "var(--c-text-primary, #e2e8f0)" }}>
+      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--c-bg-base)", color: "var(--c-text-primary)" }}>
         <Sidebar
           targets={targets}
           activeId={activeTarget?.id ?? null}
@@ -116,8 +116,8 @@ export default function App() {
             <Route path="/chat"    element={<ErrorBoundary><Chat targets={targets} activeTarget={activeTarget} /></ErrorBoundary>} />
             <Route path="/settings" element={<ErrorBoundary><Settings targetCount={targets.length} /></ErrorBoundary>} />
             <Route path="*"        element={
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "#64748b" }}>
-                <div style={{ fontSize: 48, color: "#2d3148" }}>404</div>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "var(--c-text-muted)" }}>
+                <div style={{ fontSize: 48, color: "var(--c-border)" }}>404</div>
                 <div style={{ fontSize: 14 }}>Page not found</div>
               </div>
             } />

@@ -70,13 +70,13 @@ export function Settings({ targetCount }: Props) {
         >
           <SettingsIcon
             size={22}
-            style={{ color: "var(--c-accent, #6366f1)" }}
+            style={{ color: "var(--c-accent)" }}
           />
           <h1
             style={{
               fontSize: 22,
               fontWeight: 700,
-              color: "var(--c-text-primary, #f1f5f9)",
+              color: "var(--c-text-primary)",
               margin: 0,
             }}
           >
@@ -97,7 +97,7 @@ export function Settings({ targetCount }: Props) {
                 <p
                   style={{
                     fontSize: 13,
-                    color: "var(--c-text-muted, #64748b)",
+                    color: "var(--c-text-muted)",
                   }}
                 >
                   Loading models...
@@ -106,7 +106,7 @@ export function Settings({ targetCount }: Props) {
                 <p
                   style={{
                     fontSize: 13,
-                    color: "var(--c-text-muted, #64748b)",
+                    color: "var(--c-text-muted)",
                   }}
                 >
                   No models available from Ollama.
@@ -125,7 +125,7 @@ export function Settings({ targetCount }: Props) {
                         style={{
                           fontSize: 12,
                           fontWeight: 600,
-                          color: "var(--c-text-secondary, #94a3b8)",
+                          color: "var(--c-text-secondary)",
                           display: "block",
                           marginBottom: 6,
                         }}
@@ -140,9 +140,9 @@ export function Settings({ targetCount }: Props) {
                           width: "100%",
                           padding: "8px 12px",
                           borderRadius: 8,
-                          border: "1px solid var(--c-border, #1a2235)",
-                          background: "var(--c-bg-base, #0d1117)",
-                          color: "var(--c-text-primary, #e2e8f0)",
+                          border: "1px solid var(--c-border)",
+                          background: "var(--c-bg-base)",
+                          color: "var(--c-text-primary)",
                           fontSize: 13,
                           outline: "none",
                           cursor: "pointer",
@@ -173,7 +173,7 @@ export function Settings({ targetCount }: Props) {
                 <span
                   style={{
                     fontSize: 13,
-                    color: "var(--c-text-secondary, #94a3b8)",
+                    color: "var(--c-text-secondary)",
                   }}
                 >
                   Day / Night mode
@@ -200,7 +200,7 @@ export function Settings({ targetCount }: Props) {
                     <span
                       style={{
                         fontSize: 13,
-                        color: "var(--c-text-secondary, #94a3b8)",
+                        color: "var(--c-text-secondary)",
                       }}
                     >
                       {s.description}
@@ -211,9 +211,9 @@ export function Settings({ targetCount }: Props) {
                         fontFamily: "monospace",
                         padding: "3px 8px",
                         borderRadius: 5,
-                        border: "1px solid var(--c-border, #1a2235)",
-                        background: "var(--c-bg-base, #0d1117)",
-                        color: "var(--c-text-muted, #64748b)",
+                        border: "1px solid var(--c-border)",
+                        background: "var(--c-bg-base)",
+                        color: "var(--c-text-muted)",
                         whiteSpace: "nowrap",
                       }}
                     >
@@ -237,10 +237,10 @@ export function Settings({ targetCount }: Props) {
                 <div
                   style={{
                     fontSize: 13,
-                    color: "var(--c-text-secondary, #94a3b8)",
+                    color: "var(--c-text-secondary)",
                   }}
                 >
-                  <strong style={{ color: "var(--c-text-primary, #f1f5f9)" }}>
+                  <strong style={{ color: "var(--c-text-primary)" }}>
                     AziroOps
                   </strong>{" "}
                   — DevOps AI Platform
@@ -248,11 +248,11 @@ export function Settings({ targetCount }: Props) {
                 <div
                   style={{
                     fontSize: 13,
-                    color: "var(--c-text-secondary, #94a3b8)",
+                    color: "var(--c-text-secondary)",
                   }}
                 >
                   Connected targets:{" "}
-                  <strong style={{ color: "var(--c-text-primary, #f1f5f9)" }}>
+                  <strong style={{ color: "var(--c-text-primary)" }}>
                     {targetCount}
                   </strong>
                 </div>

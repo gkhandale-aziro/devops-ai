@@ -86,16 +86,16 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
       {/* ── Top bar ────────────────────────────────────────────────────── */}
       <div style={{
         padding: "12px 20px",
-        borderBottom: "1px solid #1e2235",
+        borderBottom: "1px solid var(--c-border)",
         display: "flex",
         alignItems: "center",
         gap: 14,
         flexShrink: 0,
-        background: "#0f1219",
+        background: "var(--c-bg-raised)",
       }}>
         <span style={{
           width: 8, height: 8, borderRadius: "50%",
-          background: monitorActive ? "#ef4444" : "#64748b",
+          background: monitorActive ? "#ef4444" : "var(--c-text-muted)",
           display: "inline-block",
           animation: monitorActive ? "pulse 1.5s infinite" : "none",
           flexShrink: 0,
@@ -114,13 +114,13 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
                   display: "flex", alignItems: "center", gap: 6, minWidth: 56,
                 }}>
                   <span style={{ fontSize: 16, fontWeight: 700, color: c.text }}>{counts[l]}</span>
-                  <span style={{ fontSize: 10, color: "#64748b" }}>{l}</span>
+                  <span style={{ fontSize: 10, color: "var(--c-text-muted)" }}>{l}</span>
                 </div>
               );
             })}
           </div>
 
-          <div style={{ width: 1, height: 20, background: "#2d3148", flexShrink: 0 }} />
+          <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
 
           {/* Filter pills */}
           <div style={{ display: "flex", gap: 4 }}>
@@ -130,16 +130,16 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
                 onClick={() => setFilter(f)}
                 style={{
                   padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: "pointer",
-                  background: filter === f ? (f === "all" ? "#1e2240" : LEVEL_COLORS[f].bg) : "transparent",
-                  border: `1px solid ${filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].border) : "#2d3148"}`,
-                  color: filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].text) : "#64748b",
+                  background: filter === f ? (f === "all" ? "var(--c-bg-active)" : LEVEL_COLORS[f].bg) : "transparent",
+                  border: `1px solid ${filter === f ? (f === "all" ? "var(--c-accent-hover)" : LEVEL_COLORS[f].border) : "var(--c-border-strong)"}`,
+                  color: filter === f ? (f === "all" ? "var(--c-accent-hover)" : LEVEL_COLORS[f].text) : "var(--c-text-muted)",
                   transition: "background 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out",
                 }}
               >{f === "all" ? "All" : f}</button>
             ))}
           </div>
 
-          <div style={{ width: 1, height: 20, background: "#2d3148", flexShrink: 0 }} />
+          <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
 
           {/* Target selector + start/stop */}
           <select
@@ -147,9 +147,9 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
             onChange={e => { setSelectedTid(e.target.value); localStorage.setItem("alerts_selectedTid", e.target.value); }}
             disabled={monitorActive}
             style={{
-              background: "#161a26",
-              border: "1px solid #2d3148",
-              color: "#e2e8f0",
+              background: "var(--c-bg-surface)",
+              border: "1px solid var(--c-border-strong)",
+              color: "var(--c-text-primary)",
               borderRadius: 6,
               padding: "5px 10px",
               fontSize: 12,
@@ -188,7 +188,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
           {alerts.length > 0 && (
             <button
               onClick={() => setAlerts([])}
-              style={{ background: "none", border: "1px solid #2d3148", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+              style={{ background: "none", border: "1px solid var(--c-border-strong)", color: "var(--c-text-muted)", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
             >Clear</button>
           )}
         </div>
@@ -197,8 +197,8 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
       {/* ── Alert feed ─────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
         {visible.length === 0 && (
-          <div style={{ textAlign: "center", color: "#64748b", fontSize: 13, paddingTop: 80 }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2d3148" strokeWidth="1.2" style={{ marginBottom: 12 }}>
+          <div style={{ textAlign: "center", color: "var(--c-text-muted)", fontSize: 13, paddingTop: 80 }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--c-border-strong)" strokeWidth="1.2" style={{ marginBottom: 12 }}>
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
             </svg>
             <div>

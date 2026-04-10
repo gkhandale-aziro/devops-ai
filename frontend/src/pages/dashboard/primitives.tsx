@@ -154,7 +154,7 @@ export function NoTargetEmptyState() {
             "Explore resources, stream logs, and ask AI anything",
           ].map((step, i) => (
             <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: i < 2 ? 10 : 0 }}>
-              <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#1e2240", border: `1px solid ${C.border.strong}`, color: C.accent.light, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+              <span style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--c-bg-active)", border: `1px solid ${C.border.strong}`, color: C.accent.light, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
               <span style={{ fontSize: 13, color: C.text.secondary, lineHeight: 1.5 }}>{step}</span>
             </div>
           ))}
@@ -164,7 +164,7 @@ export function NoTargetEmptyState() {
             <div key={f.label} style={{ background: C.bg.panel, border: `1px solid ${C.border.subtle}`, borderRadius: 8, padding: "10px 12px", textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start" }}>
               <span style={{ width: 20, flexShrink: 0, color: C.accent.primary, display: "flex", alignItems: "center", justifyContent: "center" }}>{f.icon}</span>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 2 }}>{f.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-primary)", marginBottom: 2 }}>{f.label}</div>
                 <div style={{ fontSize: 11, color: C.text.faint, lineHeight: 1.4 }}>{f.desc}</div>
               </div>
             </div>
@@ -207,7 +207,7 @@ export function Pre({ children }: { children: ReactNode }) {
 export function LoadingSpinner() {
   return (
     <div role="status" aria-live="polite" aria-label="Loading" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, color: C.text.muted, fontSize: 13 }}>
-      <span aria-hidden="true" style={{ display: "inline-block", width: 16, height: 16, border: `2px solid ${C.border.muted}`, borderTopColor: "#7c8cf8", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <span aria-hidden="true" style={{ display: "inline-block", width: 16, height: 16, border: `2px solid ${C.border.muted}`, borderTopColor: "var(--c-accent-hover)", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
       Loading…
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>

@@ -154,36 +154,36 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
 
   const field = (label: string, key: string, placeholder?: string, type = "text") => (
     <div key={key} style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>{label}</div>
       <input
         type={type}
         value={config[key] ?? ""}
         onChange={(e: ChangeEvent<HTMLInputElement>) => setConfig((prev: Record<string, string>) => ({ ...prev, [key]: e.target.value }))}
         placeholder={placeholder}
-        style={{ width: "100%", background: "#0d1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none" }}
-        onFocus={e => (e.currentTarget.style.borderColor = "#6366f1")}
-        onBlur={e  => (e.currentTarget.style.borderColor = "#2d3148")}
+        style={{ width: "100%", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", color: "var(--c-text-primary)", borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none" }}
+        onFocus={e => (e.currentTarget.style.borderColor = "var(--c-accent)")}
+        onBlur={e  => (e.currentTarget.style.borderColor = "var(--c-border)")}
       />
     </div>
   );
 
   const area = (label: string, key: string, placeholder?: string) => (
     <div key={key} style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>{label}</div>
       <textarea
         value={config[key] ?? ""}
         onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setConfig((prev: Record<string, string>) => ({ ...prev, [key]: e.target.value }))}
         placeholder={placeholder}
         rows={4}
-        style={{ width: "100%", background: "#0d1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 12, fontFamily: "monospace", outline: "none", resize: "vertical" }}
-        onFocus={e => (e.currentTarget.style.borderColor = "#6366f1")}
-        onBlur={e  => (e.currentTarget.style.borderColor = "#2d3148")}
+        style={{ width: "100%", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", color: "var(--c-text-primary)", borderRadius: 6, padding: "7px 10px", fontSize: 12, fontFamily: "monospace", outline: "none", resize: "vertical" }}
+        onFocus={e => (e.currentTarget.style.borderColor = "var(--c-accent)")}
+        onBlur={e  => (e.currentTarget.style.borderColor = "var(--c-border)")}
       />
     </div>
   );
 
   const hint = (text: string) => (
-    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 12, lineHeight: 1.5, background: "#12141f", padding: "8px 10px", borderRadius: 6, border: "1px solid #1e2235" }}>
+    <div style={{ fontSize: 11, color: "var(--c-text-muted)", marginBottom: 12, lineHeight: 1.5, background: "var(--c-bg-base)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--c-border)" }}>
       {text}
     </div>
   );
@@ -201,18 +201,18 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
         <div style={{
           display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
           borderRadius: 6, fontSize: 12, lineHeight: 1.5,
-          background: authState === "ok" ? "#0d2818" : authState === "fail" ? "#2a0011" : "#12141f",
-          border: `1px solid ${authState === "ok" ? "#166534" : authState === "fail" ? "#7f1d1d" : "#1e2235"}`,
+          background: authState === "ok" ? "#0d2818" : authState === "fail" ? "#2a0011" : "var(--c-bg-base)",
+          border: `1px solid ${authState === "ok" ? "#166534" : authState === "fail" ? "#7f1d1d" : "var(--c-border)"}`,
         }}>
           <span style={{ display: "flex", alignItems: "center" }}>
-            {authState === "checking" ? <Loader2 size={14} className="animate-spin" style={{ color: "#94a3b8" }} />
+            {authState === "checking" ? <Loader2 size={14} className="animate-spin" style={{ color: "var(--c-text-secondary)" }} />
               : authState === "ok" ? <CheckCircle2 size={14} style={{ color: "#4ade80" }} />
               : authState === "fail" ? <XCircle size={14} style={{ color: "#fb7185" }} />
-              : <KeyRound size={14} style={{ color: "#94a3b8" }} />}
+              : <KeyRound size={14} style={{ color: "var(--c-text-secondary)" }} />}
           </span>
           <div style={{ flex: 1 }}>
             {authState === "checking" && (
-              <span style={{ color: "#94a3b8" }}>Checking {pLabel} authentication…</span>
+              <span style={{ color: "var(--c-text-secondary)" }}>Checking {pLabel} authentication…</span>
             )}
             {authState === "ok" && (
               <span style={{ color: "#4ade80" }}>
@@ -223,19 +223,19 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
               <div>
                 <span style={{ color: "#fb7185" }}>Not authenticated</span>
                 {authError && (
-                  <div style={{ color: "#94a3b8", marginTop: 4, fontSize: 11 }}>{authError}</div>
+                  <div style={{ color: "var(--c-text-secondary)", marginTop: 4, fontSize: 11 }}>{authError}</div>
                 )}
               </div>
             )}
             {authState === "idle" && (
-              <span style={{ color: "#94a3b8" }}>Cloud login required for {pLabel}</span>
+              <span style={{ color: "var(--c-text-secondary)" }}>Cloud login required for {pLabel}</span>
             )}
           </div>
           {authState !== "checking" && (
             <button
               onClick={() => checkAuth(k8sProvider, config)}
               style={{
-                background: "none", border: "1px solid #2d3148", color: "#94a3b8",
+                background: "none", border: "1px solid var(--c-border)", color: "var(--c-text-secondary)",
                 borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: "pointer",
                 whiteSpace: "nowrap",
               }}
@@ -250,7 +250,7 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
           <button
             onClick={() => setShowGuide(prev => !prev)}
             style={{
-              background: "none", border: "none", color: "#7c8cf8", fontSize: 11,
+              background: "none", border: "none", color: "var(--c-accent-hover)", fontSize: 11,
               cursor: "pointer", padding: "6px 0 2px", textDecoration: "underline",
             }}
           >
@@ -262,16 +262,16 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
         {showGuide && (
           <div style={{
             marginTop: 6, padding: "10px 12px", borderRadius: 6, fontSize: 11,
-            background: "#0d1117", border: "1px solid #1e2235", lineHeight: 1.7,
+            background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", lineHeight: 1.7,
           }}>
-            <div style={{ color: "#e2e8f0", fontWeight: 600, marginBottom: 6 }}>
+            <div style={{ color: "var(--c-text-primary)", fontWeight: 600, marginBottom: 6 }}>
               Prerequisites — {guide.prereq}
             </div>
-            <ol style={{ margin: 0, paddingLeft: 18, color: "#94a3b8" }}>
+            <ol style={{ margin: 0, paddingLeft: 18, color: "var(--c-text-secondary)" }}>
               {guide.steps.map((s, i) => (
                 <li key={i} style={{ marginBottom: 4 }}>
                   {s.startsWith("http") ? (
-                    <code style={{ color: "#7c8cf8", fontSize: 11 }}>{s}</code>
+                    <code style={{ color: "var(--c-accent-hover)", fontSize: 11 }}>{s}</code>
                   ) : s.includes(": ") ? (
                     <>
                       {s.split(": ")[0]}:{" "}
@@ -283,7 +283,7 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
                 </li>
               ))}
             </ol>
-            <div style={{ color: "#64748b", marginTop: 8, fontStyle: "italic" }}>
+            <div style={{ color: "var(--c-text-muted)", marginTop: 8, fontStyle: "italic" }}>
               After logging in, click "Verify Login" above to confirm.
             </div>
           </div>
@@ -371,7 +371,7 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
   };
 
   const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" };
-  const box: React.CSSProperties     = { background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 12, padding: 24, width: 440, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)" };
+  const box: React.CSSProperties     = { background: "var(--c-bg-card)", border: "1px solid var(--c-border)", borderRadius: 12, padding: 24, width: 440, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)" };
 
   const providerLabel = K8S_PROVIDERS.find(p => p.id === k8sProvider)?.label ?? "Kubernetes";
 
@@ -379,12 +379,12 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
     <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={box}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-          <strong style={{ fontSize: 14, color: "#e2e8f0" }}>
+          <strong style={{ fontSize: 14, color: "var(--c-text-primary)" }}>
             {step === "type" ? "Add Connection"
               : step === "k8s_provider" ? "Kubernetes Provider"
               : selType === "kubernetes" ? `Connect — ${providerLabel}` : `Connect to ${selType}`}
           </strong>
-          <button onClick={onClose} aria-label="Close" style={{ marginLeft: "auto", background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center" }}><X size={18} /></button>
+          <button onClick={onClose} aria-label="Close" style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", display: "flex", alignItems: "center" }}><X size={18} /></button>
         </div>
 
         {step === "type" && (
@@ -393,14 +393,14 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
               <div
                 key={tc.type}
                 onClick={() => pickType(tc.type)}
-                style={{ background: "#12141f", border: "1px solid #2d3148", borderRadius: 8, padding: "14px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "border-color .15s" }}
+                style={{ background: "var(--c-bg-base)", border: "1px solid var(--c-border)", borderRadius: 8, padding: "14px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "border-color .15s" }}
                 onMouseEnter={e => (e.currentTarget.style.borderColor = tc.color)}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = "#2d3148")}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--c-border)")}
               >
                 <span style={{ color: tc.color, display: "flex", alignItems: "center" }}>
                   {(() => { const Icon = TARGET_META[tc.type].icon; return <Icon size={20} />; })()}
                 </span>
-                <span style={{ fontSize: 13, fontWeight: 500, color: "#e2e8f0" }}>{tc.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--c-text-primary)" }}>{tc.label}</span>
               </div>
             ))}
           </div>
@@ -408,7 +408,7 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
 
         {step === "k8s_provider" && (
           <>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 12 }}>
               How is your Kubernetes cluster hosted?
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -416,19 +416,19 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
                 <div
                   key={p.id}
                   onClick={() => pickK8sProvider(p.id)}
-                  style={{ background: "#12141f", border: "1px solid #2d3148", borderRadius: 8, padding: "12px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "border-color .15s" }}
+                  style={{ background: "var(--c-bg-base)", border: "1px solid var(--c-border)", borderRadius: 8, padding: "12px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "border-color .15s" }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = p.color)}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = "#2d3148")}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--c-border)")}
                 >
                   <span style={{ color: p.color, display: "flex", alignItems: "center" }}>{p.icon}</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "#e2e8f0" }}>{p.label}</div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{p.desc}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--c-text-primary)" }}>{p.label}</div>
+                    <div style={{ fontSize: 11, color: "var(--c-text-muted)", marginTop: 2 }}>{p.desc}</div>
                   </div>
                 </div>
               ))}
             </div>
-            <button onClick={() => setStep("type")} style={{ marginTop: 12, width: "100%", background: "#1a1d27", border: "1px solid #2d3148", color: "#94a3b8", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
+            <button onClick={() => setStep("type")} style={{ marginTop: 12, width: "100%", background: "var(--c-bg-card)", border: "1px solid var(--c-border)", color: "var(--c-text-secondary)", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
               <ArrowLeft size={12} style={{ marginRight: 4 }} /> Back
             </button>
           </>
@@ -437,15 +437,15 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
         {step === "details" && selType && (
           <>
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Name</div>
+              <div style={{ fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>Name</div>
               <input
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="prod-k8s"
                 autoFocus
-                style={{ width: "100%", background: "#0d1117", border: "1px solid #2d3148", color: "#e2e8f0", borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none" }}
-                onFocus={e => (e.currentTarget.style.borderColor = "#6366f1")}
-                onBlur={e  => (e.currentTarget.style.borderColor = "#2d3148")}
+                style={{ width: "100%", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", color: "var(--c-text-primary)", borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none" }}
+                onFocus={e => (e.currentTarget.style.borderColor = "var(--c-accent)")}
+                onBlur={e  => (e.currentTarget.style.borderColor = "var(--c-border)")}
               />
             </div>
             {fields[selType]}
@@ -453,14 +453,14 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
             {status && (
               <div style={{ padding: "8px 10px", borderRadius: 6, fontSize: 12, marginBottom: 10,
                 background: status.type === "ok" ? "#1a3a2a" : status.type === "err" ? "#3a1a1a" : "#1f2d3d",
-                color:      status.type === "ok" ? "#22c55e" : status.type === "err" ? "#ef4444" : "#7c8cf8",
+                color:      status.type === "ok" ? "#22c55e" : status.type === "err" ? "#ef4444" : "var(--c-accent-hover)",
               }}>
                 {status.msg}
               </div>
             )}
 
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <button onClick={() => setStep(selType === "kubernetes" ? "k8s_provider" : "type")} style={{ flex: 1, background: "#1a1d27", border: "1px solid #2d3148", color: "#94a3b8", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
+              <button onClick={() => setStep(selType === "kubernetes" ? "k8s_provider" : "type")} style={{ flex: 1, background: "var(--c-bg-card)", border: "1px solid var(--c-border)", color: "var(--c-text-secondary)", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
                 <ArrowLeft size={12} style={{ marginRight: 4 }} /> Back
               </button>
               <button onClick={submit} disabled={busy} style={{ flex: 2, background: busy ? "#374151" : "#4f46e5", border: "none", color: "#fff", borderRadius: 6, padding: 8, fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer" }}>

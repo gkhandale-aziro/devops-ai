@@ -104,7 +104,7 @@ export function Home({ targets, monitorActive }: Props) {
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{
                 width: 7, height: 7, borderRadius: "50%",
-                background: online > 0 ? "#22c55e" : "#64748b",
+                background: online > 0 ? "#22c55e" : "var(--c-text-muted)",
                 boxShadow: online > 0 ? "0 0 8px #22c55e88" : "none",
                 animation: online > 0 ? "pulse 2s infinite" : "none",
                 display: "inline-block",
@@ -157,7 +157,7 @@ export function Home({ targets, monitorActive }: Props) {
             label="Monitor"
             value={monitorActive ? "Active" : "Idle"}
             sub={monitorActive ? "Watching live events" : "Start to capture events"}
-            color={monitorActive ? "#22c55e" : "#64748b"}
+            color={monitorActive ? "#22c55e" : "var(--c-text-muted)"}
 
             pulse={monitorActive}
             loading={false}
@@ -269,8 +269,8 @@ export function Home({ targets, monitorActive }: Props) {
                       <span style={{
                         fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
                         textTransform: "uppercase", letterSpacing: ".3px",
-                        color:       evt.status === "resolved" ? "#22c55e" : evt.status === "acknowledged" ? "#f59e0b" : "#f43f5e",
-                        background:  evt.status === "resolved" ? "#052e16" : evt.status === "acknowledged" ? "#2a1a00" : "#2a0011",
+                        color:       evt.status === "resolved" ? "#22c55e" : evt.status === "acknowledged" ? "#f59e0b" : "var(--c-sev1)",
+                        background:  evt.status === "resolved" ? "#052e16" : evt.status === "acknowledged" ? "#2a1a00" : "var(--c-sev1-bg)",
                         border: `1px solid ${evt.status === "resolved" ? "#22c55e44" : evt.status === "acknowledged" ? "#f59e0b44" : "#f43f5e44"}`,
                       }}>
                         {(evt.status ?? "open")}
@@ -303,9 +303,9 @@ export function Home({ targets, monitorActive }: Props) {
           <Section label="Connections">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 10 }}>
               {targets.map(t => {
-                const dotColor  = t.status === "online" ? "#22c55e" : t.status === "offline" ? "#ef4444" : "#64748b";
+                const dotColor  = t.status === "online" ? "#22c55e" : t.status === "offline" ? "#ef4444" : "var(--c-text-muted)";
                 const meta = TARGET_META[t.type as keyof typeof TARGET_META];
-                const tc = meta?.color ?? "#64748b";
+                const tc = meta?.color ?? "var(--c-text-muted)";
                 const TypeIcon = meta?.icon;
                 return (
                   <Link

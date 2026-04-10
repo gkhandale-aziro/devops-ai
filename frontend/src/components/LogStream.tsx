@@ -109,16 +109,16 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
   return (
     <div style={{
       height: 280, flexShrink: 0,
-      borderTop: "1px solid #1e2235",
-      background: "#0b0d14",
+      borderTop: "1px solid var(--c-border)",
+      background: "var(--c-bg-panel)",
       display: "flex", flexDirection: "column",
     }}>
       {/* Header */}
       <div style={{
         padding: "6px 12px",
-        borderBottom: "1px solid #1e2235",
+        borderBottom: "1px solid var(--c-border)",
         display: "flex", alignItems: "center", gap: 10,
-        background: "#0f1219",
+        background: "var(--c-bg-raised)",
         flexShrink: 0,
       }}>
         <span style={{
@@ -134,7 +134,7 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
         <span style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 500 }}>
           {pod}
         </span>
-        <span style={{ fontSize: 11, color: "#64748b" }}>/ {namespace}</span>
+        <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>/ {namespace}</span>
         {container && <span style={{ fontSize: 11, color: "#475569" }}>({container})</span>}
 
         <div style={{ flex: 1 }} />
@@ -144,8 +144,8 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
           onChange={e => setSearch(e.target.value)}
           placeholder="Filter…"
           style={{
-            width: 160, background: "#161b27", border: "1px solid #2d3555",
-            color: "#e2e8f0", borderRadius: 5, padding: "3px 8px", fontSize: 11,
+            width: 160, background: "var(--c-bg-surface)", border: "1px solid var(--c-border-strong)",
+            color: "var(--c-text-primary)", borderRadius: 5, padding: "3px 8px", fontSize: 11,
           }}
         />
 
@@ -154,8 +154,8 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
           title={paused ? "Resume auto-scroll" : "Freeze scroll (logs still stream)"}
           style={{
             background: paused ? "#f59e0b22" : "transparent",
-            border: `1px solid ${paused ? "#f59e0b" : "#2d3555"}`,
-            color: paused ? "#f59e0b" : "#64748b",
+            border: `1px solid ${paused ? "#f59e0b" : "var(--c-border-strong)"}`,
+            color: paused ? "#f59e0b" : "var(--c-text-muted)",
             borderRadius: 5, padding: "3px 8px", fontSize: 10,
             fontWeight: 700, cursor: "pointer",
           }}
@@ -167,8 +167,8 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
           onClick={() => { setLines([]); }}
           title="Clear"
           style={{
-            background: "transparent", border: "1px solid #2d3555",
-            color: "#64748b", borderRadius: 5, padding: "3px 8px",
+            background: "transparent", border: "1px solid var(--c-border-strong)",
+            color: "var(--c-text-muted)", borderRadius: 5, padding: "3px 8px",
             fontSize: 10, cursor: "pointer",
           }}
         >
@@ -180,7 +180,7 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
         <button
           onClick={onClose}
           aria-label="Close log stream"
-          style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px 4px" }}
+          style={{ background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px 4px" }}
         >
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>

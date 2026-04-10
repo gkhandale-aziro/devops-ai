@@ -27,7 +27,7 @@ interface Node {
 interface Edge { from: string; to: string }
 
 const KIND_COLOR: Record<string, { bg: string; border: string; text: string }> = {
-  deployment: { bg: "#1a1040", border: "#6366f1", text: "#818cf8" },
+  deployment: { bg: "#1a1040", border: "var(--c-accent)", text: "#818cf8" },
   pod:        { bg: "#0a1a14", border: "#22c55e", text: "#4ade80" },
   service:    { bg: "#1a1100", border: "#f59e0b", text: "#fbbf24" },
   ingress:    { bg: "#0c1a2a", border: "#06b6d4", text: "#22d3ee" },
@@ -132,14 +132,14 @@ export function ResourceGraph({ target, namespace }: Props) {
   }, [target.id, namespace]);
 
   if (loading) return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "#64748b", fontSize: 13 }}>
-      <span style={{ width: 14, height: 14, border: "2px solid #1e2235", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin .7s linear infinite", display: "inline-block" }} />
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--c-text-muted)", fontSize: 13 }}>
+      <span style={{ width: 14, height: 14, border: "2px solid var(--c-border)", borderTopColor: "var(--c-accent)", borderRadius: "50%", animation: "spin .7s linear infinite", display: "inline-block" }} />
       Building topology…
     </div>
   );
 
   if (error) return (
-    <div style={{ padding: 20, color: "#f43f5e", fontSize: 13 }}>kubectl not available or no resources found.</div>
+    <div style={{ padding: 20, color: "var(--c-sev1)", fontSize: 13 }}>kubectl not available or no resources found.</div>
   );
 
   if (nodes.length === 0) return (
@@ -156,26 +156,26 @@ export function ResourceGraph({ target, namespace }: Props) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Legend */}
-      <div style={{ padding: "8px 16px", borderBottom: "1px solid #1e2235", display: "flex", gap: 16, alignItems: "center", flexShrink: 0, background: "#0b0d14" }}>
-        <span style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700 }}>Topology</span>
+      <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--c-border)", display: "flex", gap: 16, alignItems: "center", flexShrink: 0, background: "var(--c-bg-panel)" }}>
+        <span style={{ fontSize: 11, color: "var(--c-text-faint)", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700 }}>Topology</span>
         {(["ingress", "service", "deployment", "pod"] as const).map(kind => {
           const c = KIND_COLOR[kind];
           return (
             <div key={kind} style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: c.border, display: "inline-block" }} />
-              <span style={{ fontSize: 11, color: "#64748b", textTransform: "capitalize" }}>{kind}</span>
+              <span style={{ fontSize: 11, color: "var(--c-text-muted)", textTransform: "capitalize" }}>{kind}</span>
             </div>
           );
         })}
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "#475569" }}>{nodes.length} resources</span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--c-text-faint)" }}>{nodes.length} resources</span>
       </div>
 
       {/* SVG Graph */}
-      <div style={{ flex: 1, overflow: "auto", padding: 12, background: "#0b0d14" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: 12, background: "var(--c-bg-panel)" }}>
         <svg ref={svgRef} width={maxX} height={maxY} style={{ display: "block" }}>
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L8,3 z" fill="#2d3555" />
+              <path d="M0,0 L0,6 L8,3 z" fill="var(--c-border-strong)" />
             </marker>
           </defs>
 
@@ -193,7 +193,7 @@ export function ResourceGraph({ target, namespace }: Props) {
                 key={i}
                 d={`M${f.x + from.width / 2 - 10},${f.y} C${mx},${f.y} ${mx},${t.y} ${t.x - to.width / 2 + 10},${t.y}`}
                 fill="none"
-                stroke={isHov ? "#6366f1" : "#1e2235"}
+                stroke={isHov ? "var(--c-accent)" : "var(--c-border)"}
                 strokeWidth={isHov ? 1.5 : 1}
                 markerEnd="url(#arrow)"
                 style={{ transition: "stroke .15s" }}
@@ -206,7 +206,7 @@ export function ResourceGraph({ target, namespace }: Props) {
             const c     = KIND_COLOR[n.kind];
             const isHov = hovered === n.id;
             const isSel = selected?.id === n.id;
-            const statusColor = n.kind === "pod" ? (POD_STATUS_COLOR[n.status] ?? "#64748b") : c.border;
+            const statusColor = n.kind === "pod" ? (POD_STATUS_COLOR[n.status] ?? "var(--c-text-muted)") : c.border;
             const shortName = n.name.length > 18 ? n.name.slice(0, 17) + "…" : n.name;
 
             return (
@@ -224,7 +224,7 @@ export function ResourceGraph({ target, namespace }: Props) {
                 )}
                 {/* Card */}
                 <rect x={n.x} y={n.y} width={n.width} height={n.height} rx={7}
-                  fill={c.bg} stroke={isSel ? c.border : isHov ? c.border + "88" : "#1e2235"} strokeWidth={isSel ? 2 : 1} />
+                  fill={c.bg} stroke={isSel ? c.border : isHov ? c.border + "88" : "var(--c-border)"} strokeWidth={isSel ? 2 : 1} />
                 {/* Left accent bar */}
                 <rect x={n.x} y={n.y + 8} width={3} height={n.height - 16} rx={2} fill={c.border} />
                 {/* Status dot */}
@@ -234,7 +234,7 @@ export function ResourceGraph({ target, namespace }: Props) {
                   {n.kind}
                 </text>
                 {/* Name */}
-                <text x={n.x + 14} y={n.y + 32} fontSize={11} fill="#cbd5e1" fontWeight={500}>
+                <text x={n.x + 14} y={n.y + 32} fontSize={11} fill="var(--c-text-secondary)" fontWeight={500}>
                   {shortName}
                 </text>
               </g>
@@ -272,39 +272,39 @@ function TopologyDetail({ target, node, onClose }: { target: Target; node: Node;
 
   useEffect(() => { if (tab !== "info") fetchDetail(); }, [tab]);
 
-  const statusColor = POD_STATUS_COLOR[node.status] ?? "#94a3b8";
+  const statusColor = POD_STATUS_COLOR[node.status] ?? "var(--c-text-secondary)";
   const c = KIND_COLOR[node.kind];
   const panelHeight = expanded ? "60vh" : 180;
 
   return (
-    <div style={{ flexShrink: 0, borderTop: "1px solid #1e2235", background: "#0f1219", display: "flex", flexDirection: "column", height: panelHeight, transition: "height .2s" }}>
+    <div style={{ flexShrink: 0, borderTop: "1px solid var(--c-border)", background: "var(--c-bg-raised)", display: "flex", flexDirection: "column", height: panelHeight, transition: "height .2s" }}>
       {/* Header */}
-      <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #1e2235", flexShrink: 0 }}>
+      <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--c-border)", flexShrink: 0 }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: c.text, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, padding: "2px 8px", textTransform: "uppercase" }}>
           {node.kind}
         </span>
         <strong style={{ fontSize: 13 }}>{node.name}</strong>
-        {node.namespace && <span style={{ fontSize: 11, color: "#64748b" }}>/ {node.namespace}</span>}
-        <span style={{ fontSize: 11, color: "#64748b" }}>Status: <span style={{ color: statusColor }}>{node.status}</span></span>
+        {node.namespace && <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>/ {node.namespace}</span>}
+        <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>Status: <span style={{ color: statusColor }}>{node.status}</span></span>
 
         {/* Tabs */}
         <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
           {(["info", "describe", "logs"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
-              padding: "3px 10px", fontSize: 11, background: tab === t ? "#1e2240" : "transparent",
-              border: `1px solid ${tab === t ? "#6366f1" : "#2d3148"}`,
-              color: tab === t ? "#818cf8" : "#64748b",
+              padding: "3px 10px", fontSize: 11, background: tab === t ? "var(--c-bg-active)" : "transparent",
+              border: `1px solid ${tab === t ? "var(--c-accent)" : "var(--c-border-strong)"}`,
+              color: tab === t ? "var(--c-accent-hover)" : "var(--c-text-muted)",
               borderRadius: 4, cursor: "pointer", fontWeight: tab === t ? 600 : 400,
             }}>{t === "describe" ? "Details" : t === "info" ? "Info" : "Logs"}</button>
           ))}
         </div>
         <button onClick={() => setExpanded(e => !e)} title={expanded ? "Minimize" : "Maximize"}
-          style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}>
+          style={{ background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             {expanded ? <polyline points="18 15 12 9 6 15"/> : <polyline points="6 9 12 15 18 9"/>}
           </svg>
         </button>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px 4px" }}>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px 4px" }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -312,21 +312,21 @@ function TopologyDetail({ target, node, onClose }: { target: Target; node: Node;
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px" }}>
         {tab === "info" && (
           <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "4px 12px", fontSize: 12 }}>
-            <span style={{ color: "#64748b" }}>Kind</span><span>{node.kind}</span>
-            <span style={{ color: "#64748b" }}>Name</span><span>{node.name}</span>
-            <span style={{ color: "#64748b" }}>Namespace</span><span>{node.namespace || "—"}</span>
-            <span style={{ color: "#64748b" }}>Status</span><span style={{ color: statusColor }}>{node.status}</span>
+            <span style={{ color: "var(--c-text-muted)" }}>Kind</span><span>{node.kind}</span>
+            <span style={{ color: "var(--c-text-muted)" }}>Name</span><span>{node.name}</span>
+            <span style={{ color: "var(--c-text-muted)" }}>Namespace</span><span>{node.namespace || "—"}</span>
+            <span style={{ color: "var(--c-text-muted)" }}>Status</span><span style={{ color: statusColor }}>{node.status}</span>
           </div>
         )}
         {tab === "describe" && (
-          loading ? <span style={{ color: "#64748b", fontSize: 12 }}>Loading…</span>
+          loading ? <span style={{ color: "var(--c-text-muted)", fontSize: 12 }}>Loading…</span>
             : <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 11, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.5, margin: 0 }}>{detail.describe ?? "—"}</pre>
         )}
         {tab === "logs" && (
-          loading ? <span style={{ color: "#64748b", fontSize: 12 }}>Loading…</span>
+          loading ? <span style={{ color: "var(--c-text-muted)", fontSize: 12 }}>Loading…</span>
             : node.kind === "pod"
               ? <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 11, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.5, margin: 0 }}>{detail.logs ?? "No logs (only available for pods)"}</pre>
-              : <div style={{ color: "#64748b", fontSize: 12, paddingTop: 8 }}>Logs are only available for pod resources.</div>
+              : <div style={{ color: "var(--c-text-muted)", fontSize: 12, paddingTop: 8 }}>Logs are only available for pod resources.</div>
         )}
       </div>
     </div>

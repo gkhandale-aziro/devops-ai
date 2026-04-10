@@ -250,8 +250,8 @@ function buildPodColumns(opts: {
             )}
             {aiBadge && (
               <div style={{
-                marginTop: 3, fontSize: 10, color: "#a5b4fc", lineHeight: 1.4,
-                background: "#1e2240", border: `1px solid ${C.accent.primary}33`,
+                marginTop: 3, fontSize: 10, color: C.accent.light, lineHeight: 1.4,
+                background: C.bg.active, border: `1px solid ${C.accent.primary}33`,
                 borderRadius: 4, padding: "3px 7px", maxWidth: 400,
               }}>
                 <Sparkles size={10} style={{ display: "inline", marginRight: 3 }} /> {aiBadge}
@@ -565,7 +565,7 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
            }}
            style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 12, width: 740, maxHeight: "82vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)", outline: "none" }}>
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border.muted}`, display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ background: "#4f46e533", color: "#7c8cf8", border: "1px solid #4f46e5", borderRadius: 4, padding: "2px 7px", fontSize: 11 }}>
+          <span style={{ background: C.accent.primary + "33", color: C.accent.light, border: `1px solid ${C.accent.primary}`, borderRadius: 4, padding: "2px 7px", fontSize: 11 }}>
             {loading ? "…" : resource?.kind}
           </span>
           <strong id="modal-title" style={{ fontSize: 14 }}>{resource?.name}</strong>
@@ -581,7 +581,7 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
               {modalTabs.map(t => (
                 <button key={t} onClick={() => setTab(t as typeof tab)} style={{
                   padding: "8px 14px", fontSize: 12, background: "none", border: "none",
-                  color: tab === t ? "#7c8cf8" : C.text.muted, borderBottom: tab === t ? "2px solid #7c8cf8" : "2px solid transparent",
+                  color: tab === t ? C.accent.light : C.text.muted, borderBottom: tab === t ? `2px solid ${C.accent.light}` : "2px solid transparent",
                   cursor: "pointer", textTransform: "capitalize",
                 }}>{t === "previous" ? "Prev Logs" : t === "ai" ? "AI Analysis" : t === "describe" ? "Details" : t}</button>
               ))}
@@ -741,9 +741,9 @@ export function KubectlTable({ raw, colorFn, onRowClick, emptyMessage = "No data
             tabIndex={onRowClick ? 0 : undefined}
             onClick={() => onRowClick?.(cols, headers)}
             onKeyDown={e => { if (onRowClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick(cols, headers); } }}
-            style={{ cursor: onRowClick ? "pointer" : "default", background: i % 2 === 1 ? "#0c0e16" : "transparent", transition: "background .1s" }}
+            style={{ cursor: onRowClick ? "pointer" : "default", background: i % 2 === 1 ? "var(--c-bg-surface)" : "transparent", transition: "background .1s" }}
             onMouseEnter={ev => { if (onRowClick) ev.currentTarget.style.background = C.bg.card; }}
-            onMouseLeave={ev => { ev.currentTarget.style.background = i % 2 === 1 ? "#0c0e16" : "transparent"; }}
+            onMouseLeave={ev => { ev.currentTarget.style.background = i % 2 === 1 ? "var(--c-bg-surface)" : "transparent"; }}
           >
             {headers.map((h, j) => {
               const val = cols[j] ?? "—";

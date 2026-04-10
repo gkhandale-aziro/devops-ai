@@ -43,7 +43,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
       {/* Messages feed */}
       <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
         {visibleMessages.length === 0 && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, color: "#64748b", paddingTop: 40 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, color: "var(--c-text-muted)", paddingTop: 40 }}>
             <div style={{
               width: 52, height: 52, borderRadius: 14,
               background: "#6366f118", border: "1px solid #6366f133",
@@ -54,7 +54,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
               </svg>
             </div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600, marginBottom: 4 }}>AI Assistant</div>
+              <div style={{ fontSize: 14, color: "var(--c-text-secondary)", fontWeight: 600, marginBottom: 4 }}>AI Assistant</div>
               <div style={{ fontSize: 12, lineHeight: 1.6 }}>
                 {placeholder ?? "Ask anything about this target…"}
               </div>
@@ -76,13 +76,13 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
               {/* Bubble */}
               <div style={{
                 maxWidth: "82%",
-                background: isUser ? "linear-gradient(135deg,#6366f1,#818cf8)" : "#161b27",
-                border: isUser ? "none" : "1px solid #1e2235",
+                background: isUser ? "linear-gradient(135deg,#6366f1,#818cf8)" : "var(--c-bg-surface)",
+                border: isUser ? "none" : "1px solid var(--c-border)",
                 borderRadius: isUser ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
                 padding: "10px 14px",
                 fontSize: 13,
                 lineHeight: 1.65,
-                color: "#e2e8f0",
+                color: "var(--c-text-primary)",
               }}>
                 {isUser ? (
                   <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.content}</span>
@@ -96,7 +96,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
               {/* Commands */}
               {m.cmds && m.cmds.length > 0 && (
                 <div style={{
-                  background: "#0b0d14", border: "1px solid #1e2235",
+                  background: "var(--c-bg-panel)", border: "1px solid var(--c-border)",
                   borderRadius: 6, padding: "6px 10px",
                   fontSize: 11, fontFamily: "'Cascadia Code','Consolas',monospace",
                   color: "#22c55e", maxWidth: "82%",
@@ -112,14 +112,14 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
       {/* Input bar */}
       <div style={{
         padding: "12px 16px 16px",
-        borderTop: "1px solid #1e2235",
-        background: "#0b0d14",
+        borderTop: "1px solid var(--c-border)",
+        background: "var(--c-bg-panel)",
         flexShrink: 0,
       }}>
         <div style={{
           display: "flex", gap: 10, alignItems: "flex-end",
-          background: "#161b27",
-          border: `1px solid ${focused ? "#6366f1" : "#1e2235"}`,
+          background: "var(--c-bg-surface)",
+          border: `1px solid ${focused ? "var(--c-accent)" : "var(--c-border)"}`,
           borderRadius: 10, padding: "10px 12px",
           transition: "border-color .15s",
         }}>
@@ -135,7 +135,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
             placeholder={placeholder ?? "Ask anything… (Enter to send, Shift+Enter for new line)"}
             style={{
               flex: 1, background: "transparent", border: "none", outline: "none",
-              color: "#e2e8f0", fontSize: 13, resize: "none",
+              color: "var(--c-text-primary)", fontSize: 13, resize: "none",
               fontFamily: "inherit", lineHeight: 1.5,
               minHeight: 20, maxHeight: 120,
             }}
@@ -145,7 +145,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
             aria-label={loading ? "Sending message" : "Send message"}
             disabled={loading || !text.trim()}
             style={{
-              background: loading || !text.trim() ? "#1e2235" : "#6366f1",
+              background: loading || !text.trim() ? "var(--c-border)" : "var(--c-accent)",
               border: "none", borderRadius: 7,
               width: 32, height: 32, flexShrink: 0,
               color: "#fff", fontWeight: 700,
@@ -155,7 +155,7 @@ export function ChatPanel({ messages, loading, onSend, placeholder }: Props) {
             }}
           >
             {loading ? (
-              <span style={{ width: 13, height: 13, border: "2px solid #6366f133", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
+              <span style={{ width: 13, height: 13, border: "2px solid var(--c-accent-dim)", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
             ) : (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>

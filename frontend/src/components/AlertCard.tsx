@@ -63,8 +63,8 @@ export function AlertCard({ alert, onClick }: Props) {
       {/* Reason + object */}
       <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: isCrit ? 6 : 4 }}>
         <span style={{ fontSize: isCrit ? 14 : 13, fontWeight: 700, color: c.text }}>{alert.reason}</span>
-        <span style={{ fontSize: 11, color: "#64748b" }}>on</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8" }}>{alert.object}</span>
+        <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>on</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-secondary)" }}>{alert.object}</span>
         {alert.namespace && (
           <span style={{ fontSize: 10, color: "#475569" }}>/ {alert.namespace}</span>
         )}
@@ -73,7 +73,7 @@ export function AlertCard({ alert, onClick }: Props) {
       {/* Message — 2 lines for SEV1, 1 line for others */}
       {alert.message && (
         <div style={{
-          fontSize: 11, color: "#64748b", lineHeight: 1.5,
+          fontSize: 11, color: "var(--c-text-muted)", lineHeight: 1.5,
           overflow: "hidden",
           display: "-webkit-box",
           WebkitLineClamp: isCrit ? 2 : 1,

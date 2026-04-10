@@ -16,16 +16,21 @@
   --c-bg-surface:    #0a0f1e;
   --c-bg-raised:     #0f1629;
   --c-bg-overlay:    #182035;
+  --c-bg-active:     #1e2340;
+  --c-bg-card:       #1a1d27;
+  --c-bg-panel:      #0b0d14;
 
   /* ── Borders ── */
   --c-border:        #1a2235;
   --c-border-strong: #263050;
+  --c-border-subtle: #1e2235;
 
   /* ── Text ── */
   --c-text-primary:  #f1f5f9;
   --c-text-secondary:#94a3b8;
   --c-text-muted:    #64748b;
   --c-text-faint:    #475569;
+  --c-text-dim:      #334155;
 
   /* ── Severity ── */
   --c-sev1:          #f43f5e;
@@ -70,14 +75,19 @@
   --c-bg-surface:    #ffffff;
   --c-bg-raised:     #f1f5f9;
   --c-bg-overlay:    #e2e8f0;
+  --c-bg-active:     #e0e7ff;
+  --c-bg-card:       #f1f5f9;
+  --c-bg-panel:      #ffffff;
 
   --c-border:        #e2e8f0;
   --c-border-strong: #cbd5e1;
+  --c-border-subtle: #f1f5f9;
 
   --c-text-primary:  #0f172a;
   --c-text-secondary:#475569;
   --c-text-muted:    #64748b;
   --c-text-faint:    #94a3b8;
+  --c-text-dim:      #cbd5e1;
 
   --c-sev1:          #dc2626;
   --c-sev1-bg:       #fef2f2;

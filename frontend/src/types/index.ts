@@ -30,12 +30,12 @@ export const LEVEL_LABELS: Record<TriageLevel, string> = {
 };
 
 export const LEVEL_COLORS: Record<string, { border: string; bg: string; text: string }> = {
-  SEV1: { border: "#f43f5e", bg: "#2a0011", text: "#fb7185" },
-  SEV2: { border: "#f59e0b", bg: "#2a1a00", text: "#fbbf24" },
-  SEV3: { border: "#06b6d4", bg: "#0c2233", text: "#22d3ee" },
+  SEV1: { border: "var(--c-sev1)", bg: "var(--c-sev1-bg)", text: "var(--c-sev1)" },
+  SEV2: { border: "var(--c-sev2)", bg: "var(--c-sev2-bg)", text: "var(--c-sev2)" },
+  SEV3: { border: "var(--c-sev3)", bg: "var(--c-sev3-bg)", text: "var(--c-sev3)" },
 };
 
-const _FALLBACK_COLOR = { border: "#64748b", bg: "#1e293b", text: "#94a3b8" };
+const _FALLBACK_COLOR = { border: "var(--c-text-muted)", bg: "var(--c-bg-overlay)", text: "var(--c-text-secondary)" };
 
 /** Safe accessor — returns fallback for unknown levels (e.g. legacy 'L2' data). */
 export function levelColor(level: string) {

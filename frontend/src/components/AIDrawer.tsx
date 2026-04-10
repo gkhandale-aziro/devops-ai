@@ -79,8 +79,8 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
       {/* Drawer panel */}
       <div style={{
         position: "fixed", top: 0, right: 0, bottom: 0, width: 520,
-        background: "#0f1219",
-        borderLeft: "1px solid #1e2235",
+        background: "var(--c-bg-raised)",
+        borderLeft: "1px solid var(--c-bg-active)",
         zIndex: 150,
         display: "flex", flexDirection: "column",
         boxShadow: "-12px 0 40px #00000066",
@@ -90,14 +90,14 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
         {/* Header */}
         <div style={{
           padding: "14px 18px",
-          borderBottom: "1px solid #1e2235",
+          borderBottom: "1px solid var(--c-bg-active)",
           display: "flex", alignItems: "center", gap: 10,
           flexShrink: 0,
-          background: "linear-gradient(180deg, #161b27 0%, #0f1219 100%)",
+          background: "linear-gradient(180deg, var(--c-bg-surface) 0%, var(--c-bg-raised) 100%)",
         }}>
           <div style={{
             width: 28, height: 28, borderRadius: 7,
-            background: "#6366f118", border: "1px solid #6366f133",
+            background: "color-mix(in srgb, var(--c-accent) 9%, transparent)", border: "1px solid color-mix(in srgb, var(--c-accent) 20%, transparent)",
             display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0,
           }}>
@@ -108,13 +108,13 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: "#6366f1", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px" }}>AI Analysis</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+            <div style={{ fontSize: 12, color: "var(--c-accent)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px" }}>AI Analysis</div>
+            <div style={{ fontSize: 12, color: "var(--c-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
           </div>
 
           {loading && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#6366f1", animation: "pulse 1s infinite", display: "inline-block" }} />
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)", animation: "pulse 1s infinite", display: "inline-block" }} />
               <span style={{ fontSize: 11, color: "#818cf8" }}>Analyzing…</span>
             </div>
           )}
@@ -122,8 +122,8 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
           <button
             onClick={onClose}
             style={{
-              background: "#1e2235", border: "1px solid #2d3555",
-              borderRadius: 6, color: "#94a3b8",
+              background: "var(--c-bg-active)", border: "1px solid var(--c-border)",
+              borderRadius: 6, color: "var(--c-text-secondary)",
               width: 28, height: 28, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 16, flexShrink: 0,
@@ -141,33 +141,33 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
           ) : loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 4 }}>
               {[90, 75, 95, 60, 80].map((w, i) => (
-                <div key={i} style={{ height: 13, width: `${w}%`, background: "#1e2235", borderRadius: 4, animation: "shimmer 1.4s infinite" }} />
+                <div key={i} style={{ height: 13, width: `${w}%`, background: "var(--c-bg-active)", borderRadius: 4, animation: "shimmer 1.4s infinite" }} />
               ))}
             </div>
           ) : (
-            <div style={{ color: "#475569", fontSize: 13, textAlign: "center", paddingTop: 40 }}>—</div>
+            <div style={{ color: "var(--c-text-muted)", fontSize: 13, textAlign: "center", paddingTop: 40 }}>—</div>
           )}
         </div>
 
         {/* Follow-up input */}
         <div style={{
           padding: "12px 16px 16px",
-          borderTop: "1px solid #1e2235",
+          borderTop: "1px solid var(--c-bg-active)",
           flexShrink: 0,
-          background: "#0b0d14",
+          background: "var(--c-bg-raised)",
         }}>
-          <div style={{ fontSize: 10, color: "#475569", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".5px" }}>
+          <div style={{ fontSize: 10, color: "var(--c-text-muted)", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".5px" }}>
             Ask a follow-up
           </div>
           <div style={{
             display: "flex", gap: 8,
-            background: "#161b27",
-            border: "1px solid #2d3555",
+            background: "var(--c-bg-surface)",
+            border: "1px solid var(--c-border)",
             borderRadius: 8, padding: "8px 12px",
             transition: "border-color .15s",
           }}
-            onFocusCapture={e => (e.currentTarget.style.borderColor = "#6366f1")}
-            onBlurCapture={e => (e.currentTarget.style.borderColor = "#2d3555")}
+            onFocusCapture={e => (e.currentTarget.style.borderColor = "var(--c-accent)")}
+            onBlurCapture={e => (e.currentTarget.style.borderColor = "var(--c-border)")}
           >
             <input
               value={question}
@@ -177,14 +177,14 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
               disabled={loading}
               style={{
                 flex: 1, background: "transparent", border: "none", outline: "none",
-                color: "#e2e8f0", fontSize: 13, fontFamily: "inherit",
+                color: "var(--c-text-primary)", fontSize: 13, fontFamily: "inherit",
               }}
             />
             <button
               onClick={askFollowUp}
               disabled={loading || !question.trim()}
               style={{
-                background: loading || !question.trim() ? "#1e2235" : "#6366f1",
+                background: loading || !question.trim() ? "var(--c-bg-active)" : "var(--c-accent)",
                 border: "none", borderRadius: 6,
                 width: 30, height: 30,
                 color: "#fff", fontWeight: 700, fontSize: 16,
@@ -195,7 +195,7 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
               }}
             >
               {loading ? (
-                <span style={{ width: 12, height: 12, border: "2px solid #6366f133", borderTopColor: "#6366f1", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
+                <span style={{ width: 12, height: 12, border: "2px solid color-mix(in srgb, var(--c-accent) 20%, transparent)", borderTopColor: "var(--c-accent)", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
               ) : "↑"}
             </button>
           </div>

@@ -132,7 +132,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         {targets.map(t => {
           const isActive  = t.id === activeId;
           const isHovered = t.id === hoveredId;
-          const dotColor  = t.status === "online" ? "#22c55e" : t.status === "offline" ? "#ef4444" : "#64748b";
+          const dotColor  = t.status === "online" ? "#22c55e" : t.status === "offline" ? "#ef4444" : "var(--c-text-muted)";
           const typeColor = TYPE_COLORS[t.type] ?? "#64748b";
 
           return (
