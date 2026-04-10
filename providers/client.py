@@ -685,7 +685,8 @@ class LLMClient:
         model = self._effective_model(use_tools)
 
         try:
-            yield from self._stream_once(model, messages)
+            for chunk in self._stream_once(model, messages):
+                yield chunk
             return
         except Exception as e:
             print(f"  [AI] Stream error ({type(e).__name__}): {str(e)[:150]}")
@@ -693,7 +694,8 @@ class LLMClient:
                 fb = self._effective_model(use_tools)
                 print(f"  [AI] Retrying with fallback {fb}...")
                 try:
-                    yield from self._stream_once(fb, messages)
+                    for chunk in self._stream_once(fb, messages):
+                        yield chunk
                     return
                 except Exception as e2:
                     print(f"  [AI] Fallback failed: {e2}")
@@ -707,7 +709,8 @@ class LLMClient:
             # Transient retry
             time.sleep(TRANSIENT_DELAY)
             try:
-                yield from self._stream_once(model, messages)
+                for chunk in self._stream_once(model, messages):
+                    yield chunk
             except Exception:
                 raise e
 
