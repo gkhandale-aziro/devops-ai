@@ -16,10 +16,10 @@ export interface ChatMsg {
 }
 
 /** Timeout for initial server response (covers AI model latency + failover). */
-const RESPONSE_TIMEOUT_MS = 90_000;
+const RESPONSE_TIMEOUT_MS = 120_000;
 
 /** Timeout for silence during SSE streaming (no data for this long = stall). */
-const STREAM_STALL_MS = 60_000;
+const STREAM_STALL_MS = 120_000;
 
 /**
  * Create an AbortController that auto-aborts after `ms` milliseconds.

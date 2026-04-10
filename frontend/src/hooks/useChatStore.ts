@@ -36,7 +36,12 @@ const _listeners = new Set<() => void>();
 // In-flight abort controllers — keyed by session id
 const _aborts = new Map<string, AbortController>();
 
+// Version counter — incremented on every state change so useSyncExternalStore
+// detects a new snapshot (it compares by reference via Object.is)
+let _version = 0;
+
 function _notify() {
+  _version++;
   _listeners.forEach(fn => fn());
 }
 
@@ -65,8 +70,8 @@ function _setLastMessage(sid: string, msg: ChatMsg) {
 
 // ── Timeout helper ───────────────────────────────────────────────────────────
 
-const RESPONSE_TIMEOUT_MS = 90_000;
-const STREAM_STALL_MS     = 60_000;
+const RESPONSE_TIMEOUT_MS = 120_000;
+const STREAM_STALL_MS     = 120_000;
 
 function createTimedAbort(ms: number): [AbortController, () => void] {
   const controller = new AbortController();
@@ -166,8 +171,8 @@ function deleteSession(sid: string) {
 
 // ── React hook ───────────────────────────────────────────────────────────────
 
-function getSnapshot(): Map<string, SessionState> {
-  return _sessions;
+function getSnapshot(): number {
+  return _version;
 }
 
 function subscribe(cb: () => void): () => void {
@@ -176,10 +181,11 @@ function subscribe(cb: () => void): () => void {
 }
 
 export function useSessionChat(sessionId: string | null) {
-  // Subscribe to store changes
-  const store = useSyncExternalStore(subscribe, getSnapshot);
+  // Subscribe to store changes — version number changes on every _notify(),
+  // which tells React to re-render. We read state directly from the module map.
+  useSyncExternalStore(subscribe, getSnapshot);
 
-  const state = sessionId ? store.get(sessionId) : undefined;
+  const state = sessionId ? _sessions.get(sessionId) : undefined;
   const messages = state?.messages ?? [];
   const loading  = state?.loading ?? false;
 
