@@ -65,7 +65,7 @@ function _setLastMessage(sid: string, msg: ChatMsg) {
 
 // ── Timeout helper ───────────────────────────────────────────────────────────
 
-const RESPONSE_TIMEOUT_MS = 45_000;
+const RESPONSE_TIMEOUT_MS = 90_000;
 const STREAM_STALL_MS     = 60_000;
 
 function createTimedAbort(ms: number): [AbortController, () => void] {
@@ -107,6 +107,8 @@ async function sendMessage(sid: string, text: string) {
       if (controller.signal.aborted) break;
       resetTimer();
 
+      // Backend sends {status:"thinking"} immediately — reset timer
+      if (typeof evt.status === "string") continue;
       if (typeof evt.error === "string") {
         _setLastMessage(sid, { role: "assistant", content: `Error: ${evt.error}` });
         return;
@@ -125,7 +127,7 @@ async function sendMessage(sid: string, text: string) {
       }
       return;
     }
-    _setLastMessage(sid, { role: "assistant", content: `Error: ${String(e)}` });
+    _setLastMessage(sid, { role: "assistant", content: `Error: ${(e as Error)?.message ?? String(e)}` });
   } finally {
     _setState(sid, { loading: false });
     _aborts.delete(sid);

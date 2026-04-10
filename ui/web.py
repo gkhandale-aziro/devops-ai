@@ -715,6 +715,8 @@ def api_chat_stream(tid):
 
     def generate():
         try:
+            # Send thinking event immediately so frontend knows we're alive
+            yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
             if not needs_tools(user_msg):
                 full = ""
                 for chunk in _llm.chat_stream(messages, use_tools=False):
@@ -988,6 +990,8 @@ def api_sessions_chat_stream(sid):
     def generate():
         full = ""
         try:
+            # Send thinking event immediately so frontend knows we're alive
+            yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
             for chunk in _llm.chat_stream(msgs, use_tools=False):
                 full += chunk
                 yield f"data: {json.dumps({'t': chunk})}\n\n"

@@ -149,6 +149,8 @@ class Agent:
 
     def run(self, messages, target, session, target_id):
         """SSE generator for web streaming. Auto-proceeds on destructive commands."""
+        # Send thinking event immediately so frontend knows we're alive
+        yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
         _current_cmd = None
         _cmd_start = None
 
@@ -181,6 +183,8 @@ class Agent:
 
     def stream(self, messages):
         """SSE generator — direct streaming, no tool calls."""
+        # Send thinking event immediately so frontend knows we're alive
+        yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
         try:
             for chunk in self._llm.chat_stream(messages, use_tools=False):
                 yield f"data: {json.dumps({'t': chunk})}\n\n"

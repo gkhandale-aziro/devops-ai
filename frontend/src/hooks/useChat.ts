@@ -16,7 +16,7 @@ export interface ChatMsg {
 }
 
 /** Timeout for initial server response (covers AI model latency + failover). */
-const RESPONSE_TIMEOUT_MS = 45_000;
+const RESPONSE_TIMEOUT_MS = 90_000;
 
 /** Timeout for silence during SSE streaming (no data for this long = stall). */
 const STREAM_STALL_MS = 60_000;
@@ -81,6 +81,8 @@ export function useTargetChat(targetId: string | null) {
         if (timedController.signal.aborted) break;
         resetTimer(); // got data, reset stall timer
 
+        // Backend sends {status:"thinking"} immediately — reset timer
+        if (typeof evt.status === "string") continue;
         if (typeof evt.error === "string") {
           setError(setMessages, `Error: ${evt.error}`);
           return;
@@ -131,7 +133,7 @@ export function useTargetChat(targetId: string | null) {
         }
         return;
       }
-      setError(setMessages, `Error: ${String(e)}`);
+      setError(setMessages, `Error: ${(e as Error)?.message ?? String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -174,6 +176,8 @@ export function useSessionChat(sessionId: string | null) {
         if (timedController.signal.aborted) break;
         resetTimer();
 
+        // Backend sends {status:"thinking"} immediately — reset timer
+        if (typeof evt.status === "string") continue;
         if (typeof evt.error === "string") {
           setError(setMessages, `Error: ${evt.error}`);
           return;
@@ -194,7 +198,7 @@ export function useSessionChat(sessionId: string | null) {
         }
         return;
       }
-      setError(setMessages, `Error: ${String(e)}`);
+      setError(setMessages, `Error: ${(e as Error)?.message ?? String(e)}`);
     } finally {
       setLoading(false);
     }
