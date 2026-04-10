@@ -13,7 +13,6 @@
  */
 import {
   useState, useEffect, useCallback, useMemo, useRef, useDeferredValue,
-  type MouseEvent,
 } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { Target, PodStatus } from "../../types";
@@ -29,6 +28,76 @@ import { Badge } from "@/components/ui/badge";
 
 const nodeStatusColor = (s: string) => s === "Ready" ? C.status.success : C.status.danger;
 
+/** Parsed node row data fed to the DataTable column definitions. */
+interface NodeRowData {
+  name: string;
+  status: string;
+  roles: string;
+  age: string;
+  version: string;
+  internalIp: string;
+  statusColor: string;
+}
+
+/** Column definitions for the node DataTable. */
+function buildNodeColumns(): ColumnDef<NodeRowData, unknown>[] {
+  return [
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => (
+        <span className="text-[13px] font-semibold">{row.original.name}</span>
+      ),
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const { status, statusColor: sc } = row.original;
+        return (
+          <Badge
+            className="text-[11px]"
+            style={{ background: sc + "22", color: sc, borderColor: sc + "44" }}
+          >
+            {status}
+          </Badge>
+        );
+      },
+    },
+    {
+      accessorKey: "roles",
+      header: "Roles",
+      cell: ({ row }) => (
+        <span className="text-xs text-secondary-foreground">{row.original.roles}</span>
+      ),
+    },
+    {
+      accessorKey: "age",
+      header: "Age",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{row.original.age}</span>
+      ),
+    },
+    {
+      accessorKey: "version",
+      header: "Version",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{row.original.version}</span>
+      ),
+    },
+    {
+      accessorKey: "internalIp",
+      header: "Internal IP",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{row.original.internalIp}</span>
+      ),
+    },
+  ];
+}
+
+/** Module-level column definitions — stable reference, no closures needed. */
+const NODE_COLUMNS = buildNodeColumns();
+
 /**
  * Cluster node listing — parses `kubectl get nodes` output and renders it as
  * a clickable table. Row clicks open a ResourceModal with `kubectl describe
@@ -41,6 +110,26 @@ export function NodeTable({ raw, target }: { raw: string; target: Target }) {
 
   const allLines = useMemo(() => raw.trim().split("\n"), [raw]);
 
+  /** Parse kubectl output lines into typed NodeRowData[]. */
+  const parsedRows = useMemo<NodeRowData[]>(() =>
+    allLines.slice(1).reduce<NodeRowData[]>((acc, line) => {
+      const c = line.trim().split(/\s+/);
+      if (c.length < 4) return acc;
+      const [name, status, roles, age, version, internalIp] = c;
+      acc.push({
+        name,
+        status,
+        roles,
+        age,
+        version:    version    ?? "—",
+        internalIp: internalIp ?? "—",
+        statusColor: nodeStatusColor(status),
+      });
+      return acc;
+    }, []),
+    [allLines]
+  );
+
   const openNode = useCallback(async (name: string) => {
     setLoading(true);
     try {
@@ -51,50 +140,24 @@ export function NodeTable({ raw, target }: { raw: string; target: Target }) {
     }
   }, [target.id]);
 
+  const handleRowClick = useCallback((row: NodeRowData) => {
+    openNode(row.name);
+  }, [openNode]);
+
   if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
     return <div style={{ padding: 20, color: C.text.muted, fontSize: 13 }}>kubectl not available or no nodes found.</div>;
   }
   if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
   return (
-    <div style={{ overflowY: "auto", flex: 1 }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: C.bg.base, position: "sticky", top: 0 }}>
-            {["Name", "Status", "Roles", "Age", "Version", "Internal IP"].map(h => (
-              <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: C.text.muted, textTransform: "uppercase", borderBottom: `1px solid ${C.border.muted}` }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {allLines.slice(1).map((line, i) => {
-            const c = line.trim().split(/\s+/);
-            if (c.length < 4) return null;
-            const [name, status, roles, age, version, internalIp] = c;
-            const sc = nodeStatusColor(status);
-            return (
-              <tr key={i} onClick={() => openNode(name)}
-                tabIndex={0}
-                role="button"
-                aria-label={`View node ${name}`}
-                onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openNode(name); } }}
-                style={{ cursor: "pointer", transition: "background .1s" }}
-                onMouseEnter={(ev: MouseEvent<HTMLTableRowElement>) => (ev.currentTarget.style.background = C.bg.card)}
-                onMouseLeave={(ev: MouseEvent<HTMLTableRowElement>) => (ev.currentTarget.style.background = "transparent")}
-              >
-                <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 500 }}>{name}</td>
-                <td style={{ padding: "8px 12px" }}>
-                  <span style={{ background: sc + "22", color: sc, border: `1px solid ${sc}44`, borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{status}</span>
-                </td>
-                <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.secondary }}>{roles}</td>
-                <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{age}</td>
-                <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{version ?? "—"}</td>
-                <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{internalIp ?? "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <DataTable<NodeRowData>
+        columns={NODE_COLUMNS}
+        data={parsedRows}
+        onRowClick={handleRowClick}
+        emptyMessage="No nodes found"
+        keyboardNav
+      />
 
       {(resource || loading) && (
         <ResourceModal resource={resource} loading={loading} targetId={target.id} onClose={() => setResource(null)} />

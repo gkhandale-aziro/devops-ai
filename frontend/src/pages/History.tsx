@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
 import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { StoredEvent, TriageLevel, Snapshot, Analysis, IncidentStatus } from "../types";
-import { LEVEL_COLORS, LEVEL_LABELS, levelColor } from "../types";
+import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
 import { api } from "../api/client";
 import { LevelBadge }   from "../components/LevelBadge";
 import { AIDrawer }      from "../components/AIDrawer";
 import { skeletonStyle } from "../utils/animations";
+import { DataTable }     from "@/components/ui/data-table";
+import { Badge }         from "@/components/ui/badge";
 
 const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 
@@ -14,6 +17,107 @@ const STATUS_STYLES: Record<IncidentStatus, { color: string; bg: string; label: 
   acknowledged: { color: "#fbbf24", bg: "#2a1a00",  label: "Acknowledged" },
   resolved:     { color: "#22c55e", bg: "#0a2a1a",  label: "Resolved"     },
 };
+
+/**
+ * Builds column definitions for the incident history DataTable.
+ * Accepts closures so cell renderers can access per-render state without
+ * prop-drilling through DataTable internals (same pattern as PodTable).
+ */
+function buildIncidentColumns(opts: {
+  openAIForEvent: (ev: StoredEvent) => void;
+}): ColumnDef<StoredEvent, unknown>[] {
+  const { openAIForEvent } = opts;
+  return [
+    {
+      accessorKey: "level",
+      header: "Severity",
+      cell: ({ row }) => <LevelBadge level={row.original.level} />,
+    },
+    {
+      accessorKey: "timestamp",
+      header: "Time",
+      cell: ({ row }) => (
+        <span
+          title={row.original.timestamp}
+          className="text-xs text-muted-foreground whitespace-nowrap"
+        >
+          {relativeTime(row.original.timestamp)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "reason",
+      header: "Reason",
+      cell: ({ row }) => {
+        const e = row.original;
+        return (
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>{e.reason}</div>
+            {e.last_diagnosis && (
+              <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
+                <Sparkles size={9} style={{ display: "inline", marginRight: 3 }} />
+                {e.last_diagnosis.slice(0, 80)}{e.last_diagnosis.length > 80 ? "…" : ""}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "object",
+      header: "Object / Source",
+      cell: ({ row }) => {
+        const e = row.original;
+        return (
+          <div style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>{e.object}</div>
+            <div style={{ fontSize: 10, color: "#64748b" }}>
+              {e.source}{e.namespace ? ` / ${e.namespace}` : ""}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const ss = STATUS_STYLES[row.original.status ?? "open"];
+        return (
+          <Badge
+            className="text-[10px] font-semibold"
+            style={{ color: ss.color, background: ss.bg, borderColor: ss.color + "44" }}
+          >
+            {ss.label}
+          </Badge>
+        );
+      },
+    },
+    {
+      id: "ai_action",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <button
+          onClick={(ev) => { ev.stopPropagation(); openAIForEvent(row.original); }}
+          title="Ask AI about this incident"
+          style={{
+            background: "#7c8cf811",
+            border: "1px solid #7c8cf833",
+            color: "#7c8cf8",
+            borderRadius: 6,
+            padding: "4px 10px",
+            fontSize: 11,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <Sparkles size={10} style={{ marginRight: 3, display: "inline" }} /> AI
+        </button>
+      ),
+    },
+  ];
+}
 
 function relativeTime(ts: string): string {
   const ms = new Date(ts).getTime();
@@ -81,7 +185,7 @@ export function History() {
     }
   }
 
-  function openAIForEvent(ev: StoredEvent) {
+  const openAIForEvent = useCallback((ev: StoredEvent) => {
     const snaps = (ev.snapshots ?? [])
       .map(s => `\n── ${s.kind} ──\n${s.content?.slice(0, 1500)}`)
       .join("\n");
@@ -93,7 +197,20 @@ export function History() {
     setAiContext(prompt);
     setAiTitle(`AI: ${ev.reason} — ${ev.object}`);
     setAiDrawerOpen(true);
-  }
+  }, []);
+
+  /** Column defs are rebuilt only when openAIForEvent changes (stable ref). */
+  const incidentColumns = useMemo(
+    () => buildIncidentColumns({ openAIForEvent }),
+    [openAIForEvent]
+  );
+
+  /** Highlight selected row + add severity left-border accent via CSS classes. */
+  const getRowClassName = useCallback((e: StoredEvent): string => {
+    const parts: string[] = [];
+    if (e.id === selectedId) parts.push("bg-[#1a2040]");
+    return parts.join(" ");
+  }, [selectedId]);
 
   async function updateStatus(ev: StoredEvent, status: IncidentStatus) {
     await api.events.updateStatus(ev.id, status);
@@ -101,7 +218,6 @@ export function History() {
     setEvents((prev: StoredEvent[]) => prev.map((e: StoredEvent) => e.id === ev.id ? { ...e, status } : e));
   }
 
-  const sevColor = (lv: string) => levelColor(lv).border;
   const hasFilters = level !== "" || objInput !== "";
 
   return (
@@ -229,78 +345,14 @@ export function History() {
             )}
 
             {events.length > 0 && (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#0d1117", position: "sticky", top: 0, zIndex: 1 }}>
-                    {["", "Severity", "Time", "Reason", "Object / Source", "Status", ""].map((h, i) => (
-                      <th key={i} style={{ padding: "9px 14px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", borderBottom: "1px solid #2d3148" }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.map(e => {
-                    const isSelected = e.id === selectedId;
-                    const ss = STATUS_STYLES[e.status ?? "open"];
-                    return (
-                      <tr
-                        key={e.id}
-                        onClick={() => openDetail(e.id)}
-                        style={{
-                          borderBottom: "1px solid #1e2130",
-                          cursor: "pointer",
-                          background: isSelected ? "#1a2040" : "transparent",
-                          transition: "background .1s",
-                        }}
-                        onMouseEnter={ev => { if (!isSelected) ev.currentTarget.style.background = "#14172266"; }}
-                        onMouseLeave={ev => { if (!isSelected) ev.currentTarget.style.background = "transparent"; }}
-                      >
-                        <td style={{ width: 3, padding: 0, background: sevColor(e.level) }} />
-                        <td style={{ padding: "9px 14px" }}><LevelBadge level={e.level} /></td>
-                        <td style={{ padding: "9px 14px", fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>
-                          <span title={e.timestamp}>{relativeTime(e.timestamp)}</span>
-                        </td>
-                        <td style={{ padding: "9px 14px" }}>
-                          <div style={{ fontSize: 13, fontWeight: 500 }}>{e.reason}</div>
-                          {e.last_diagnosis && (
-                            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
-                              <Sparkles size={9} style={{ display: "inline", marginRight: 3 }} /> {e.last_diagnosis.slice(0, 80)}{e.last_diagnosis.length > 80 ? "…" : ""}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: "9px 14px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          <div style={{ fontSize: 13, fontWeight: 500 }}>{e.object}</div>
-                          <div style={{ fontSize: 10, color: "#64748b" }}>{e.source}{e.namespace ? ` / ${e.namespace}` : ""}</div>
-                        </td>
-                        <td style={{ padding: "9px 14px" }}>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: ss.color, background: ss.bg, border: `1px solid ${ss.color}44`, borderRadius: 4, padding: "2px 7px" }}>
-                            {ss.label}
-                          </span>
-                        </td>
-                        <td style={{ padding: "9px 14px" }}>
-                          <button
-                            onClick={(ev) => { ev.stopPropagation(); openAIForEvent(e); }}
-                            title="Ask AI about this incident"
-                            style={{
-                              background: "#7c8cf811",
-                              border: "1px solid #7c8cf833",
-                              color: "#7c8cf8",
-                              borderRadius: 6,
-                              padding: "4px 10px",
-                              fontSize: 11,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            <Sparkles size={10} style={{ marginRight: 3 }} /> AI
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <DataTable<StoredEvent>
+                columns={incidentColumns}
+                data={events}
+                onRowClick={(e) => openDetail(e.id)}
+                getRowClassName={getRowClassName}
+                emptyMessage="No incidents recorded yet."
+                keyboardNav
+              />
             )}
           </div>
         </div>
