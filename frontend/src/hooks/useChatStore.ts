@@ -158,6 +158,33 @@ async function loadHistory(sid: string) {
   }
 }
 
+/** Retry: remove the last assistant error + re-send the last user message. */
+function retryLast(sid: string) {
+  const state = _getState(sid);
+  const msgs = state.messages;
+  // Find last user message (skip trailing assistant error)
+  let lastUserIdx = -1;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === "user") { lastUserIdx = i; break; }
+  }
+  if (lastUserIdx < 0) return;
+  const text = msgs[lastUserIdx].content;
+  // Remove the user message + everything after it (the error response)
+  state.messages = msgs.slice(0, lastUserIdx);
+  _notify();
+  sendMessage(sid, text);
+}
+
+/** Edit: replace messages from index onward, re-send with new text. */
+function editAndResend(sid: string, msgIndex: number, newText: string) {
+  if (!newText.trim()) return;
+  const state = _getState(sid);
+  // Truncate to before the edited message
+  state.messages = state.messages.slice(0, msgIndex);
+  _notify();
+  sendMessage(sid, newText);
+}
+
 function clearSession(sid: string) {
   _aborts.get(sid)?.abort();
   _aborts.delete(sid);
@@ -193,6 +220,14 @@ export function useSessionChat(sessionId: string | null) {
     if (sessionId) sendMessage(sessionId, text);
   }, [sessionId]);
 
+  const retry = useCallback(() => {
+    if (sessionId) retryLast(sessionId);
+  }, [sessionId]);
+
+  const edit = useCallback((msgIndex: number, newText: string) => {
+    if (sessionId) editAndResend(sessionId, msgIndex, newText);
+  }, [sessionId]);
+
   const clear = useCallback(() => {
     if (sessionId) clearSession(sessionId);
   }, [sessionId]);
@@ -201,7 +236,7 @@ export function useSessionChat(sessionId: string | null) {
     if (sessionId) loadHistory(sessionId);
   }, [sessionId]);
 
-  return { messages, loading, send, clear, load };
+  return { messages, loading, send, retry, edit, clear, load };
 }
 
 // Re-export for convenience

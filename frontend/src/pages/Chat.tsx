@@ -21,7 +21,7 @@ export function Chat(_props: Props) {
     }).catch(e => console.warn("[Chat] sessions.list failed:", (e as Error)?.message));
   }, []);
 
-  const { messages, loading, send, clear, load } = useSessionChat(activeSession);
+  const { messages, loading, send, retry, edit, clear, load } = useSessionChat(activeSession);
 
   const createSession = useCallback(async () => {
     const title = `Chat ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
@@ -184,6 +184,8 @@ export function Chat(_props: Props) {
             messages={messages}
             loading={loading}
             onSend={send}
+            onRetry={retry}
+            onEdit={edit}
             placeholder="Ask anything about DevOps, infrastructure, troubleshooting…"
           />
         )}

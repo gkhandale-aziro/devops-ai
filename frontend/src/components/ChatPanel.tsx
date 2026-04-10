@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Check, X as XIcon, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Check, X as XIcon, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown, RotateCcw, Pencil } from "lucide-react";
 import type { ChatMsg, ToolCall } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
 import { C } from "../utils/theme";
@@ -9,14 +9,18 @@ interface Props {
   messages:     ChatMsg[];
   loading:      boolean;
   onSend:       (text: string) => void;
+  onRetry?:     () => void;
+  onEdit?:      (msgIndex: number, newText: string) => void;
   placeholder?: string;
   targetId?:    string;
 }
 
-export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: Props) {
+export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placeholder, targetId }: Props) {
   const [text,    setText]    = useState("");
   const [focused, setFocused] = useState(false);
   const [ratings, setRatings] = useState<Record<number, "up" | "down">>({});
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editText,   setEditText]   = useState("");
 
   function handleFeedback(msgIndex: number, content: string, rating: "up" | "down") {
     if (ratings[msgIndex]) return; // already rated
@@ -96,8 +100,35 @@ export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: 
                 fontSize: 13,
                 lineHeight: 1.65,
                 color: "var(--c-text-primary)",
+                position: "relative",
               }}>
-                {isUser ? (
+                {isUser && editingIdx === i ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <textarea
+                      autoFocus
+                      value={editText}
+                      onChange={e => setEditText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          if (editText.trim() && onEdit) { onEdit(i, editText.trim()); setEditingIdx(null); }
+                        }
+                        if (e.key === "Escape") setEditingIdx(null);
+                      }}
+                      style={{
+                        background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)",
+                        borderRadius: 6, padding: "6px 8px", color: "#fff",
+                        fontSize: 13, fontFamily: "inherit", resize: "none",
+                        outline: "none", minHeight: 36, lineHeight: 1.5,
+                      }}
+                      rows={2}
+                    />
+                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                      <button onClick={() => setEditingIdx(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", borderRadius: 4, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}>Cancel</button>
+                      <button onClick={() => { if (editText.trim() && onEdit) { onEdit(i, editText.trim()); setEditingIdx(null); } }} style={{ background: "#fff", border: "none", color: "#6366f1", borderRadius: 4, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Send</button>
+                    </div>
+                  </div>
+                ) : isUser ? (
                   <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.content}</span>
                 ) : m.content ? (
                   <Markdown>{m.content}</Markdown>
@@ -105,6 +136,42 @@ export function ChatPanel({ messages, loading, onSend, placeholder, targetId }: 
                   <ThinkingDots />
                 ) : "—"}
               </div>
+
+              {/* Edit button on user messages */}
+              {isUser && editingIdx !== i && !loading && onEdit && (
+                <button
+                  onClick={() => { setEditingIdx(i); setEditText(m.content); }}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    padding: 3, borderRadius: 4, display: "flex", alignItems: "center",
+                    opacity: 0.4, transition: "opacity 150ms",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = "0.4")}
+                  title="Edit & resend"
+                >
+                  <Pencil size={12} color={C.text.muted} />
+                </button>
+              )}
+
+              {/* Retry button on assistant error messages */}
+              {!isUser && m.content.startsWith("Error:") && !loading && onRetry && (
+                <button
+                  onClick={onRetry}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    background: "var(--c-bg-surface)", border: "1px solid var(--c-border)",
+                    borderRadius: 6, padding: "4px 10px", fontSize: 11,
+                    color: C.accent.primary, cursor: "pointer",
+                    transition: "all 150ms",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent.primary; e.currentTarget.style.background = `${C.accent.primary}11`; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--c-border)"; e.currentTarget.style.background = "var(--c-bg-surface)"; }}
+                >
+                  <RotateCcw size={12} />
+                  Retry
+                </button>
+              )}
 
               {/* Feedback bar — thumbs up/down on assistant messages */}
               {!isUser && m.content && !(loading && isLast) && (
