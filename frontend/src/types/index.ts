@@ -183,8 +183,8 @@ export type PodStatus =
 // ── Tab commands ──────────────────────────────────────────────────────────────
 
 export type TabId =
-  | "overview" | "kubernetes" | "logs" | "network" | "storage"  // ssh/local
-  | "nodes" | "pods" | "deployments" | "services" | "events"    // kubernetes
+  | "overview" | "services" | "processes" | "logs" | "network" | "storage" | "security"  // ssh/local
+  | "nodes" | "pods" | "deployments" | "events"                 // kubernetes
   | "workloads" | "k8s_storage" | "ingress"                     // kubernetes extra
   | "__chat" | "__topology"                                      // virtual tabs
   | "containers" | "images" | "networks" | "volumes" | "stats"  // docker
@@ -201,17 +201,21 @@ export interface Tab {
 export const TABS_BY_TYPE: Record<TargetType, Tab[]> = {
   ssh: [
     { id: "overview",   label: "Overview"   },
-    { id: "kubernetes", label: "Kubernetes" },
+    { id: "services",   label: "Services"   },
+    { id: "processes",  label: "Processes"  },
     { id: "logs",       label: "Logs"       },
     { id: "network",    label: "Network"    },
     { id: "storage",    label: "Storage"    },
+    { id: "security",   label: "Security"   },
   ],
   local: [
     { id: "overview",   label: "Overview"   },
-    { id: "kubernetes", label: "Kubernetes" },
+    { id: "services",   label: "Services"   },
+    { id: "processes",  label: "Processes"  },
     { id: "logs",       label: "Logs"       },
     { id: "network",    label: "Network"    },
     { id: "storage",    label: "Storage"    },
+    { id: "security",   label: "Security"   },
   ],
   kubernetes: [
     { id: "workloads",    label: "Workloads"   },

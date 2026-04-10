@@ -414,11 +414,18 @@ TAB_COMMANDS = {
                        "failed_svc": "systemctl list-units --failed --no-legend 2>/dev/null",
                        "top_procs": "ps aux --sort=-%cpu | head -6",
                        "hostname": "hostname -f 2>/dev/null || hostname"},
-        "kubernetes": {"nodes": "kubectl get nodes -o wide",
-                       "pods": "kubectl get pods -A -o wide",
-                       "deployments": "kubectl get deployments -A",
-                       "services": "kubectl get svc -A",
-                       "events": "kubectl get events -A --sort-by=.lastTimestamp 2>&1"},
+        "services":   {"all": "systemctl list-units --type=service --no-pager",
+                       "failed": "systemctl list-units --type=service --state=failed --no-pager --no-legend",
+                       "timers": "systemctl list-timers --all --no-pager",
+                       "enabled": "systemctl list-unit-files --type=service --state=enabled --no-pager --no-legend | wc -l"},
+        "processes":  {"top_cpu": "ps aux --sort=-%cpu | head -16",
+                       "top_mem": "ps aux --sort=-%mem | head -16",
+                       "load": "uptime",
+                       "count": "ps aux --no-headers | wc -l"},
+        "security":   {"last_logins": "last -10 -w",
+                       "failed_logins": "journalctl _COMM=sshd --no-pager -n 30 2>/dev/null | grep -i 'failed\\|invalid' | tail -15",
+                       "firewall": "ufw status verbose 2>/dev/null || iptables -L -n --line-numbers 2>/dev/null || echo 'No firewall detected'",
+                       "active_users": "w -h"},
         "logs":       {"logs": "journalctl -n 100 --no-pager 2>/dev/null"},
         "network":    {"ports": "ss -tlnp", "routes": "ip route show",
                        "dns": "cat /etc/resolv.conf",
@@ -547,6 +554,16 @@ def api_resource(tid):
     ns   = request.args.get("ns", "").strip()
 
     ttype = target.get("type", "ssh")
+
+    # SSH/local targets — systemd service detail
+    if ttype in ("ssh", "local"):
+        if kind == "service" and name and _SAFE_NAME_RE.match(name):
+            result = _run_many(target, {
+                "describe": f"systemctl status {name} --no-pager 2>&1",
+                "logs":     f"journalctl -u {name} -n 80 --no-pager 2>&1",
+            })
+            return jsonify(result)
+        return jsonify({"error": "unsupported kind"}), 400
 
     # Docker targets — use docker inspect/logs instead of kubectl
     if ttype == "docker":
@@ -703,9 +720,21 @@ def api_chat_stream(tid):
 # ── AI analysis ───────────────────────────────────────────────────────────────
 
 _ANALYSIS_SYSTEM = (
-    "You are a Kubernetes and DevOps expert. "
-    "Analyze the provided data and give clear, actionable recommendations. "
-    "Use markdown formatting."
+    "You are a senior DevOps and infrastructure expert. "
+    "Analyze the provided data and respond using this exact markdown structure:\n\n"
+    "## Status\n"
+    "One of: **Healthy**, **Warning**, or **Critical** — followed by a one-line reason.\n\n"
+    "## Summary\n"
+    "2-3 sentence plain-English overview of the current state.\n\n"
+    "## Issues Found\n"
+    "Bulleted list. Each bullet starts with a severity tag in bold: "
+    "**Critical**, **Warning**, or **Info**. Include what the issue is, "
+    "its impact, and evidence from the data. If no issues, write 'No issues detected.'\n\n"
+    "## Recommendations\n"
+    "Numbered list of specific, actionable steps ordered by urgency. "
+    "Include exact commands when applicable.\n\n"
+    "Be concise (under 400 words). Use markdown formatting. "
+    "Do not add sections beyond the four above."
 )
 
 
