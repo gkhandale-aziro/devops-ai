@@ -17,7 +17,7 @@ export function EmptyState({ icon, title, description }: EmptyStateProps) {
       flexDirection: "column", gap: 12, padding: 40,
       color: C.text.muted,
     }}>
-      <div style={{ opacity: 0.5 }}>{icon}</div>
+      <div style={{ opacity: 0.5 }} aria-hidden="true">{icon}</div>
       <div style={{ fontSize: 14, fontWeight: 600, color: C.text.secondary }}>{title}</div>
       {description && (
         <div style={{ fontSize: 12, color: C.text.faint, textAlign: "center", maxWidth: 320, lineHeight: 1.6 }}>

@@ -41,6 +41,8 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
           <button
             key={range}
             type="button"
+            aria-label={`Select ${range} time range`}
+            aria-pressed={active}
             onClick={() => onChange(range)}
             style={{
               padding: `${SPACE.xs}px ${SPACE.md}px`,

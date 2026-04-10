@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../api/client";
 
 interface MetricPoint {
@@ -14,7 +14,7 @@ interface UseMetricsResult {
 
 /**
  * Fetches metric time-series from /api/v1/metrics/<targetId>.
- * Auto-refreshes every 60s. Returns { data, loading, error }.
+ * Auto-refreshes every 60s. Cancels in-flight requests on param change.
  */
 export function useMetrics(
   targetId: string | undefined,
@@ -24,28 +24,46 @@ export function useMetrics(
   const [data, setData] = useState<Record<string, MetricPoint[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const metricParam = metrics.join(",");
 
-  const fetch_ = useCallback(async () => {
-    if (!targetId) return;
-    try {
-      const result = await api.metrics(targetId, { metric: metricParam, range });
-      setData(result);
-      setError(null);
-    } catch (e) {
-      setError((e as Error)?.message ?? "Failed to load metrics");
-    } finally {
-      setLoading(false);
-    }
-  }, [targetId, metricParam, range]);
-
   useEffect(() => {
+    if (!targetId) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchMetrics() {
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
+      try {
+        const result = await api.metrics(targetId!, { metric: metricParam, range });
+        if (!cancelled) {
+          setData(result);
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError((e as Error)?.message ?? "Failed to load metrics");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
     setLoading(true);
-    fetch_();
-    const interval = setInterval(fetch_, 60_000);
-    return () => clearInterval(interval);
-  }, [fetch_]);
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 60_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      abortRef.current?.abort();
+    };
+  }, [targetId, metricParam, range]);
 
   return { data, loading, error };
 }

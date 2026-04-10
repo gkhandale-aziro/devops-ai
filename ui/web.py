@@ -878,6 +878,7 @@ def api_monitor_status():
         return jsonify({
             "active": len(_web_watchers) > 0,
             "targets": list(_web_watchers.keys()),
+            "metrics_active": list(_metric_collector._threads.keys()),
         })
 
 

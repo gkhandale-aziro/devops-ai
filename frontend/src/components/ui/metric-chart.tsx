@@ -89,7 +89,7 @@ export function MetricChart({
   const useDay = spanExceeds24h(data);
 
   return (
-    <div style={{ width: "100%", height }}>
+    <div style={{ width: "100%", height }} role="img" aria-label={`${label} chart`}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
           <defs>
