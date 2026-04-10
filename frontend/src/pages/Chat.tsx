@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Target, ChatSession } from "../types";
-import type { ChatMsg } from "../hooks/useChat";
-import { useSessionChat } from "../hooks/useChat";
+import { useSessionChat, deleteSessionStore } from "../hooks/useChatStore";
 import { ChatPanel } from "../components/ChatPanel";
 import { api } from "../api/client";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -14,8 +13,6 @@ interface Props {
 export function Chat(_props: Props) {
   const [sessions,      setSessions]      = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<string | null>(null);
-  const [history,       setHistory]       = useState<ChatMsg[]>([]);
-  const [histLoading,   setHistLoading]   = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,13 +21,12 @@ export function Chat(_props: Props) {
     }).catch(e => console.warn("[Chat] sessions.list failed:", (e as Error)?.message));
   }, []);
 
-  const { messages, loading, send, clear } = useSessionChat(activeSession);
+  const { messages, loading, send, clear, load } = useSessionChat(activeSession);
 
   const createSession = useCallback(async () => {
     const title = `Chat ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
     const s = await api.sessions.create(title);
     setSessions(prev => [s, ...prev]);
-    setHistory([]);
     setActiveSession(s.id);
     clear();
   }, [clear]);
@@ -38,40 +34,30 @@ export function Chat(_props: Props) {
   const deleteSession = useCallback(async (id: string) => {
     await api.sessions.remove(id);
     setSessions(prev => prev.filter(s => s.id !== id));
+    deleteSessionStore(id);
     if (activeSession === id) {
       setActiveSession(null);
-      setHistory([]);
-      clear();
     }
-  }, [activeSession, clear]);
+  }, [activeSession]);
 
-  const switchSession = useCallback(async (id: string) => {
+  const switchSession = useCallback((id: string) => {
     setActiveSession(id);
-    setHistory([]);
-    clear();
-    setHistLoading(true);
-    try {
-      const msgs = await api.sessions.messages(id);
-      const chatMsgs: ChatMsg[] = msgs
-        .filter(m => m.role !== "system")
-        .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
-      setHistory(chatMsgs);
-    } catch {
-      setHistory([]);
-    } finally {
-      setHistLoading(false);
-    }
-  }, [clear]);
+    // load() checks if messages already exist in the store (e.g. from
+    // an in-flight request) and only fetches from backend if empty
+    load();
+  }, [load]);
 
   // Auto-select first session on mount
   useEffect(() => {
     if (sessions.length > 0 && !activeSession) {
-      switchSession(sessions[0].id);
+      setActiveSession(sessions[0].id);
     }
   }, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Combine history with live messages (dedup by showing history only when live is empty)
-  const displayMessages = messages.length > 0 ? messages : history;
+  // Load history when active session changes
+  useEffect(() => {
+    if (activeSession) load();
+  }, [activeSession, load]);
 
   return (
     <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
@@ -172,7 +158,7 @@ export function Chat(_props: Props) {
           </div>
           {messages.length > 0 && (
             <button
-              onClick={() => { clear(); setHistory([]); }}
+              onClick={clear}
               style={{
                 marginLeft: "auto", background: "transparent", border: "1px solid var(--c-border)",
                 color: "var(--c-text-muted)", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer",
@@ -193,14 +179,9 @@ export function Chat(_props: Props) {
               <div style={{ fontSize: 13 }}>Click <strong style={{ color: "var(--c-accent)" }}>+</strong> in the sidebar to start a new chat</div>
             </div>
           </div>
-        ) : histLoading ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-muted)", fontSize: 13, gap: 8 }}>
-            <span style={{ width: 14, height: 14, border: "2px solid var(--c-border)", borderTopColor: "var(--c-accent)", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
-            Loading conversation…
-          </div>
         ) : (
           <ChatPanel
-            messages={displayMessages}
+            messages={messages}
             loading={loading}
             onSend={send}
             placeholder="Ask anything about DevOps, infrastructure, troubleshooting…"
