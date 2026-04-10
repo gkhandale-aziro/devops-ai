@@ -412,7 +412,7 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
 
   // Overview — rich metric cards for SSH/local
   if ((ttype === "ssh" || ttype === "local") && tabId === "overview") {
-    return <OverviewTab data={data} />;
+    return <OverviewTab data={data} targetId={target.id} />;
   }
 
   // Nodes — cluster-scoped, separate parser

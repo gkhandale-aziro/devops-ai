@@ -12,7 +12,10 @@ import {
 import type { Target } from '../../types';
 import { RingChart, Card, Pre } from './primitives';
 import { KubectlTable, ResourceModal, hasKubectlData, serviceTypeColorFn, pvStatusColorFn, type ColorFn } from './tables';
+import { MetricChart } from '../../components/ui/metric-chart';
+import { TimeRangePicker } from '../../components/ui/time-range-picker';
 import { api } from '../../api/client';
+import { useMetrics } from '../../hooks/useMetrics';
 import { C } from '../../utils/theme';
 
 // ── Resource detail helpers ──────────────────────────────────────────────────
@@ -52,7 +55,7 @@ function extractResourceFromRow(cols: string[], headers: string[]): { name: stri
 /** SSH/local target overview — uptime, disk, memory, hostname metric cards
  *  rendered via `RingChart` where a percentage is parseable, otherwise plain
  *  text. Falls back to `GenericTab` fields for any extra keys in `data`. */
-export function OverviewTab({ data }: { data: Record<string, string> }) {
+export function OverviewTab({ data, targetId }: { data: Record<string, string>; targetId?: string }) {
   const uptime    = data.uptime ?? "";
   const memRaw    = data.memory ?? "";
   const diskRaw   = data.disk   ?? "";
@@ -85,6 +88,9 @@ export function OverviewTab({ data }: { data: Record<string, string> }) {
   const pctColor  = (p: number) => p > 80 ? C.status.danger : p > 60 ? C.status.warning : C.status.success;
   const fillColor = (p: number) => p > 80 ? C.status.danger : p > 60 ? C.status.warning : C.status.success;
 
+  const [range, setRange] = useState("1h");
+  const { data: metricsData } = useMetrics(targetId, ["cpu_pct", "mem_pct", "disk_pct", "load_1m"], range);
+
   return (
     <div style={{ overflowY: "auto", padding: 16, flex: 1 }}>
       {/* metric cards — Skill #6: SVG ring charts instead of flat bars */}
@@ -110,6 +116,32 @@ export function OverviewTab({ data }: { data: Record<string, string> }) {
           </div>
         ))}
       </div>
+
+      {/* ── Trend charts ───────────────────────────────────────── */}
+      {targetId && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text.secondary }}>Trends</div>
+            <TimeRangePicker value={range} onChange={setRange} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 11, color: C.text.muted, marginBottom: 8, fontWeight: 600 }}>Memory Usage</div>
+              <MetricChart data={metricsData.mem_pct ?? []} label="Memory" unit="%" color={C.status.info} height={140} thresholds={{ warn: 70, danger: 90 }} />
+            </div>
+            <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 11, color: C.text.muted, marginBottom: 8, fontWeight: 600 }}>Disk Usage</div>
+              <MetricChart data={metricsData.disk_pct ?? []} label="Disk" unit="%" color={C.accent.soft} height={140} thresholds={{ warn: 80, danger: 95 }} />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 16 }}>
+            <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 11, color: C.text.muted, marginBottom: 8, fontWeight: 600 }}>Load Average (1m)</div>
+              <MetricChart data={metricsData.load_1m ?? []} label="Load" unit="" color={C.accent.primary} height={140} />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* failed services + top procs */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
