@@ -1,8 +1,11 @@
 """
-providers/client.py — Production-grade AI provider layer using OpenAI SDK.
+providers/client.py — Production-grade AI provider layer.
 
-Uses the OpenAI-compatible API that Ollama, Gemini, OpenAI, and Anthropic
-all support. One SDK, direct connections, no middleware.
+Supports all major AI providers via their native SDKs:
+  - Ollama:    OpenAI SDK → localhost/v1 (free, local)
+  - Gemini:    OpenAI SDK → Google's OpenAI-compatible endpoint
+  - OpenAI:    OpenAI SDK (native)
+  - Anthropic: Anthropic SDK (native Messages API)
 
 Two-model setup (optional):
   TOOL_MODEL   — fast model for deciding which commands to run
@@ -27,6 +30,11 @@ import threading
 import functools
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from openai import OpenAI
+
+try:
+    import anthropic as _anthropic_mod
+except ImportError:
+    _anthropic_mod = None
 
 # Force unbuffered output so Docker logs show [AI] lines immediately
 print = functools.partial(print, flush=True)
@@ -67,47 +75,152 @@ TIMEOUT_PROBE   = 10   # seconds — health probe / recovery ping
 
 # ── Provider routing ─────────────────────────────────────────────────────────
 
-_PROVIDER_CONFIG = {
-    "ollama": {
-        "base_url": lambda: _get_ollama_base().rstrip("/") + "/v1",
-        "api_key": "ollama",
-    },
-    "gemini": {
-        "base_url": lambda: "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "api_key_env": "GEMINI_API_KEY",
-    },
-    "openai": {
-        "base_url": lambda: "https://api.openai.com/v1",
-        "api_key_env": "OPENAI_API_KEY",
-    },
-    "anthropic": {
-        "base_url": lambda: "https://api.anthropic.com/v1/",
-        "api_key_env": "ANTHROPIC_API_KEY",
-    },
-}
+def _parse_model(model: str) -> tuple[str, str]:
+    """Split 'provider/model-name' → (provider, model_name)."""
+    if "/" in model:
+        return model.split("/")[0], model.split("/", 1)[1]
+    return "ollama", model
 
 
-def _make_client(model: str) -> tuple[OpenAI, str]:
-    """Create an OpenAI client for the given model. Returns (client, model_name).
-
-    Model format: "provider/model-name" e.g. "ollama/qwen2.5:7b", "gemini/gemini-2.5-flash"
-    The provider prefix is stripped before sending to the API.
+def _call_api(model: str, messages: list, *, stream: bool = False,
+              tools: list | None = None, max_tokens: int | None = None):
     """
-    provider = model.split("/")[0] if "/" in model else "ollama"
-    model_name = model.split("/", 1)[1] if "/" in model else model
+    Unified API call that routes to the right provider.
+    Returns a response object (OpenAI format) or a stream.
+    Anthropic responses are converted to OpenAI format for consistency.
+    """
+    provider, model_name = _parse_model(model)
 
-    config = _PROVIDER_CONFIG.get(provider)
-    if not config:
+    if provider == "anthropic":
+        return _call_anthropic(model_name, messages, stream=stream,
+                               tools=tools, max_tokens=max_tokens)
+
+    # All other providers use OpenAI SDK
+    base_url, api_key = _get_openai_config(provider)
+    client = OpenAI(base_url=base_url, api_key=api_key, timeout=TIMEOUT_STREAM)
+
+    kwargs: dict = {"model": model_name, "messages": messages, "stream": stream}
+    if tools:
+        kwargs["tools"] = tools
+    if max_tokens:
+        kwargs["max_tokens"] = max_tokens
+
+    return client.chat.completions.create(**kwargs)
+
+
+def _get_openai_config(provider: str) -> tuple[str, str]:
+    """Return (base_url, api_key) for OpenAI-compatible providers."""
+    if provider == "ollama":
+        base = _get_ollama_base()
+        if not base:
+            raise ValueError("Ollama not reachable. Check OLLAMA_API_BASE or start Ollama.")
+        return base.rstrip("/") + "/v1", "ollama"
+    elif provider == "gemini":
+        key = os.environ.get("GEMINI_API_KEY", "")
+        if not key:
+            raise ValueError("Set GEMINI_API_KEY environment variable")
+        return "https://generativelanguage.googleapis.com/v1beta/openai/", key
+    elif provider == "openai":
+        key = os.environ.get("OPENAI_API_KEY", "")
+        if not key:
+            raise ValueError("Set OPENAI_API_KEY environment variable")
+        return "https://api.openai.com/v1", key
+    else:
         raise ValueError(f"Unknown provider: {provider}. Use: ollama/, gemini/, openai/, anthropic/")
 
-    base_url = config["base_url"]()
-    api_key = config.get("api_key") or os.environ.get(config.get("api_key_env", ""), "")
 
-    if not api_key:
-        raise ValueError(f"No API key for {provider}. Set {config.get('api_key_env', '???')}")
+# ── Anthropic adapter ────────────────────────────────────────────────────────
 
-    client = OpenAI(base_url=base_url, api_key=api_key, timeout=TIMEOUT_STREAM)
-    return client, model_name
+def _call_anthropic(model_name: str, messages: list, *, stream: bool = False,
+                    tools: list | None = None, max_tokens: int | None = None):
+    """Call Anthropic Messages API, return OpenAI-compatible response."""
+    if not _anthropic_mod:
+        raise ImportError("pip install anthropic")
+
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        raise ValueError("Set ANTHROPIC_API_KEY environment variable")
+
+    client = _anthropic_mod.Anthropic(api_key=key, timeout=TIMEOUT_STREAM)
+
+    # Extract system message
+    system = ""
+    chat_msgs = []
+    for m in messages:
+        if m["role"] == "system":
+            system = m["content"]
+        else:
+            chat_msgs.append({"role": m["role"], "content": m["content"]})
+
+    # Convert OpenAI tools format → Anthropic tools format
+    anthropic_tools = None
+    if tools:
+        anthropic_tools = []
+        for t in tools:
+            fn = t["function"]
+            anthropic_tools.append({
+                "name": fn["name"],
+                "description": fn["description"],
+                "input_schema": fn["parameters"],
+            })
+
+    kwargs: dict = {
+        "model": model_name,
+        "messages": chat_msgs,
+        "max_tokens": max_tokens or 4096,
+    }
+    if system:
+        kwargs["system"] = system
+    if anthropic_tools:
+        kwargs["tools"] = anthropic_tools
+
+    if stream:
+        return _anthropic_stream(client, kwargs)
+
+    response = client.messages.create(**kwargs)
+    return _anthropic_to_openai(response)
+
+
+def _anthropic_to_openai(response):
+    """Convert Anthropic response to OpenAI-compatible format."""
+    from types import SimpleNamespace
+
+    content = ""
+    tool_calls = []
+    for block in response.content:
+        if block.type == "text":
+            content += block.text
+        elif block.type == "tool_use":
+            tc = SimpleNamespace(
+                id=block.id,
+                function=SimpleNamespace(
+                    name=block.name,
+                    arguments=json.dumps(block.input),
+                ),
+            )
+            tool_calls.append(tc)
+
+    message = SimpleNamespace(
+        content=content,
+        tool_calls=tool_calls if tool_calls else None,
+    )
+    choice = SimpleNamespace(message=message)
+    usage = SimpleNamespace(
+        total_tokens=(response.usage.input_tokens + response.usage.output_tokens)
+        if response.usage else 0,
+    )
+    return SimpleNamespace(choices=[choice], usage=usage)
+
+
+def _anthropic_stream(client, kwargs):
+    """Yield OpenAI-compatible stream chunks from Anthropic streaming."""
+    from types import SimpleNamespace
+
+    with client.messages.stream(**kwargs) as stream:
+        for text in stream.text_stream:
+            delta = SimpleNamespace(content=text)
+            choice = SimpleNamespace(delta=delta)
+            yield SimpleNamespace(choices=[choice])
 
 
 # ── Quota / rate-limit error detection ───────────────────────────────────────
@@ -378,12 +491,9 @@ class LLMClient:
             if os.environ.get(env_key):
                 print(f"  [AI] Testing {model}...")
                 try:
-                    client, name = _make_client(model)
-                    client.chat.completions.create(
-                        model=name,
-                        messages=[{"role": "user", "content": "ping"}],
-                        max_tokens=5,
-                    )
+                    _call_api(model,
+                             [{"role": "user", "content": "ping"}],
+                             max_tokens=5)
                     print(f"  [AI] Auto-selected: {model}")
                     return model, model
                 except Exception as e:
@@ -418,12 +528,9 @@ class LLMClient:
     def test_model(model: str) -> dict:
         """Quick test if a model is reachable."""
         try:
-            client, name = _make_client(model)
-            client.chat.completions.create(
-                model=name,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=5,
-            )
+            _call_api(model,
+                      [{"role": "user", "content": "ping"}],
+                      max_tokens=5)
             return {"ok": True, "error": ""}
         except Exception as e:
             return {"ok": False, "error": str(e)[:200]}
@@ -538,17 +645,15 @@ class LLMClient:
 
     def _chat_once(self, messages, use_tools):
         model = self._effective_model(use_tools)
-        client, model_name = _make_client(model)
-
-        kwargs: dict = {"model": model_name, "messages": messages}
-        if use_tools:
-            kwargs["tools"] = TOOLS
 
         t0 = time.time()
         print(f"  [AI] Calling {model} | tools={'yes' if use_tools else 'no'}...")
 
         with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(client.chat.completions.create, **kwargs)
+            future = pool.submit(
+                _call_api, model, messages,
+                tools=TOOLS if use_tools else None,
+            )
             try:
                 response = future.result(timeout=TIMEOUT_CHAT + 5)
             except FuturesTimeout:
@@ -608,16 +713,10 @@ class LLMClient:
 
     def _stream_once(self, model, messages):
         """Single streaming call. Yields text chunks."""
-        client, model_name = _make_client(model)
-
         t0 = time.time()
         print(f"  [AI] Calling {model} | stream...")
 
-        stream = client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            stream=True,
-        )
+        stream = _call_api(model, messages, stream=True)
 
         for chunk in stream:
             delta = chunk.choices[0].delta
