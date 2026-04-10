@@ -136,7 +136,7 @@ export function History() {
   const [loading,       setLoading]       = useState(true);
   const [loadError,     setLoadError]     = useState("");
   const [level,         setLevel]         = useState<TriageLevel | "">("");
-  const [source,        setSource]        = useState("");
+  const [nsFilter,      setNsFilter]      = useState("");
   const [objFilter,     setObjFilter]     = useState("");
   const [objInput,      setObjInput]      = useState("");
   const [selectedId,    setSelectedId]    = useState<number | null>(null);
@@ -220,17 +220,17 @@ export function History() {
     setEvents((prev: StoredEvent[]) => prev.map((e: StoredEvent) => e.id === ev.id ? { ...e, status } : e));
   }
 
-  const sources = useMemo(() => {
-    const s = new Set(events.map(e => e.source).filter(Boolean));
+  const namespaces = useMemo(() => {
+    const s = new Set(events.map(e => e.namespace).filter(Boolean));
     return Array.from(s).sort();
   }, [events]);
 
   const filtered = useMemo(() => {
-    if (!source) return events;
-    return events.filter(e => e.source === source);
-  }, [events, source]);
+    if (!nsFilter) return events;
+    return events.filter(e => e.namespace === nsFilter);
+  }, [events, nsFilter]);
 
-  const hasFilters = level !== "" || objInput !== "" || source !== "";
+  const hasFilters = level !== "" || objInput !== "" || nsFilter !== "";
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -275,14 +275,15 @@ export function History() {
             })}
           </div>
 
-          {/* Source/target filter */}
+          {/* Namespace filter */}
           <select
-            value={source}
-            onChange={e => setSource(e.target.value)}
+            value={nsFilter}
+            onChange={e => setNsFilter(e.target.value)}
+            aria-label="Filter by namespace"
             style={{
               background: "var(--c-bg-surface)",
-              border: `1px solid ${source ? "var(--c-accent-hover)" : "var(--c-border-strong)"}`,
-              color: source ? "var(--c-accent-hover)" : "var(--c-text-muted)",
+              border: `1px solid ${nsFilter ? "var(--c-accent-hover)" : "var(--c-border-strong)"}`,
+              color: nsFilter ? "var(--c-accent-hover)" : "var(--c-text-muted)",
               borderRadius: 6,
               padding: "5px 8px",
               fontSize: 11,
@@ -291,8 +292,8 @@ export function History() {
               cursor: "pointer",
             }}
           >
-            <option value="">All Sources</option>
-            {sources.map(s => <option key={s} value={s}>{s}</option>)}
+            <option value="">All Namespaces</option>
+            {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
           </select>
 
           {/* Object search */}
@@ -320,7 +321,7 @@ export function History() {
 
           {hasFilters && (
             <button
-              onClick={() => { setLevel(""); setObjInput(""); setObjFilter(""); setSource(""); }}
+              onClick={() => { setLevel(""); setObjInput(""); setObjFilter(""); setNsFilter(""); }}
               style={{ background: "none", border: "none", color: "var(--c-text-muted)", fontSize: 11, cursor: "pointer", padding: "2px 6px" }}
             >Clear</button>
           )}

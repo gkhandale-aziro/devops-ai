@@ -34,7 +34,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         to={to}
         style={{
           display: "flex", alignItems: "center", gap: 10,
-          padding: "9px 12px", borderRadius: 8, fontSize: 13,
+          padding: "7px 12px", borderRadius: 7, fontSize: 13,
           color: active ? "var(--c-text-primary,#f1f5f9)" : "var(--c-text-muted,#64748b)",
           background: active ? "var(--c-accent-dim,#6366f122)" : "transparent",
           borderLeft: active ? "2px solid var(--c-accent,#6366f1)" : "2px solid transparent",
@@ -67,32 +67,56 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
 
       {/* ── Logo ───────────────────────────────────────────────────────────── */}
       <div style={{
-        padding: "18px 16px 16px",
+        padding: "14px 16px 12px",
         borderBottom: "1px solid var(--c-border,#1a2235)",
         display: "flex", alignItems: "center", gap: 11,
+        flexShrink: 0,
       }}>
         <div style={{
-          width: 32, height: 32, borderRadius: 9,
+          width: 30, height: 30, borderRadius: 8,
           background: "linear-gradient(135deg,#6366f1 0%,#818cf8 100%)",
           display: "flex", alignItems: "center", justifyContent: "center",
           flexShrink: 0,
           boxShadow: "0 0 16px #6366f144, 0 2px 8px #6366f133",
         }}>
-          <Zap size={16} fill="white" stroke="white" />
+          <Zap size={14} fill="white" stroke="white" />
         </div>
         <div>
-          {/* Brand name */}
-          <div style={{ fontSize: 15, fontWeight: 800, color: "var(--c-text-primary,#f1f5f9)", letterSpacing: "-.3px", lineHeight: 1.2 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--c-text-primary,#f1f5f9)", letterSpacing: "-.3px", lineHeight: 1.2 }}>
             Aziro<span style={{ color: "var(--c-accent,#6366f1)" }}>Ops</span>
           </div>
-          <div style={{ fontSize: 10, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".7px", marginTop: 2, fontWeight: 500 }}>
+          <div style={{ fontSize: 9, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".7px", marginTop: 1, fontWeight: 500 }}>
             DevOps AI Platform
           </div>
         </div>
       </div>
 
+      {/* ── Nav ────────────────────────────────────────────────────────────── */}
+      <div style={{ padding: "6px 8px", display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>
+        {navItem("/", "Home", <HomeIcon size={15} />)}
+        {navItem("/dashboard", "Dashboard", <LayoutGrid size={15} />)}
+        {navItem("/alerts", "Live Alerts", <Bell size={15} />,
+          monitorActive && (
+            <span style={{
+              width: 7, height: 7, borderRadius: "50%",
+              background: "#22c55e", animation: "pulse 1.5s infinite",
+              display: "inline-block", boxShadow: "0 0 6px #22c55e",
+              flexShrink: 0,
+            }} />
+          )
+        )}
+        {navItem("/history", "History", <Clock size={15} />)}
+        {navItem("/chat", "AI Chat", <MessageSquare size={15} />)}
+        {navItem("/settings", "Settings", <Settings size={15} />)}
+      </div>
+
       {/* ── Connections header ─────────────────────────────────────────────── */}
-      <div style={{ padding: "16px 16px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{
+        padding: "10px 16px 6px",
+        borderTop: "1px solid var(--c-border,#1a2235)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        flexShrink: 0,
+      }}>
         <span style={{ fontSize: 10, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".9px", fontWeight: 700 }}>
           Connections
         </span>
@@ -109,23 +133,22 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         )}
       </div>
 
-      {/* ── Connection list ────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px", minHeight: 120 }}>
+      {/* ── Connection list (scrollable, takes remaining space) ────────────── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 6px", minHeight: 0 }}>
 
-        {/* P1 + Pattern: Empty state with icon, not just plain text */}
         {targets.length === 0 && (
-          <div style={{ padding: "24px 12px", textAlign: "center" }}>
+          <div style={{ padding: "20px 12px", textAlign: "center" }}>
             <div style={{
-              width: 40, height: 40, borderRadius: 10,
+              width: 36, height: 36, borderRadius: 9,
               background: "var(--c-bg-overlay,#182035)",
               border: "1px solid var(--c-border,#1a2235)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              margin: "0 auto 10px",
+              margin: "0 auto 8px",
             }}>
-              <Wifi size={18} stroke="var(--c-text-faint,#475569)" strokeWidth={1.5} />
+              <Wifi size={16} stroke="var(--c-text-faint,#475569)" strokeWidth={1.5} />
             </div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-secondary,#94a3b8)", marginBottom: 4 }}>No connections yet</div>
-            <div style={{ fontSize: 11, color: "var(--c-text-faint,#475569)", lineHeight: 1.5 }}>Add a cluster or server below to get started</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-secondary,#94a3b8)", marginBottom: 3 }}>No connections yet</div>
+            <div style={{ fontSize: 10, color: "var(--c-text-faint,#475569)", lineHeight: 1.5 }}>Add a target below</div>
           </div>
         )}
 
@@ -142,9 +165,9 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
               onMouseEnter={() => setHoveredId(t.id)}
               onMouseLeave={() => setHoveredId(null)}
               style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "9px 10px", borderRadius: 9, cursor: "pointer",
-                marginBottom: 3, transition: "all .15s",
+                display: "flex", alignItems: "center", gap: 9,
+                padding: "7px 8px", borderRadius: 8, cursor: "pointer",
+                marginBottom: 2, transition: "all .15s",
                 background: isActive
                   ? "var(--c-accent-dim,#6366f122)"
                   : isHovered ? "var(--c-bg-raised,#0f1629)" : "transparent",
@@ -154,33 +177,30 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
             >
               {/* Type badge */}
               <div style={{
-                width: 30, height: 30, borderRadius: 7, flexShrink: 0,
+                width: 28, height: 28, borderRadius: 6, flexShrink: 0,
                 background: `${typeColor}18`,
                 border: `1px solid ${typeColor}33`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 color: typeColor,
               }}>
-                {(() => { const meta = TARGET_META[t.type as keyof typeof TARGET_META]; if (meta) { const Icon = meta.icon; return <Icon size={14} />; } return <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".4px" }}>{t.type.slice(0, 3).toUpperCase()}</span>; })()}
+                {(() => { const meta = TARGET_META[t.type as keyof typeof TARGET_META]; if (meta) { const Icon = meta.icon; return <Icon size={13} />; } return <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".4px" }}>{t.type.slice(0, 3).toUpperCase()}</span>; })()}
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                {/* Name */}
                 <div style={{
-                  fontSize: 13, fontWeight: isActive ? 700 : 500,
+                  fontSize: 12, fontWeight: isActive ? 700 : 500,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   color: isActive ? "var(--c-text-primary,#f1f5f9)" : "var(--c-text-secondary,#94a3b8)",
-                  display: "flex", alignItems: "center", gap: 5,
+                  display: "flex", alignItems: "center", gap: 4,
                 }}>
                   {t.name}
-                  {/* LOCAL badge */}
                   {t.type === "local" && (
-                    <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 800, background: "#22c55e18", border: "1px solid #22c55e33", padding: "1px 5px", borderRadius: 4, letterSpacing: ".3px", flexShrink: 0 }}>
+                    <span style={{ fontSize: 8, color: "#22c55e", fontWeight: 800, background: "#22c55e18", border: "1px solid #22c55e33", padding: "0px 4px", borderRadius: 3, letterSpacing: ".3px", flexShrink: 0 }}>
                       LOCAL
                     </span>
                   )}
                 </div>
-                {/* Status row */}
-                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
                   <span style={{
                     width: 5, height: 5, borderRadius: "50%", background: dotColor,
                     boxShadow: t.status === "online" ? `0 0 5px ${dotColor}` : "none",
@@ -190,14 +210,13 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                 </div>
               </div>
 
-              {/* Remove — SVG, hover only */}
               <button
                 onClick={e => { e.stopPropagation(); onRemove(t.id); }}
                 aria-label="Remove connection"
                 style={{
                   background: "none", border: "none",
                   color: "var(--c-text-faint,#475569)",
-                  cursor: "pointer", padding: "4px", borderRadius: 5,
+                  cursor: "pointer", padding: "3px", borderRadius: 4,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   opacity: isHovered ? 1 : 0,
                   transition: "opacity .15s, color .15s",
@@ -206,25 +225,25 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                 onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
                 onMouseLeave={e => (e.currentTarget.style.color = "var(--c-text-faint,#475569)")}
               >
-                <X size={12} strokeWidth={2.5} />
+                <X size={11} strokeWidth={2.5} />
               </button>
             </div>
           );
         })}
 
-        {/* Add connection button — solid subtle border (not dashed) */}
+        {/* Add connection button */}
         <button
           onClick={onAddClick}
           style={{
-            width: "100%", marginTop: targets.length > 0 ? 6 : 4,
-            padding: "10px 12px",
+            width: "100%", marginTop: targets.length > 0 ? 4 : 2,
+            padding: "8px 12px",
             background: "transparent",
             border: "1px solid var(--c-border-strong,#263050)",
-            borderRadius: 9,
+            borderRadius: 8,
             color: "var(--c-accent,#6366f1)",
-            fontSize: 12, fontWeight: 600,
+            fontSize: 11, fontWeight: 600,
             cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             transition: "all .15s",
           }}
           onMouseEnter={e => {
@@ -238,71 +257,41 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
             e.currentTarget.style.boxShadow  = "none";
           }}
         >
-          <Plus size={13} strokeWidth={2.5} />
+          <Plus size={12} strokeWidth={2.5} />
           Add Connection
         </button>
       </div>
 
-      {/* ── Nav ────────────────────────────────────────────────────────────── */}
-      <div style={{ borderTop: "1px solid var(--c-border,#1a2235)", padding: "6px 8px 4px", display: "flex", flexDirection: "column", gap: 1 }}>
-        {navItem("/", "Home",
-          <HomeIcon size={15} />
-        )}
-        {navItem("/dashboard", "Dashboard",
-          <LayoutGrid size={15} />
-        )}
-        {navItem("/alerts", "Live Alerts",
-          <Bell size={15} />,
-          monitorActive && (
-            <span style={{
-              width: 7, height: 7, borderRadius: "50%",
-              background: "#22c55e", animation: "pulse 1.5s infinite",
-              display: "inline-block", boxShadow: "0 0 6px #22c55e",
-              flexShrink: 0,
-            }} />
-          )
-        )}
-        {navItem("/history", "History",
-          <Clock size={15} />
-        )}
-        {navItem("/chat", "AI Chat",
-          <MessageSquare size={15} />
-        )}
-        {navItem("/settings", "Settings",
-          <Settings size={15} />
-        )}
-      </div>
-
-      {/* ── Footer — AI model + theme ─────────────────────────────────────── */}
+      {/* ── Footer — compact: model + theme + tips in one row ─────────────── */}
       <div style={{
         borderTop: "1px solid var(--c-border,#1a2235)",
-        padding: "8px 14px 10px",
+        padding: "8px 12px",
+        flexShrink: 0,
         display: "flex", flexDirection: "column", gap: 6,
       }}>
-        {/* AI model row */}
-        {aiModel && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{
-              width: 7, height: 7, borderRadius: "50%",
-              background: "#22c55e", boxShadow: "0 0 6px #22c55e88",
-              flexShrink: 0, animation: "pulse 2s infinite",
-            }} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              {/* Label */}
-              <div style={{ fontSize: 10, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 600, marginBottom: 1 }}>AI Model</div>
-              <div style={{
-                fontSize: 11, fontWeight: 600,
-                color: "var(--c-accent-hover,#818cf8)",
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }} title={aiModel}>
-                {aiModel.replace("gemini/", "").replace("ollama/", "").replace("openai/", "")}
+        {/* AI model + theme toggle in one row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {aiModel && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: "50%",
+                background: "#22c55e", boxShadow: "0 0 6px #22c55e88",
+                flexShrink: 0, animation: "pulse 2s infinite",
+              }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 600,
+                  color: "var(--c-accent-hover,#818cf8)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }} title={aiModel}>
+                  {aiModel.replace("gemini/", "").replace("ollama/", "").replace("openai/", "")}
+                </div>
               </div>
             </div>
-          </div>
-        )}
-        {/* Theme switcher */}
-        <ThemeToggle />
-        {/* Restore dismissed tips */}
+          )}
+          <ThemeToggle />
+        </div>
+        {/* Restore tips */}
         <button
           onClick={() => {
             let cleared = 0;
@@ -315,13 +304,13 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           title="Restore dismissed contextual hints"
           style={{
             background: "transparent", border: "1px solid var(--c-border,#1a2235)",
-            color: "var(--c-text-muted,#64748b)", borderRadius: 6,
-            padding: "6px 10px", fontSize: 10, cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 6,
+            color: "var(--c-text-muted,#64748b)", borderRadius: 5,
+            padding: "4px 8px", fontSize: 9, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 5,
             textTransform: "uppercase", letterSpacing: ".4px", fontWeight: 600,
           }}
         >
-          <RotateCcw size={11} aria-hidden="true" />
+          <RotateCcw size={10} aria-hidden="true" />
           Restore tips
         </button>
       </div>
