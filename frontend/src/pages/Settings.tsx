@@ -5,6 +5,10 @@ import {
   Palette,
   Keyboard,
   Info,
+  Server,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from "lucide-react";
 
 import {
@@ -34,6 +38,10 @@ export function Settings({ targetCount }: Props) {
   const [current, setCurrent] = useState({ tool_model: "", answer_model: "" });
   const [health, setHealth] = useState<ModelHealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ollamaUrl, setOllamaUrl] = useState("");
+  const [ollamaUrlDraft, setOllamaUrlDraft] = useState("");
+  const [ollamaUrlTesting, setOllamaUrlTesting] = useState(false);
+  const [ollamaUrlResult, setOllamaUrlResult] = useState<{ ok: boolean; models: number; error: string } | null>(null);
 
   useEffect(() => {
     api.models
@@ -41,11 +49,37 @@ export function Settings({ targetCount }: Props) {
       .then((data) => {
         setOllamaModels(data.ollama ?? []);
         setCurrent(data.current);
+        if (data.ollama_url) {
+          setOllamaUrl(data.ollama_url);
+          setOllamaUrlDraft(data.ollama_url);
+        }
       })
       .catch(() => toast.error("Failed to load AI models"))
       .finally(() => setLoading(false));
     api.modelHealth().then(setHealth).catch(() => {});
   }, []);
+
+  async function saveOllamaUrl() {
+    setOllamaUrlTesting(true);
+    setOllamaUrlResult(null);
+    try {
+      const res = await api.models.ollamaUrl.set(ollamaUrlDraft.trim());
+      if (res.ok) {
+        setOllamaUrl(ollamaUrlDraft.trim());
+        setOllamaUrlResult({ ok: true, models: res.models, error: "" });
+        toast.success(`Ollama connected — ${res.models} model${res.models === 1 ? "" : "s"} found`);
+        // Refresh model list
+        const data = await api.models.list();
+        setOllamaModels(data.ollama ?? []);
+      } else {
+        setOllamaUrlResult({ ok: false, models: 0, error: res.error });
+      }
+    } catch (e) {
+      setOllamaUrlResult({ ok: false, models: 0, error: (e as Error)?.message ?? "Connection failed" });
+    } finally {
+      setOllamaUrlTesting(false);
+    }
+  }
 
   async function updateModel(
     field: "tool_model" | "answer_model",
@@ -197,6 +231,73 @@ export function Settings({ targetCount }: Props) {
                   <p style={{ fontSize: 11, color: "var(--c-text-faint)", lineHeight: 1.5, margin: 0 }}>
                     Supports any LiteLLM model: gemini/*, openai/*, ollama/*, anthropic/*, etc.
                   </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ── Ollama URL Configuration ──────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className={cn("flex items-center gap-2")}>
+                <Server size={16} /> Ollama Connection
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p style={{ fontSize: 11, color: "var(--c-text-muted)", margin: "0 0 8px", lineHeight: 1.5 }}>
+                URL for Ollama API. Use <code style={{ fontSize: 10, padding: "1px 4px", borderRadius: 3, background: "var(--c-bg-base)", border: "1px solid var(--c-border)" }}>host.docker.internal:11434</code> when running in Docker.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  value={ollamaUrlDraft}
+                  onChange={e => { setOllamaUrlDraft(e.target.value); setOllamaUrlResult(null); }}
+                  onKeyDown={e => { if (e.key === "Enter") saveOllamaUrl(); }}
+                  placeholder="http://localhost:11434"
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: `1px solid ${ollamaUrlDraft.trim() !== ollamaUrl ? "var(--c-accent)" : "var(--c-border)"}`,
+                    background: "var(--c-bg-base)",
+                    color: "var(--c-text-primary)",
+                    fontSize: 13,
+                    outline: "none",
+                  }}
+                />
+                <button
+                  onClick={saveOllamaUrl}
+                  disabled={ollamaUrlTesting || !ollamaUrlDraft.trim()}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: ollamaUrlDraft.trim() ? "var(--c-accent)" : "var(--c-bg-raised)",
+                    color: ollamaUrlDraft.trim() ? "#fff" : "var(--c-text-faint)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: ollamaUrlDraft.trim() && !ollamaUrlTesting ? "pointer" : "default",
+                    transition: "all .15s",
+                    display: "flex", alignItems: "center", gap: 6,
+                    opacity: ollamaUrlTesting ? 0.7 : 1,
+                  }}
+                >
+                  {ollamaUrlTesting && <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />}
+                  {ollamaUrlTesting ? "Testing..." : "Save & Test"}
+                </button>
+              </div>
+              {ollamaUrlResult && (
+                <div style={{
+                  marginTop: 8, padding: "6px 10px", borderRadius: 6, fontSize: 12,
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: ollamaUrlResult.ok ? "var(--c-green-bg, #22c55e18)" : "var(--c-sev1-bg, #ef444418)",
+                  border: `1px solid ${ollamaUrlResult.ok ? "var(--c-green, #22c55e)" : "var(--c-sev1, #ef4444)"}`,
+                  color: ollamaUrlResult.ok ? "var(--c-green, #22c55e)" : "var(--c-sev1, #ef4444)",
+                }}>
+                  {ollamaUrlResult.ok
+                    ? <><CheckCircle2 size={13} /> Connected — {ollamaUrlResult.models} model{ollamaUrlResult.models === 1 ? "" : "s"} available</>
+                    : <><XCircle size={13} /> {ollamaUrlResult.error}</>
+                  }
                 </div>
               )}
             </CardContent>

@@ -227,6 +227,61 @@ RECOVERY_INTERVAL = 1800  # 30 min between recovery probes (avoid quota yo-yo)
 TRANSIENT_RETRIES = 2    # retry transient (non-quota) errors this many times
 TRANSIENT_DELAY   = 3    # seconds between transient retries
 
+# ── Config persistence ──────────────────────────────────────────────────────
+
+_CONFIG_FILE = os.path.join(
+    os.environ.get("AZIRO_DATA_DIR", os.path.dirname(__file__)),
+    "model_config.json",
+)
+
+
+def _load_config() -> dict:
+    """Load saved model config from disk."""
+    try:
+        with open(_CONFIG_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_config(data: dict):
+    """Save model config to disk."""
+    try:
+        os.makedirs(os.path.dirname(_CONFIG_FILE), exist_ok=True)
+        with open(_CONFIG_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"  [AI] Failed to save config: {e}")
+
+
+# ── Cloud model discovery ───────────────────────────────────────────────────
+
+_CLOUD_MODELS: dict[str, list[str]] = {
+    "GEMINI_API_KEY": [
+        "gemini/gemini-2.5-flash",
+        "gemini/gemini-2.0-flash",
+        "gemini/gemini-1.5-pro",
+    ],
+    "OPENAI_API_KEY": [
+        "openai/gpt-4o-mini",
+        "openai/gpt-4o",
+        "openai/gpt-4-turbo",
+    ],
+    "ANTHROPIC_API_KEY": [
+        "anthropic/claude-sonnet-4-20250514",
+        "anthropic/claude-haiku-4-20250414",
+    ],
+}
+
+
+def discover_cloud_models() -> list[str]:
+    """Return cloud models available based on configured API keys."""
+    models = []
+    for env_key, model_list in _CLOUD_MODELS.items():
+        if os.environ.get(env_key):
+            models.extend(model_list)
+    return models
+
 
 class LLMClient:
     """
@@ -244,11 +299,95 @@ class LLMClient:
         _default          = os.environ.get("AI_MODEL", "ollama/llama3.1:8b")
         self.tool_model   = os.environ.get("TOOL_MODEL",   _default)
         self.answer_model = os.environ.get("ANSWER_MODEL", self.tool_model)
+
+        # Override from saved config (survives container restarts)
+        saved = _load_config()
+        if saved.get("tool_model"):
+            self.tool_model = saved["tool_model"]
+        if saved.get("answer_model"):
+            self.answer_model = saved["answer_model"]
+        if saved.get("ollama_api_base"):
+            os.environ["OLLAMA_API_BASE"] = saved["ollama_api_base"]
+
         self.health       = ModelHealth()
         self.health.primary_tool   = self.tool_model
         self.health.primary_answer = self.answer_model
         self._monitor_thread: threading.Thread | None = None
         self._monitor_stop = threading.Event()
+
+    def switch_model(self, tool_model: str | None = None,
+                     answer_model: str | None = None,
+                     ai_model: str | None = None) -> dict:
+        """
+        Switch model at runtime. Resets circuit breaker, persists to disk.
+        Returns {"tool_model": ..., "answer_model": ...}.
+        """
+        if ai_model:
+            tool_model = ai_model
+            answer_model = ai_model
+        if tool_model:
+            self.tool_model = tool_model
+        if answer_model:
+            self.answer_model = answer_model
+
+        # Reset health — user explicitly chose this model
+        self.health.primary_tool = self.tool_model
+        self.health.primary_answer = self.answer_model
+        self.health.set_healthy()
+        print(f"  [AI] Model switched: tool={self.tool_model} answer={self.answer_model}")
+
+        # Persist
+        saved = _load_config()
+        saved["tool_model"] = self.tool_model
+        saved["answer_model"] = self.answer_model
+        _save_config(saved)
+
+        return {"tool_model": self.tool_model, "answer_model": self.answer_model}
+
+    @staticmethod
+    def test_model(model: str) -> dict:
+        """
+        Quick test if a model is reachable. Returns {"ok": bool, "error": str}.
+        """
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(
+                    litellm.completion,
+                    model=model,
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=5,
+                    num_retries=0,
+                    timeout=TIMEOUT_PROBE,
+                )
+                future.result(timeout=TIMEOUT_PROBE + 5)
+            return {"ok": True, "error": ""}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
+
+    @staticmethod
+    def set_ollama_url(url: str) -> dict:
+        """Set Ollama API base URL. Persists to disk. Tests connection."""
+        url = url.rstrip("/")
+        # Test connection
+        import urllib.request
+        try:
+            req = urllib.request.Request(f"{url}/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+                count = len(data.get("models", []))
+        except Exception as e:
+            return {"ok": False, "error": f"Cannot reach Ollama at {url}: {e}", "models": 0}
+
+        os.environ["OLLAMA_API_BASE"] = url
+        saved = _load_config()
+        saved["ollama_api_base"] = url
+        _save_config(saved)
+        print(f"  [AI] Ollama URL set: {url} ({count} models)")
+        return {"ok": True, "error": "", "models": count, "url": url}
+
+    @staticmethod
+    def get_ollama_url() -> str:
+        return os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
 
     def start_health_monitor(self):
         """Start background thread that proactively checks primary model health."""

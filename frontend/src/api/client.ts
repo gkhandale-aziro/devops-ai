@@ -214,13 +214,21 @@ export const api = {
   // ── Models ────────────────────────────────────────────────────────────────
   models: {
     list: () =>
-      req<{ ollama: string[]; current: { tool_model: string; answer_model: string } }>("/api/v1/models"),
-    update: (body: { tool_model?: string; answer_model?: string; ai_model?: string }) =>
+      req<{ ollama: string[]; cloud: string[]; current: { tool_model: string; answer_model: string }; ollama_url: string }>("/api/v1/models"),
+    update: (body: { tool_model?: string; answer_model?: string; ai_model?: string; validate?: boolean }) =>
       req<{ tool_model: string; answer_model: string }>("/api/v1/models", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
+    ollamaUrl: {
+      get: () => req<{ url: string }>("/api/v1/models/ollama-url"),
+      set: (url: string) => req<{ ok: boolean; error: string; models: number; url: string }>("/api/v1/models/ollama-url", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      }),
+    },
   },
 
   // ── Search ────────────────────────────────────────────────────────────────

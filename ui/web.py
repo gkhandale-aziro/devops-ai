@@ -210,15 +210,18 @@ def api_model_health():
 
 @app.route("/api/v1/models", methods=["GET"])
 def api_models():
-    """List available models. Queries Ollama HTTP API (works inside Docker)."""
-    from providers.client import _discover_ollama_models
+    """List available models — Ollama + cloud models based on API keys."""
+    from providers.client import _discover_ollama_models, discover_cloud_models
     ollama_models = _discover_ollama_models()
+    cloud_models  = discover_cloud_models()
     return jsonify({
         "ollama": ollama_models,
+        "cloud":  cloud_models,
         "current": {
             "tool_model": _llm.tool_model,
             "answer_model": _llm.answer_model,
         },
+        "ollama_url": _llm.get_ollama_url(),
     })
 
 
@@ -227,7 +230,7 @@ _MODEL_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_./:@-]{0,127}$")
 
 @app.route("/api/v1/models", methods=["PUT"])
 def api_set_models():
-    """Change AI models at runtime (no restart needed)."""
+    """Change AI models at runtime. Resets circuit breaker, persists to disk."""
     d = request.json or {}
 
     def _valid_model(v):
@@ -237,17 +240,38 @@ def api_set_models():
         if key in d and not _valid_model(d[key]):
             return jsonify({"error": f"invalid model string for '{key}'"}), 400
 
-    if "tool_model" in d:
-        _llm.tool_model = d["tool_model"]
-    if "answer_model" in d:
-        _llm.answer_model = d["answer_model"]
-    if "ai_model" in d:
-        _llm.tool_model = d["ai_model"]
-        _llm.answer_model = d["ai_model"]
-    return jsonify({
-        "tool_model":   _llm.tool_model,
-        "answer_model": _llm.answer_model,
-    })
+    # Validate model is reachable (optional — skip if validate=false)
+    if d.get("validate", True):
+        test_model = d.get("ai_model") or d.get("tool_model") or d.get("answer_model")
+        if test_model:
+            result = _llm.test_model(test_model)
+            if not result["ok"]:
+                return jsonify({"error": f"Model unreachable: {result['error']}"}), 400
+
+    return jsonify(_llm.switch_model(
+        tool_model=d.get("tool_model"),
+        answer_model=d.get("answer_model"),
+        ai_model=d.get("ai_model"),
+    ))
+
+
+@app.route("/api/v1/models/ollama-url", methods=["GET"])
+def api_ollama_url_get():
+    """Get current Ollama API base URL."""
+    return jsonify({"url": _llm.get_ollama_url()})
+
+
+@app.route("/api/v1/models/ollama-url", methods=["PUT"])
+def api_ollama_url_set():
+    """Set Ollama API base URL. Tests connection before saving."""
+    d = request.json or {}
+    url = d.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+    result = _llm.set_ollama_url(url)
+    if not result["ok"]:
+        return jsonify({"error": result["error"]}), 400
+    return jsonify(result)
 
 
 # ── static ────────────────────────────────────────────────────────────────────

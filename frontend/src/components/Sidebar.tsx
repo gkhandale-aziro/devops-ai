@@ -34,8 +34,10 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
   const nav = useNavigate();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [showModelPicker, setShowModelPicker] = useState(false);
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [availableModels, setAvailableModels] = useState<{ name: string; provider: string }[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
+  const [switchError, setSwitchError] = useState("");
+  const [switching, setSwitching] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
 
   // Close picker on outside click
@@ -44,6 +46,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
     const handler = (e: MouseEvent) => {
       if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
         setShowModelPicker(false);
+        setSwitchError("");
       }
     };
     document.addEventListener("mousedown", handler);
@@ -53,26 +56,35 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
   function openModelPicker() {
     setShowModelPicker(true);
     setModelLoading(true);
+    setSwitchError("");
     api.models.list().then(data => {
-      const models: string[] = [];
-      // Add current model first
-      if (aiModel && !models.includes(aiModel)) models.push(aiModel);
-      // Add Ollama models
-      if (data.ollama) {
-        for (const m of data.ollama) {
-          const full = `ollama/${m}`;
-          if (!models.includes(full)) models.push(full);
-        }
-      }
+      const seen = new Set<string>();
+      const models: { name: string; provider: string }[] = [];
+      const add = (name: string, provider: string) => {
+        if (!seen.has(name)) { seen.add(name); models.push({ name, provider }); }
+      };
+      // Current model first
+      if (aiModel) add(aiModel, aiModel.split("/")[0]);
+      // Cloud models
+      if (data.cloud) data.cloud.forEach(m => add(m, m.split("/")[0]));
+      // Ollama models
+      if (data.ollama) data.ollama.forEach(m => add(`ollama/${m}`, "ollama"));
       setAvailableModels(models);
     }).catch(() => {}).finally(() => setModelLoading(false));
   }
 
   function selectModel(model: string) {
-    setShowModelPicker(false);
+    setSwitching(model);
+    setSwitchError("");
     api.models.update({ ai_model: model }).then(() => {
+      setShowModelPicker(false);
       onModelChange?.(model);
-    }).catch(e => console.warn("[Sidebar] model switch failed:", e));
+    }).catch(e => {
+      const msg = (e as Error)?.message ?? String(e);
+      // Extract error from JSON response if possible
+      try { setSwitchError(JSON.parse(msg.replace(/^.*?{/, "{")).error); }
+      catch { setSwitchError(msg.includes("unreachable") ? msg : "Model unreachable — check connection"); }
+    }).finally(() => setSwitching(""));
   }
 
   const navItem = (to: string, label: string, icon: ReactNode, badge?: ReactNode): ReactNode => {
@@ -366,35 +378,55 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                 <div style={{ padding: "12px 10px", fontSize: 11, color: "var(--c-text-muted,#64748b)", textAlign: "center" }}>Loading…</div>
               ) : availableModels.length === 0 ? (
                 <div style={{ padding: "12px 10px", fontSize: 11, color: "var(--c-text-muted,#64748b)", textAlign: "center" }}>No models found</div>
-              ) : availableModels.map(m => {
-                const isActive = m === aiModel;
-                const display = m.replace("gemini/", "").replace("ollama/", "").replace("openai/", "");
-                const provider = m.split("/")[0];
-                return (
-                  <button
-                    key={m}
-                    onClick={() => selectModel(m)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8, width: "100%",
-                      padding: "7px 10px", background: isActive ? "var(--c-accent-dim,#6366f122)" : "transparent",
-                      border: "none", borderLeft: isActive ? "2px solid var(--c-accent,#6366f1)" : "2px solid transparent",
-                      cursor: "pointer", transition: "background .1s", textAlign: "left",
-                    }}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "var(--c-bg-surface,#0a0f1e)"; }}
-                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: isActive ? 600 : 400, color: isActive ? "var(--c-text-primary,#f1f5f9)" : "var(--c-text-secondary,#94a3b8)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {display}
-                      </div>
-                      <div style={{ fontSize: 9, color: "var(--c-text-faint,#475569)", marginTop: 1 }}>
-                        {provider}
-                      </div>
+              ) : (() => {
+                // Group models by provider
+                const groups = new Map<string, { name: string; provider: string }[]>();
+                for (const m of availableModels) {
+                  const list = groups.get(m.provider) ?? [];
+                  list.push(m);
+                  groups.set(m.provider, list);
+                }
+                return Array.from(groups.entries()).map(([provider, models]) => (
+                  <div key={provider}>
+                    <div style={{ padding: "6px 10px 2px", fontSize: 9, color: "var(--c-text-faint,#475569)", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700 }}>
+                      {provider}
                     </div>
-                    {isActive && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />}
-                  </button>
-                );
-              })}
+                    {models.map(m => {
+                      const isActive = m.name === aiModel;
+                      const isSwitching = switching === m.name;
+                      const display = m.name.replace(/^(gemini|ollama|openai|anthropic)\//, "");
+                      return (
+                        <button
+                          key={m.name}
+                          onClick={() => selectModel(m.name)}
+                          disabled={!!switching}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 8, width: "100%",
+                            padding: "7px 10px", background: isActive ? "var(--c-accent-dim,#6366f122)" : "transparent",
+                            border: "none", borderLeft: isActive ? "2px solid var(--c-accent,#6366f1)" : "2px solid transparent",
+                            cursor: switching ? "wait" : "pointer", transition: "background .1s", textAlign: "left",
+                            opacity: switching && !isSwitching ? 0.5 : 1,
+                          }}
+                          onMouseEnter={e => { if (!isActive && !switching) e.currentTarget.style.background = "var(--c-bg-surface,#0a0f1e)"; }}
+                          onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: isActive ? 600 : 400, color: isActive ? "var(--c-text-primary,#f1f5f9)" : "var(--c-text-secondary,#94a3b8)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {isSwitching ? "Switching…" : display}
+                            </div>
+                          </div>
+                          {isActive && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
+              {switchError && (
+                <div style={{ padding: "6px 10px 8px", fontSize: 10, color: "#ef4444", lineHeight: 1.4 }}>
+                  {switchError}
+                </div>
+              )}
             </div>
           )}
         </div>
