@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Wifi, X, Plus, RotateCcw } from "lucide-react";
+import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Settings, Wifi, X, Plus, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Target } from "../types";
 import { ThemeToggle } from "./ThemeContext";
@@ -267,6 +267,9 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         )}
         {navItem("/chat", "AI Chat",
           <MessageSquare size={15} />
+        )}
+        {navItem("/settings", "Settings",
+          <Settings size={15} />
         )}
       </div>
 

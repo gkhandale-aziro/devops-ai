@@ -8,6 +8,7 @@ import { Dashboard }  from "./pages/Dashboard";
 import { Alerts }     from "./pages/Alerts";
 import { History }    from "./pages/History";
 import { Chat }       from "./pages/Chat";
+import { Settings }   from "./pages/Settings";
 import { AddTargetModal } from "./components/AddTargetModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeProvider }  from "./components/ThemeContext";
@@ -113,6 +114,7 @@ export default function App() {
             } />
             <Route path="/history" element={<ErrorBoundary><History /></ErrorBoundary>} />
             <Route path="/chat"    element={<ErrorBoundary><Chat targets={targets} activeTarget={activeTarget} /></ErrorBoundary>} />
+            <Route path="/settings" element={<ErrorBoundary><Settings targetCount={targets.length} /></ErrorBoundary>} />
             <Route path="*"        element={
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "#64748b" }}>
                 <div style={{ fontSize: 48, color: "#2d3148" }}>404</div>

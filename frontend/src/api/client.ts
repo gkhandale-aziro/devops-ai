@@ -171,6 +171,18 @@ export const api = {
     return req<TopologyResponse>(`/api/v1/topology/${targetId}${qs}`);
   },
 
+  // ── Models ────────────────────────────────────────────────────────────────
+  models: {
+    list: () =>
+      req<{ ollama: string[]; current: { tool_model: string; answer_model: string } }>("/api/v1/models"),
+    update: (body: { tool_model?: string; answer_model?: string }) =>
+      req<{ tool_model: string; answer_model: string }>("/api/v1/models", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+  },
+
   // ── Search ────────────────────────────────────────────────────────────────
   search: (targetId: string, q: string) =>
     req<SearchResponse>(`/api/v1/search/${targetId}?q=${encodeURIComponent(q)}`),
