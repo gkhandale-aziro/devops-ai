@@ -437,10 +437,10 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
   if (tabId === "network")     return <NetworkTab     data={data} target={target} />;
 
   // Docker rich tabs
-  if (tabId === "containers")  return <DockerContainersTab data={data} />;
-  if (tabId === "volumes")     return <DockerVolumesTab data={data} />;
-  if (tabId === "images")      return <DockerImagesTab data={data} />;
-  if (tabId === "stats")       return <DockerStatsTab data={data} />;
+  if (tabId === "containers")  return <DockerContainersTab data={data} target={target} />;
+  if (tabId === "volumes")     return <DockerVolumesTab data={data} target={target} />;
+  if (tabId === "images")      return <DockerImagesTab data={data} target={target} />;
+  if (tabId === "stats")       return <DockerStatsTab data={data} target={target} />;
 
   // Generic — card-per-key
   return <GenericTab data={data} />;

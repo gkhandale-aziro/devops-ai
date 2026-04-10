@@ -530,6 +530,8 @@ _SAFE_KINDS   = {
     "pod", "node", "deployment", "service", "ingress", "replicaset",
     "statefulset", "daemonset", "configmap", "namespace", "event",
     "persistentvolumeclaim", "persistentvolume", "job", "cronjob",
+    "storageclass", "ingressclass", "networkpolicy", "endpoints",
+    "pvc", "pv",  # aliases — resolved below
 }
 _SAFE_NAME_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.\-]*$')
 
@@ -543,6 +545,27 @@ def api_resource(tid):
     kind = request.args.get("kind", "pod").lower()
     name = request.args.get("name", "").strip()
     ns   = request.args.get("ns", "").strip()
+
+    ttype = target.get("type", "ssh")
+
+    # Docker targets — use docker inspect/logs instead of kubectl
+    if ttype == "docker":
+        _DOCKER_KINDS = {"container", "image", "volume", "network"}
+        dkind = kind if kind in _DOCKER_KINDS else "container"
+        if not name or not _SAFE_NAME_RE.match(name):
+            return jsonify({"error": "invalid name"}), 400
+        if dkind == "container":
+            result = _run_many(target, {
+                "describe": f"docker inspect {name} 2>&1",
+                "logs":     f"docker logs {name} --tail 150 2>&1",
+            })
+        else:
+            result = {"describe": _tools.execute(target, f"docker {dkind} inspect {name} 2>&1")}
+        return jsonify(result)
+
+    # Resolve short aliases to full kubectl resource names
+    _KIND_ALIASES = {"pvc": "persistentvolumeclaim", "pv": "persistentvolume"}
+    kind = _KIND_ALIASES.get(kind, kind)
 
     if kind not in _SAFE_KINDS:                   return jsonify({"error": "invalid kind"}), 400
     if not name or not _SAFE_NAME_RE.match(name): return jsonify({"error": "invalid name"}), 400

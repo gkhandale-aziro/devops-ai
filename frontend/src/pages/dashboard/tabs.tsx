@@ -745,7 +745,8 @@ export function NetworkTab({ data, target }: { data: Record<string, string>; tar
 
 /** Docker `ps -a` view with running/exited/paused pill counts. Column set is
  *  controlled by `DOCKER_PS_FORMAT` in `ui/web.py`. */
-export function DockerContainersTab({ data }: { data: Record<string, string> }) {
+export function DockerContainersTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
   const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {
     if (col.toUpperCase() === "STATUS") {
@@ -792,13 +793,23 @@ export function DockerContainersTab({ data }: { data: Record<string, string> }) 
           <span style={{ fontSize: 11, color: C.text.muted }}>Paused</span>
         </div>}
       </div>
-      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No containers running" />
+      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No containers running"
+        onRowClick={target ? (cols, headers) => {
+          const nameIdx = headers.findIndex(h => h.toUpperCase() === 'NAMES' || h.toUpperCase() === 'NAME');
+          const name = nameIdx >= 0 ? cols[nameIdx] : cols[0] ?? '';
+          detail.open("container", name, "");
+        } : undefined}
+      />
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
 
 /** Docker volumes listing — `docker volume ls` output with a count pill. */
-export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
+export function DockerVolumesTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
   const raw = data.output ?? "";
   const count = useMemo(() => {
     if (!hasKubectlData(raw)) return 0;
@@ -819,13 +830,22 @@ export function DockerVolumesTab({ data }: { data: Record<string, string> }) {
           <span style={{ fontSize: 11, color: C.text.secondary }}>Volumes</span>
         </div>
       </div>
-      <KubectlTable raw={raw} emptyMessage="No Docker volumes" />
+      <KubectlTable raw={raw} emptyMessage="No Docker volumes"
+        onRowClick={target ? (cols, headers) => {
+          const { name } = extractResourceFromRow(cols, headers);
+          detail.open("volume", name, "");
+        } : undefined}
+      />
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
 
 /** Docker images listing — `docker images` output with a count pill. */
-export function DockerImagesTab({ data }: { data: Record<string, string> }) {
+export function DockerImagesTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
   const raw = data.output ?? "";
   const count = useMemo(() => {
     if (!hasKubectlData(raw)) return 0;
@@ -846,7 +866,15 @@ export function DockerImagesTab({ data }: { data: Record<string, string> }) {
           <span style={{ fontSize: 11, color: C.text.secondary }}>Images</span>
         </div>
       </div>
-      <KubectlTable raw={raw} emptyMessage="No Docker images" />
+      <KubectlTable raw={raw} emptyMessage="No Docker images"
+        onRowClick={target ? (cols, headers) => {
+          const { name } = extractResourceFromRow(cols, headers);
+          detail.open("image", name, "");
+        } : undefined}
+      />
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
@@ -854,7 +882,8 @@ export function DockerImagesTab({ data }: { data: Record<string, string> }) {
 /** Docker stats snapshot — CPU% and MEM% colorized via threshold ColorFn
  *  (green < 50%, amber < 80%, red ≥ 80%). Not live-streaming; one snapshot
  *  per tab reload. */
-export function DockerStatsTab({ data }: { data: Record<string, string> }) {
+export function DockerStatsTab({ data, target }: { data: Record<string, string>; target?: Target }) {
+  const detail = useResourceDetail(target?.id ?? "");
   const raw = data.output ?? "";
   const colorFn: ColorFn = (val, col) => {
     const upper = col.toUpperCase();
@@ -875,7 +904,16 @@ export function DockerStatsTab({ data }: { data: Record<string, string> }) {
         <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary, display: "inline-flex", alignItems: "center", gap: 6 }}><BarChart3 size={14} /> Container Stats</span>
         <span style={{ fontSize: 11, color: C.text.faint }}>CPU & memory usage (live snapshot)</span>
       </div>
-      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No container stats available" />
+      <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No container stats available"
+        onRowClick={target ? (cols, headers) => {
+          const nameIdx = headers.findIndex(h => h.toUpperCase() === 'NAME' || h.toUpperCase() === 'CONTAINER');
+          const name = nameIdx >= 0 ? cols[nameIdx] : cols[0] ?? '';
+          detail.open("container", name, "");
+        } : undefined}
+      />
+      {(detail.resource || detail.loading) && (
+        <ResourceModal resource={detail.resource} loading={detail.loading} targetId={target?.id ?? ""} onClose={detail.close} />
+      )}
     </div>
   );
 }
