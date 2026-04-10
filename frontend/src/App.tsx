@@ -17,6 +17,7 @@ import { GLOBAL_KEYFRAMES } from "./utils/animations";
 import { Toaster } from "sonner";
 import { toast } from "./utils/toast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ModelStatusBanner } from "./components/ModelStatusBanner";
 
 export default function App() {
   const [targets,       setTargets]       = useState<Target[]>([]);
@@ -102,6 +103,7 @@ export default function App() {
         />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <ModelStatusBanner onModelChange={() => { window.location.href = "/settings"; }} />
           <Routes>
             <Route path="/"          element={<ErrorBoundary><Home targets={targets} monitorActive={monitorActive} /></ErrorBoundary>} />
             <Route path="/dashboard" element={<ErrorBoundary><Dashboard target={activeTarget} /></ErrorBoundary>} />

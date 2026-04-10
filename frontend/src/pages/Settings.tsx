@@ -13,7 +13,7 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import { api } from "../api/client";
+import { api, type ModelHealthStatus } from "../api/client";
 import { ThemeToggle } from "../components/ThemeContext";
 import { toast } from "../utils/toast";
 import { cn } from "@/lib/utils";
@@ -32,6 +32,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
 export function Settings({ targetCount }: Props) {
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [current, setCurrent] = useState({ tool_model: "", answer_model: "" });
+  const [health, setHealth] = useState<ModelHealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export function Settings({ targetCount }: Props) {
       })
       .catch(() => toast.error("Failed to load AI models"))
       .finally(() => setLoading(false));
+    api.modelHealth().then(setHealth).catch(() => {});
   }, []);
 
   async function updateModel(
@@ -94,6 +96,48 @@ export function Settings({ targetCount }: Props) {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {/* Model health status */}
+              {health && health.status !== "healthy" && (
+                <div style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  marginBottom: 12,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  background: health.status === "fallback" ? "var(--c-sev2-bg)" : "var(--c-sev1-bg)",
+                  border: `1px solid ${health.status === "fallback" ? "var(--c-sev2)" : "var(--c-sev1)"}`,
+                  color: health.status === "fallback" ? "var(--c-sev2)" : "var(--c-sev1)",
+                }}>
+                  {health.status === "fallback" ? (
+                    <>
+                      <strong>Quota exhausted</strong> — using fallback: <strong>{health.fallback_model}</strong>.
+                      Auto-retries primary every 5 min.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Quota exhausted</strong> — AI features unavailable.
+                      Install Ollama for automatic fallback, or change model below.
+                    </>
+                  )}
+                </div>
+              )}
+              {health && health.status === "healthy" && (
+                <div style={{
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  marginBottom: 12,
+                  fontSize: 12,
+                  background: "var(--c-green-bg, #22c55e18)",
+                  border: "1px solid var(--c-green, #22c55e)",
+                  color: "var(--c-green, #22c55e)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
+                  Model healthy
+                </div>
+              )}
               {loading ? (
                 <p style={{ fontSize: 13, color: "var(--c-text-muted)" }}>
                   Loading models...

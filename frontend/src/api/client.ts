@@ -5,6 +5,15 @@ import type {
 
 const BASE = "";  // same origin — Vite proxy handles /api in dev
 
+export interface ModelHealthStatus {
+  status: "healthy" | "degraded" | "fallback" | "unavailable";
+  primary_tool: string;
+  primary_answer: string;
+  fallback_model: string;
+  error_message: string;
+  since: number;
+}
+
 /**
  * Auth header helper — reads AZIRO_API_KEY injected by the backend into
  * index.html as window.__AZIRO_API_KEY__, or falls back to localStorage
@@ -69,7 +78,13 @@ export const api = {
 
   // ── Server info ───────────────────────────────────────────────────────────
 
-  info: () => req<{ tool_model: string; answer_model: string }>("/api/v1/info"),
+  info: () => req<{
+    tool_model: string;
+    answer_model: string;
+    model_health: ModelHealthStatus;
+  }>("/api/v1/info"),
+
+  modelHealth: () => req<ModelHealthStatus>("/api/v1/models/health"),
 
   // ── Tab data ───────────────────────────────────────────────────────────────
 

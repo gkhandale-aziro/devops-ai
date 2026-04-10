@@ -197,7 +197,14 @@ def api_info():
     return jsonify({
         "tool_model":   _llm.tool_model,
         "answer_model": _llm.answer_model,
+        "model_health": _llm.health.to_dict(),
     })
+
+
+@app.route("/api/v1/models/health", methods=["GET"])
+def api_model_health():
+    """Current model health state — healthy / fallback / unavailable."""
+    return jsonify(_llm.health.to_dict())
 
 
 @app.route("/api/v1/models", methods=["GET"])
