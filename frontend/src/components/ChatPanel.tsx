@@ -137,21 +137,40 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
                 ) : "—"}
               </div>
 
-              {/* Edit button on user messages */}
-              {isUser && editingIdx !== i && !loading && onEdit && (
-                <button
-                  onClick={() => { setEditingIdx(i); setEditText(m.content); }}
-                  style={{
-                    background: "none", border: "none", cursor: "pointer",
-                    padding: 3, borderRadius: 4, display: "flex", alignItems: "center",
-                    opacity: 0.4, transition: "opacity 150ms",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
-                  onMouseLeave={e => (e.currentTarget.style.opacity = "0.4")}
-                  title="Edit & resend"
-                >
-                  <Pencil size={12} color={C.text.muted} />
-                </button>
+              {/* Edit & Retry buttons on user messages */}
+              {isUser && editingIdx !== i && !loading && (
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  {onEdit && (
+                    <button
+                      onClick={() => { setEditingIdx(i); setEditText(m.content); }}
+                      style={{
+                        background: "none", border: "none", cursor: "pointer",
+                        padding: 3, borderRadius: 4, display: "flex", alignItems: "center",
+                        opacity: 0.4, transition: "opacity 150ms",
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                      onMouseLeave={e => (e.currentTarget.style.opacity = "0.4")}
+                      title="Edit & resend"
+                    >
+                      <Pencil size={12} color={C.text.muted} />
+                    </button>
+                  )}
+                  {onRetry && isLast && (
+                    <button
+                      onClick={onRetry}
+                      style={{
+                        background: "none", border: "none", cursor: "pointer",
+                        padding: 3, borderRadius: 4, display: "flex", alignItems: "center",
+                        opacity: 0.4, transition: "opacity 150ms",
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                      onMouseLeave={e => (e.currentTarget.style.opacity = "0.4")}
+                      title="Retry"
+                    >
+                      <RotateCcw size={12} color={C.text.muted} />
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Retry button on assistant error messages */}
