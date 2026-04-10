@@ -11,6 +11,7 @@ import { Chat }       from "./pages/Chat";
 import { AddTargetModal } from "./components/AddTargetModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeProvider }  from "./components/ThemeContext";
+import { ConfirmDialog } from "./components/confirm-dialog";
 import { GLOBAL_KEYFRAMES } from "./utils/animations";
 import { Toaster } from "sonner";
 import { toast } from "./utils/toast";
@@ -128,31 +129,16 @@ export default function App() {
           />
         )}
 
-        {/* Inline confirm dialog — replaces window.confirm() */}
-        {confirmRemove && (
-          <div style={{ position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 12, padding: 24, width: 340, display: "flex", flexDirection: "column", gap: 16, boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)" }}>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>Remove connection?</div>
-              <div style={{ fontSize: 13, color: "#94a3b8" }}>
-                Remove <strong style={{ color: "#e2e8f0" }}>{targetName}</strong>? This cannot be undone.
-              </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button
-                  onClick={() => setConfirmRemove(null)}
-                  style={{ background: "#1e2240", border: "1px solid #2d3148", color: "#94a3b8", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer" }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={doRemove}
-                  style={{ background: "#b91c1c", border: "none", color: "#fff", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ConfirmDialog
+          open={!!confirmRemove}
+          onOpenChange={(open) => { if (!open) setConfirmRemove(null); }}
+          title="Remove connection?"
+          description={`Remove ${targetName}? This cannot be undone.`}
+          confirmLabel="Remove"
+          cancelLabel="Cancel"
+          onConfirm={doRemove}
+          variant="destructive"
+        />
 
         {/* Cmd+K Command Palette */}
         <CommandPalette

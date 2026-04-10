@@ -4,6 +4,7 @@ import type { ChatMsg } from "../hooks/useChat";
 import { useSessionChat } from "../hooks/useChat";
 import { ChatPanel } from "../components/ChatPanel";
 import { api } from "../api/client";
+import { ConfirmDialog } from "../components/confirm-dialog";
 
 interface Props {
   targets:       Target[];
@@ -15,6 +16,7 @@ export function Chat(_props: Props) {
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [history,       setHistory]       = useState<ChatMsg[]>([]);
   const [histLoading,   setHistLoading]   = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
     api.sessions.list().then(s => {
@@ -129,7 +131,7 @@ export function Chat(_props: Props) {
                   </div>
                 </div>
                 <button
-                  onClick={e => { e.stopPropagation(); deleteSession(s.id); }}
+                  onClick={e => { e.stopPropagation(); setConfirmDelete(s.id); }}
                   style={{
                     background: "none", border: "none", color: "#64748b",
                     fontSize: 15, cursor: "pointer", padding: "0 2px",
@@ -205,6 +207,17 @@ export function Chat(_props: Props) {
           />
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}
+        title="Delete conversation?"
+        description="This conversation will be permanently deleted."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={() => { if (confirmDelete) { deleteSession(confirmDelete); setConfirmDelete(null); } }}
+        variant="destructive"
+      />
     </div>
   );
 }
