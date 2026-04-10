@@ -135,6 +135,10 @@ async function sendMessage(sid: string, text: string) {
         _setLastMessage(sid, { role: "assistant", content: full });
       }
     }
+    // Safety net: if stream ended but no content arrived, show error
+    if (!full.trim()) {
+      _setLastMessage(sid, { role: "assistant", content: "Error: No response from AI — model may be unavailable. Try again." });
+    }
   } catch (e) {
     if ((e as Error)?.name === "AbortError") {
       // Only show error if it was a timeout, not user-initiated clear

@@ -125,6 +125,10 @@ export function useTargetChat(targetId: string | null) {
           });
         }
       }
+      // Safety net: if stream ended but assistant message is still empty, show error
+      if (!full.trim()) {
+        setError(setMessages, "Error: No response from AI — model may be unavailable. Try again.");
+      }
     } catch (e) {
       if ((e as Error)?.name === "AbortError") {
         // Check if this was a timeout abort (not user-initiated)
@@ -139,12 +143,22 @@ export function useTargetChat(targetId: string | null) {
     }
   }, [targetId]);
 
+  const retry = useCallback(() => {
+    const lastUser = [...messages].reverse().find(m => m.role === "user");
+    if (lastUser) send(lastUser.content);
+  }, [messages, send]);
+
+  const edit = useCallback((msgIndex: number, newText: string) => {
+    setMessages(prev => prev.slice(0, msgIndex));
+    send(newText);
+  }, [send]);
+
   const clear = useCallback(() => {
     abortRef.current?.abort();
     setMessages([]);
   }, []);
 
-  return { messages, loading, send, clear };
+  return { messages, loading, send, retry, edit, clear };
 }
 
 export function useSessionChat(sessionId: string | null) {
