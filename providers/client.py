@@ -107,19 +107,14 @@ _PREFERRED_ANSWER_FALLBACKS = [
 ]
 
 
-def _discover_ollama_models() -> list[str]:
-    """Return available Ollama model names via HTTP API.
-
-    Tries OLLAMA_API_BASE first, then host.docker.internal (for Docker),
-    then localhost (for bare metal / VM).
-    """
+def _get_ollama_base() -> str:
+    """Return the working Ollama API base URL, or empty string if not reachable."""
     import urllib.request
 
     urls_to_try = []
     configured = os.environ.get("OLLAMA_API_BASE", "")
     if configured:
         urls_to_try.append(configured)
-    # Always try Docker host and localhost as fallbacks
     for fallback in ["http://host.docker.internal:11434", "http://localhost:11434"]:
         if fallback not in urls_to_try:
             urls_to_try.append(fallback)
@@ -129,17 +124,29 @@ def _discover_ollama_models() -> list[str]:
             req = urllib.request.Request(f"{base}/api/tags", method="GET")
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read())
-                models = [m["name"] for m in data.get("models", [])]
-                if models:
-                    # Remember working URL for future calls
-                    if not configured:
+                if data.get("models"):
+                    if base != configured:
                         os.environ["OLLAMA_API_BASE"] = base
                         print(f"  [AI] Ollama discovered at {base}")
-                    return models
+                    return base
         except Exception:
             continue
+    return ""
 
-    return []
+
+def _discover_ollama_models() -> list[str]:
+    """Return available Ollama model names via HTTP API."""
+    import urllib.request
+    base = _get_ollama_base()
+    if not base:
+        return []
+    try:
+        req = urllib.request.Request(f"{base}/api/tags", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        return []
 
 
 def _pick_best_fallback(available: list[str], preference: list[str]) -> str:
@@ -400,15 +407,20 @@ class LLMClient:
         Quick test if a model is reachable. Returns {"ok": bool, "error": str}.
         """
         try:
+            kwargs: dict = {
+                "model": model,
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 5,
+                "num_retries": 0,
+                "timeout": TIMEOUT_PROBE,
+            }
+            # Pass api_base explicitly for Ollama models
+            if model.startswith("ollama/"):
+                base = os.environ.get("OLLAMA_API_BASE", "") or _get_ollama_base()
+                if base:
+                    kwargs["api_base"] = base
             with ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(
-                    litellm.completion,
-                    model=model,
-                    messages=[{"role": "user", "content": "ping"}],
-                    max_tokens=5,
-                    num_retries=0,
-                    timeout=TIMEOUT_PROBE,
-                )
+                future = pool.submit(litellm.completion, **kwargs)
                 future.result(timeout=TIMEOUT_PROBE + 5)
             return {"ok": True, "error": ""}
         except Exception as e:
@@ -553,6 +565,17 @@ class LLMClient:
             # Transient error -> retry with backoff
             return self._retry_transient(lambda: self._chat_once(messages, use_tools), e)
 
+    @staticmethod
+    def _add_ollama_base(kwargs: dict):
+        """Inject api_base for Ollama models — env var alone is unreliable."""
+        model = kwargs.get("model", "")
+        if model.startswith("ollama/"):
+            base = os.environ.get("OLLAMA_API_BASE", "")
+            if not base:
+                base = _get_ollama_base()
+            if base:
+                kwargs["api_base"] = base
+
     def _chat_once(self, messages, use_tools):
         """Single API call with hard wall-clock timeout. Never retried internally."""
         model  = self._effective_model(use_tools)
@@ -564,6 +587,7 @@ class LLMClient:
         }
         if use_tools:
             kwargs["tools"] = TOOLS
+        self._add_ollama_base(kwargs)
 
         t0 = time.time()
         print(f"  [AI] Calling {model} | tools={'yes' if use_tools else 'no'}...")
@@ -608,20 +632,27 @@ class LLMClient:
             "num_retries": 0,
             "timeout": TIMEOUT_STREAM,
         }
+        self._add_ollama_base(kwargs)
 
         try:
             for chunk in self._stream_once(kwargs, model):
                 yield chunk
             return
         except Exception as e:
+            print(f"  [AI] Stream error ({type(e).__name__}): {str(e)[:150]}")
             if self._handle_error(e):
                 # Fallback activated -> retry with fallback model
                 fb = self._effective_model(use_tools)
                 kwargs["model"] = fb
+                self._add_ollama_base(kwargs)
                 print(f"  [AI] Retrying with fallback {fb}...")
-                for chunk in self._stream_once(kwargs, fb):
-                    yield chunk
-                return
+                try:
+                    for chunk in self._stream_once(kwargs, fb):
+                        yield chunk
+                    return
+                except Exception as e2:
+                    print(f"  [AI] Fallback retry also failed: {e2}")
+                    raise
 
             if _is_quota_error(e):
                 raise  # no fallback available, propagate
