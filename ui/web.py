@@ -982,6 +982,8 @@ def api_sessions_chat_stream(sid):
     msgs.append({"role": "user", "content": user_msg})
     msgs[:] = _trim(msgs)
     _sessions.update_title(sid, user_msg)
+    # Persist user message immediately so it survives navigation/abort
+    _sessions.set_messages(sid, msgs)
 
     def generate():
         full = ""
@@ -995,7 +997,7 @@ def api_sessions_chat_stream(sid):
             yield f"data: {json.dumps({'error': f'AI model error: {err_msg}'})}\n\n"
         if full:
             msgs.append({"role": "assistant", "content": full})
-            _sessions.set_messages(sid, msgs)
+        _sessions.set_messages(sid, msgs)
         yield "data: [DONE]\n\n"
 
     redactor = StreamRedactor()

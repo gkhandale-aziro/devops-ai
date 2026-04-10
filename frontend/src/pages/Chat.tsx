@@ -63,12 +63,12 @@ export function Chat(_props: Props) {
     }
   }, [clear]);
 
-  // Auto-select first session — placed after switchSession to avoid used-before-declared error
+  // Auto-select first session on mount
   useEffect(() => {
     if (sessions.length > 0 && !activeSession) {
       switchSession(sessions[0].id);
     }
-  }, [sessions, switchSession]);
+  }, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Combine history with live messages (dedup by showing history only when live is empty)
   const displayMessages = messages.length > 0 ? messages : history;
