@@ -214,7 +214,7 @@ export const api = {
   // ── Models ────────────────────────────────────────────────────────────────
   models: {
     list: () =>
-      req<{ ollama: string[]; cloud: string[]; current: { tool_model: string; answer_model: string }; ollama_url: string }>("/api/v1/models"),
+      req<{ ollama: string[]; cloud: string[]; current: { tool_model: string; answer_model: string }; ollama_url: string; health: string }>("/api/v1/models"),
     update: (body: { tool_model?: string; answer_model?: string; ai_model?: string; validate?: boolean }) =>
       req<{ tool_model: string; answer_model: string }>("/api/v1/models", {
         method: "PUT",

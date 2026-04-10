@@ -229,10 +229,20 @@ def api_model_health():
 
 @app.route("/api/v1/models", methods=["GET"])
 def api_models():
-    """List available models — Ollama + cloud models based on API keys."""
+    """List available models — Ollama + cloud models based on API keys.
+    Excludes exhausted cloud models when circuit breaker is active."""
     from providers.client import _discover_ollama_models, discover_cloud_models
     ollama_models = _discover_ollama_models()
     cloud_models  = discover_cloud_models()
+
+    # Filter out exhausted cloud models — if primary is quota-limited,
+    # hide models from the same provider so user doesn't pick a broken one
+    h = _llm.health
+    if h.status in ("fallback", "unavailable") and h.error_message:
+        exhausted_provider = _llm.tool_model.split("/")[0]  # e.g. "gemini"
+        cloud_models = [m for m in cloud_models
+                        if not m.startswith(f"{exhausted_provider}/")]
+
     return jsonify({
         "ollama": ollama_models,
         "cloud":  cloud_models,
@@ -241,6 +251,7 @@ def api_models():
             "answer_model": _llm.answer_model,
         },
         "ollama_url": _llm.get_ollama_url(),
+        "health": h.status,
     })
 
 
