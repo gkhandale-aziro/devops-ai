@@ -136,6 +136,7 @@ export function History() {
   const [loading,       setLoading]       = useState(true);
   const [loadError,     setLoadError]     = useState("");
   const [level,         setLevel]         = useState<TriageLevel | "">("");
+  const [source,        setSource]        = useState("");
   const [objFilter,     setObjFilter]     = useState("");
   const [objInput,      setObjInput]      = useState("");
   const [selectedId,    setSelectedId]    = useState<number | null>(null);
@@ -219,7 +220,17 @@ export function History() {
     setEvents((prev: StoredEvent[]) => prev.map((e: StoredEvent) => e.id === ev.id ? { ...e, status } : e));
   }
 
-  const hasFilters = level !== "" || objInput !== "";
+  const sources = useMemo(() => {
+    const s = new Set(events.map(e => e.source).filter(Boolean));
+    return Array.from(s).sort();
+  }, [events]);
+
+  const filtered = useMemo(() => {
+    if (!source) return events;
+    return events.filter(e => e.source === source);
+  }, [events, source]);
+
+  const hasFilters = level !== "" || objInput !== "" || source !== "";
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -264,6 +275,26 @@ export function History() {
             })}
           </div>
 
+          {/* Source/target filter */}
+          <select
+            value={source}
+            onChange={e => setSource(e.target.value)}
+            style={{
+              background: "var(--c-bg-surface)",
+              border: `1px solid ${source ? "var(--c-accent-hover)" : "var(--c-border-strong)"}`,
+              color: source ? "var(--c-accent-hover)" : "var(--c-text-muted)",
+              borderRadius: 6,
+              padding: "5px 8px",
+              fontSize: 11,
+              fontWeight: 600,
+              outline: "none",
+              cursor: "pointer",
+            }}
+          >
+            <option value="">All Sources</option>
+            {sources.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+
           {/* Object search */}
           <div style={{ position: "relative" }}>
             <input
@@ -289,14 +320,14 @@ export function History() {
 
           {hasFilters && (
             <button
-              onClick={() => { setLevel(""); setObjInput(""); setObjFilter(""); }}
+              onClick={() => { setLevel(""); setObjInput(""); setObjFilter(""); setSource(""); }}
               style={{ background: "none", border: "none", color: "var(--c-text-muted)", fontSize: 11, cursor: "pointer", padding: "2px 6px" }}
             >Clear</button>
           )}
 
           <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
           <span style={{ fontSize: 12, color: "var(--c-text-muted)" }}>
-            {loading ? "Loading…" : `${events.length} event${events.length !== 1 ? "s" : ""}`}
+            {loading ? "Loading…" : `${filtered.length} event${filtered.length !== 1 ? "s" : ""}`}
           </span>
           <button
             onClick={load}
@@ -335,7 +366,7 @@ export function History() {
               </div>
             )}
 
-            {!loading && !loadError && events.length === 0 && (
+            {!loading && !loadError && filtered.length === 0 && (
               <EmptyState
                 icon={<Clock size={32} />}
                 title="No incidents recorded yet"
@@ -343,10 +374,10 @@ export function History() {
               />
             )}
 
-            {events.length > 0 && (
+            {filtered.length > 0 && (
               <DataTable<StoredEvent>
                 columns={incidentColumns}
-                data={events}
+                data={filtered}
                 onRowClick={(e) => openDetail(e.id)}
                 getRowClassName={getRowClassName}
                 emptyMessage="No incidents recorded yet."

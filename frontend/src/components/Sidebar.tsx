@@ -110,7 +110,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
       </div>
 
       {/* ── Connection list ────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px", minHeight: 120 }}>
 
         {/* P1 + Pattern: Empty state with icon, not just plain text */}
         {targets.length === 0 && (
@@ -244,7 +244,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
       </div>
 
       {/* ── Nav ────────────────────────────────────────────────────────────── */}
-      <div style={{ borderTop: "1px solid var(--c-border,#1a2235)", padding: "10px 8px 6px", display: "flex", flexDirection: "column", gap: 2 }}>
+      <div style={{ borderTop: "1px solid var(--c-border,#1a2235)", padding: "6px 8px 4px", display: "flex", flexDirection: "column", gap: 1 }}>
         {navItem("/", "Home",
           <HomeIcon size={15} />
         )}
@@ -276,8 +276,8 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
       {/* ── Footer — AI model + theme ─────────────────────────────────────── */}
       <div style={{
         borderTop: "1px solid var(--c-border,#1a2235)",
-        padding: "10px 14px 12px",
-        display: "flex", flexDirection: "column", gap: 10,
+        padding: "8px 14px 10px",
+        display: "flex", flexDirection: "column", gap: 6,
       }}>
         {/* AI model row */}
         {aiModel && (

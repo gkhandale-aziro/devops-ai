@@ -88,6 +88,20 @@ export function MetricChart({
   const gradientId = `mc-grad-${++_gradientSeq}`;
   const useDay = spanExceeds24h(data);
 
+  if (data.length === 0) {
+    return (
+      <div style={{
+        width: "100%", height,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        color: C.text.faint, fontSize: 12,
+        border: `1px dashed ${C.border.subtle}`,
+        borderRadius: 8,
+      }}>
+        Waiting for data…
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: "100%", height }} role="img" aria-label={`${label} chart`}>
       <ResponsiveContainer width="100%" height="100%">
