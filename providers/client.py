@@ -108,30 +108,38 @@ _PREFERRED_ANSWER_FALLBACKS = [
 
 
 def _discover_ollama_models() -> list[str]:
-    """Return available Ollama model names via HTTP API or CLI fallback."""
+    """Return available Ollama model names via HTTP API.
+
+    Tries OLLAMA_API_BASE first, then host.docker.internal (for Docker),
+    then localhost (for bare metal / VM).
+    """
     import urllib.request
 
-    base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
-    try:
-        req = urllib.request.Request(f"{base}/api/tags", method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-            return [m["name"] for m in data.get("models", [])]
-    except Exception:
-        pass
+    urls_to_try = []
+    configured = os.environ.get("OLLAMA_API_BASE", "")
+    if configured:
+        urls_to_try.append(configured)
+    # Always try Docker host and localhost as fallbacks
+    for fallback in ["http://host.docker.internal:11434", "http://localhost:11434"]:
+        if fallback not in urls_to_try:
+            urls_to_try.append(fallback)
 
-    try:
-        out = subprocess.run(
-            ["ollama", "list"], capture_output=True, text=True, timeout=5,
-        )
-        models = []
-        for line in out.stdout.strip().split("\n")[1:]:
-            parts = line.split()
-            if parts:
-                models.append(parts[0])
-        return models
-    except Exception:
-        return []
+    for base in urls_to_try:
+        try:
+            req = urllib.request.Request(f"{base}/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+                models = [m["name"] for m in data.get("models", [])]
+                if models:
+                    # Remember working URL for future calls
+                    if not configured:
+                        os.environ["OLLAMA_API_BASE"] = base
+                        print(f"  [AI] Ollama discovered at {base}")
+                    return models
+        except Exception:
+            continue
+
+    return []
 
 
 def _pick_best_fallback(available: list[str], preference: list[str]) -> str:
