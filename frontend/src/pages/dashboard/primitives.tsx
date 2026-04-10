@@ -198,7 +198,7 @@ export function ContextualHint({ id, children }: { id: string; children: ReactNo
 
 export function Pre({ children }: { children: ReactNode }) {
   return (
-    <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 12, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.6, margin: 0 }}>
+    <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 12, color: "var(--c-text-secondary)", whiteSpace: "pre-wrap", lineHeight: 1.6, margin: 0 }}>
       {children}
     </pre>
   );

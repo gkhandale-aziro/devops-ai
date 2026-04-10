@@ -563,7 +563,7 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
              if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
              else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
            }}
-           style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 12, width: 740, maxHeight: "82vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)", outline: "none" }}>
+           style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 12, width: 740, maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)", outline: "none" }}>
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border.muted}`, display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ background: C.accent.primary + "33", color: C.accent.light, border: `1px solid ${C.accent.primary}`, borderRadius: 4, padding: "2px 7px", fontSize: 11 }}>
             {loading ? "…" : resource?.kind}
@@ -586,7 +586,7 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose 
                 }}>{t === "previous" ? "Prev Logs" : t === "ai" ? "AI Analysis" : t === "describe" ? "Details" : t}</button>
               ))}
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+            <div style={{ flex: 1, overflow: "auto", padding: 16, minHeight: 0 }}>
               {tab === "ai"
                 ? (aiLoading ? <LoadingSpinner /> : <div style={{ fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{aiText}</div>)
                 : <Pre>{resource.data[tab === "previous" ? "previous" : tab] ?? "—"}</Pre>
