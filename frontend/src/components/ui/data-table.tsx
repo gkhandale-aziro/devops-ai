@@ -20,6 +20,10 @@ interface DataTableProps<TData> {
   onRowClick?: (row: TData) => void;
   emptyMessage?: string;
   toolbar?: ReactNode;
+  /** Optional callback to add custom classes per row (e.g. unhealthy tinting). */
+  getRowClassName?: (row: TData) => string;
+  /** When true, rows get tabIndex=0 and arrow-key navigation between siblings. */
+  keyboardNav?: boolean;
 }
 
 export function DataTable<TData>({
@@ -30,6 +34,8 @@ export function DataTable<TData>({
   onRowClick,
   emptyMessage = "No results.",
   toolbar,
+  getRowClassName,
+  keyboardNav,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -116,11 +122,25 @@ export function DataTable<TData>({
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
+                  tabIndex={keyboardNav || onRowClick ? 0 : undefined}
+                  role={onRowClick ? "button" : undefined}
                   className={cn(
                     "border-b border-border transition-colors hover:bg-raised/50",
-                    onRowClick && "cursor-pointer"
+                    onRowClick && "cursor-pointer",
+                    getRowClassName?.(row.original)
                   )}
                   onClick={() => onRowClick?.(row.original)}
+                  onKeyDown={keyboardNav ? (e) => {
+                    if (onRowClick && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault(); onRowClick(row.original);
+                    } else if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      (e.currentTarget.nextElementSibling as HTMLElement | null)?.focus?.();
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      (e.currentTarget.previousElementSibling as HTMLElement | null)?.focus?.();
+                    }
+                  } : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-3 py-2 text-foreground">

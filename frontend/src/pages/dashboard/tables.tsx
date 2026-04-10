@@ -12,15 +12,18 @@
  * the page shell and lets each piece be tested in isolation.
  */
 import {
-  useState, useEffect, useCallback, useMemo, useRef, useDeferredValue, memo,
+  useState, useEffect, useCallback, useMemo, useRef, useDeferredValue,
   type MouseEvent,
 } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { Target, PodStatus } from "../../types";
 import { api, readSSE } from "../../api/client";
 import { parseKubectl } from "../../utils/parseKubectl";
 import { Sparkles, Play } from "lucide-react";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 import { C } from "../../utils/theme";
+import { DataTable } from "@/components/ui/data-table";
+import { Badge } from "@/components/ui/badge";
 
 // ── Node table ──────────────────────────────────────────────────────────────
 
@@ -117,9 +120,10 @@ const podStatusColor = (s: string): string =>
   : s.includes("Error") || s.includes("Crash") || s === "OOMKilled" || s === "Failed" ? C.status.danger
   : C.status.warning;
 
-// ── PodRow — memoized single-row component ─────────────────────────────────
+// ── PodRowData — typed row shape for DataTable ────────────────────────────
 
-interface PodRowProps {
+/** Parsed pod row data fed to the DataTable column definitions. */
+interface PodRowData {
   ns: string;
   name: string;
   ready: string;
@@ -127,90 +131,119 @@ interface PodRowProps {
   restarts: string;
   age: string;
   isBad: boolean;
-  sc: string;
-  aiBadge: string | undefined;
-  badgeLoading: boolean;
-  onOpen: (kind: string, name: string, ns: string) => void;
-  onDiagnose: (name: string, ns: string, status: string) => void;
-  onStreamLogs?: (pod: string, ns: string) => void;
+  statusColor: string;
+  rawLine: string;
 }
 
-/** Memoized pod table row — skips re-render when its own props haven't
- *  changed, which is the common case when only another row's AI badge
- *  updates. */
-const PodRow = memo(function PodRow({
-  ns, name, ready, status, restarts, age, isBad, sc,
-  aiBadge, badgeLoading: isBadgeLoading, onOpen, onDiagnose, onStreamLogs,
-}: PodRowProps) {
-  return (
-    <tr
-      onClick={() => onOpen("pod", name, ns)}
-      tabIndex={0}
-      role="button"
-      aria-label={`View pod ${name} in ${ns}`}
-      onKeyDown={(ev) => {
-        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onOpen("pod", name, ns); }
-        else if (ev.key === "ArrowDown") {
-          ev.preventDefault();
-          const next = ev.currentTarget.nextElementSibling as HTMLElement | null;
-          next?.focus?.();
-        } else if (ev.key === "ArrowUp") {
-          ev.preventDefault();
-          const prev = ev.currentTarget.previousElementSibling as HTMLElement | null;
-          prev?.focus?.();
-        }
-      }}
-      style={{
-        cursor: "pointer",
-        transition: "background .1s",
-        background: isBad ? `${C.status.danger}10` : "transparent",
-        borderLeft: isBad ? `2px solid ${C.status.danger}` : "2px solid transparent",
-      }}
-      onMouseEnter={ev => (ev.currentTarget.style.background = isBad ? `${C.status.danger}20` : C.bg.card)}
-      onMouseLeave={ev => (ev.currentTarget.style.background = isBad ? `${C.status.danger}10` : "transparent")}
-    >
-      <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{ns}</td>
-      <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600 }}>
-        {name}
-        {isBad && !aiBadge && !isBadgeLoading && (
-          <button
-            onClick={e => { e.stopPropagation(); onDiagnose(name, ns, status); }}
-            aria-label={`Diagnose pod ${name}`}
-            title="Get AI diagnosis for this pod"
-            style={{
-              marginLeft: 6, background: `${C.accent.light}22`, border: `1px solid ${C.accent.light}44`,
-              color: C.accent.light, borderRadius: 4, padding: "2px 7px",
-              fontSize: 11, fontWeight: 600, cursor: "pointer", verticalAlign: "middle",
-            }}
-          >
-            <Sparkles size={10} style={{ marginRight: 3 }} /> Diagnose
-          </button>
-        )}
-        {isBadgeLoading && (
-          <span style={{ marginLeft: 6, fontSize: 9, color: C.accent.light }}>analyzing…</span>
-        )}
-        {aiBadge && (
-          <div style={{
-            marginTop: 3, fontSize: 10, color: "#a5b4fc", lineHeight: 1.4,
-            background: "#1e2240", border: `1px solid ${C.accent.primary}33`,
-            borderRadius: 4, padding: "3px 7px", maxWidth: 400,
-          }}>
-            <Sparkles size={10} style={{ display: "inline", marginRight: 3 }} /> {aiBadge}
+/**
+ * Builds column definitions for the pod DataTable. Accepts closures over
+ * per-row AI badge state and callbacks so cell renderers can access them
+ * without prop-drilling through DataTable internals.
+ */
+function buildPodColumns(opts: {
+  aiBadges: Record<string, string>;
+  badgeLoading: Record<string, boolean>;
+  onDiagnose: (name: string, ns: string, status: string) => void;
+  onStreamLogs?: (pod: string, ns: string) => void;
+}): ColumnDef<PodRowData, unknown>[] {
+  const { aiBadges, badgeLoading, onDiagnose, onStreamLogs } = opts;
+
+  return [
+    {
+      accessorKey: "ns",
+      header: "Namespace",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{row.original.ns}</span>
+      ),
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => {
+        const { name, ns, status, isBad } = row.original;
+        const badgeKey = `${ns}/${name}`;
+        const aiBadge = aiBadges[badgeKey];
+        const isBadgeLoading = !!badgeLoading[badgeKey];
+
+        return (
+          <div>
+            <span className="text-[13px] font-semibold">{name}</span>
+            {isBad && !aiBadge && !isBadgeLoading && (
+              <button
+                onClick={e => { e.stopPropagation(); onDiagnose(name, ns, status); }}
+                aria-label={`Diagnose pod ${name}`}
+                title="Get AI diagnosis for this pod"
+                style={{
+                  marginLeft: 6, background: `${C.accent.light}22`, border: `1px solid ${C.accent.light}44`,
+                  color: C.accent.light, borderRadius: 4, padding: "2px 7px",
+                  fontSize: 11, fontWeight: 600, cursor: "pointer", verticalAlign: "middle",
+                }}
+              >
+                <Sparkles size={10} style={{ marginRight: 3, display: "inline" }} /> Diagnose
+              </button>
+            )}
+            {isBadgeLoading && (
+              <span style={{ marginLeft: 6, fontSize: 9, color: C.accent.light }}>analyzing...</span>
+            )}
+            {aiBadge && (
+              <div style={{
+                marginTop: 3, fontSize: 10, color: "#a5b4fc", lineHeight: 1.4,
+                background: "#1e2240", border: `1px solid ${C.accent.primary}33`,
+                borderRadius: 4, padding: "3px 7px", maxWidth: 400,
+              }}>
+                <Sparkles size={10} style={{ display: "inline", marginRight: 3 }} /> {aiBadge}
+              </div>
+            )}
           </div>
-        )}
-      </td>
-      <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{ready}</td>
-      <td style={{ padding: "8px 12px" }}>
-        <span style={{ background: sc + "22", color: sc, border: `1px solid ${sc}44`, borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
-          {status}
-        </span>
-      </td>
-      <td style={{ padding: "8px 12px", fontSize: 12, color: +restarts > 5 ? C.status.warning : +restarts > 0 ? C.text.secondary : C.text.muted }}>
-        {restarts}
-      </td>
-      <td style={{ padding: "8px 12px", fontSize: 12, color: C.text.muted }}>{age}</td>
-      <td style={{ padding: "8px 12px" }}>
-        {onStreamLogs && (
+        );
+      },
+    },
+    {
+      accessorKey: "ready",
+      header: "Ready",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{row.original.ready}</span>
+      ),
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const { status, statusColor: sc } = row.original;
+        return (
+          <Badge
+            className="text-[11px]"
+            style={{ background: sc + "22", color: sc, borderColor: sc + "44" }}
+          >
+            {status}
+          </Badge>
+        );
+      },
+    },
+    {
+      accessorKey: "restarts",
+      header: "Restarts",
+      cell: ({ row }) => {
+        const r = row.original.restarts;
+        const color = +r > 5 ? C.status.warning : +r > 0 ? C.text.secondary : C.text.muted;
+        return <span className="text-xs" style={{ color }}>{r}</span>;
+      },
+    },
+    {
+      accessorKey: "age",
+      header: "Age",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{row.original.age}</span>
+      ),
+    },
+    {
+      id: "logs",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => {
+        if (!onStreamLogs) return null;
+        const { name, ns } = row.original;
+        return (
           <button
             onClick={e => { e.stopPropagation(); onStreamLogs(name, ns); }}
             aria-label={`Stream live logs for pod ${name}`}
@@ -221,14 +254,21 @@ const PodRow = memo(function PodRow({
               fontSize: 10, fontWeight: 600, cursor: "pointer",
             }}
           >
-            <Play size={9} style={{ marginRight: 3 }} /> Logs
+            <Play size={9} style={{ marginRight: 3, display: "inline" }} /> Logs
           </button>
-        )}
-      </td>
-      <td style={{ padding: "8px 12px", color: C.text.dim, textAlign: "right" }}>›</td>
-    </tr>
-  );
-});
+        );
+      },
+    },
+    {
+      id: "chevron",
+      header: "",
+      enableSorting: false,
+      cell: () => (
+        <span className="text-muted-foreground text-right block">&#8250;</span>
+      ),
+    },
+  ];
+}
 
 /**
  * Pod listing with namespace filter, search, AI badge, and modal.
@@ -236,13 +276,13 @@ const PodRow = memo(function PodRow({
  * Features:
  * - Summary bar (running/pending/bad) derived from `POD_BAD_STATUSES`
  * - Namespace dropdown (derived from visible rows)
- * - Full-text search across name/ns/status
- * - Unhealthy rows get a red tint + left accent (visual polish batch)
- * - Keyboard nav: ↑/↓ moves focus, Enter opens the ResourceModal
- * - AI "Diagnose" badge button on bad pods → calls /analyze for a 1-line
+ * - Full-text search across name/ns/status (via DataTable global filter)
+ * - Unhealthy rows get a red tint + left accent (via getRowClassName)
+ * - Keyboard nav: up/down moves focus, Enter opens the ResourceModal
+ * - AI "Diagnose" badge button on bad pods -> calls /analyze for a 1-line
  *   summary, cached per `${ns}/${name}` key
  *
- * @param onStreamLogs Optional callback — when set, each row shows a "Logs"
+ * @param onStreamLogs Optional callback -- when set, each row shows a "Logs"
  *                     button that streams container output to the LogStream tray.
  */
 export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; onStreamLogs?: (pod: string, ns: string) => void }) {
@@ -262,20 +302,32 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
     [allLines]
   );
 
-  const lines = useMemo(() =>
-    allLines.slice(1).filter(line => {
+  /** Parse kubectl output lines into typed PodRowData[], pre-filtered by namespace and search. */
+  const parsedRows = useMemo<PodRowData[]>(() =>
+    allLines.slice(1).reduce<PodRowData[]>((acc, line) => {
       const c = line.trim().split(/\s+/);
-      if (nsFilter && c[0] !== nsFilter) return false;
-      if (deferredSearch && !line.toLowerCase().includes(deferredSearch.toLowerCase())) return false;
-      return true;
-    }),
+      if (c.length < 5) return acc;
+      const [ns, name, ready, status] = c;
+      if (nsFilter && ns !== nsFilter) return acc;
+      if (deferredSearch && !line.toLowerCase().includes(deferredSearch.toLowerCase())) return acc;
+      acc.push({
+        ns,
+        name,
+        ready,
+        status,
+        restarts: c[4] ?? "0",
+        age: c[c.length - 1],
+        isBad: POD_BAD_STATUSES.has(status),
+        statusColor: podStatusColor(status),
+        rawLine: line,
+      });
+      return acc;
+    }, []),
     [allLines, nsFilter, deferredSearch]
   );
 
   // Note: hooks below are intentionally before the early-return guards so the
-  // hook order stays stable. The early returns originally lived above
-  // podCounts in Dashboard.tsx — moving them up was a latent React rules-of-
-  // hooks bug; this version follows the rule.
+  // hook order stays stable.
   const podCounts = useMemo(() => {
     const counts = { running: 0, pending: 0, bad: 0, total: 0 };
     allLines.slice(1).forEach(line => {
@@ -317,72 +369,60 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
     }
   }, []);
 
+  const handleRowClick = useCallback((row: PodRowData) => {
+    openResource("pod", row.name, row.ns);
+  }, [openResource]);
+
+  const getRowClassName = useCallback((row: PodRowData) =>
+    row.isBad ? "bg-destructive/5 border-l-2 border-l-destructive" : "",
+    []
+  );
+
+  /** Column defs are rebuilt when AI badge state changes so cell renderers
+   *  close over the latest values. */
+  const columns = useMemo(
+    () => buildPodColumns({ aiBadges, badgeLoading, onDiagnose: fetchAIBadge, onStreamLogs }),
+    [aiBadges, badgeLoading, fetchAIBadge, onStreamLogs]
+  );
+
   if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
     return <div style={{ padding: 20, color: C.text.muted, fontSize: 13 }}>kubectl not available or no pods found.</div>;
   }
   if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+    <div className="flex flex-col flex-1 overflow-hidden">
       {podCounts.total > 0 && <PodSummaryBar counts={podCounts} />}
-      <div style={{ padding: "8px 16px", background: "#0d1017", display: "flex", gap: 8, flexShrink: 0 }}>
-        <select
-          value={nsFilter}
-          onChange={e => setNsFilter(e.target.value)}
-          style={{ background: "#0f1117", border: `1px solid ${C.border.muted}`, color: C.text.primary, borderRadius: 6, padding: "5px 10px", fontSize: 12 }}
-        >
-          <option value="">All namespaces</option>
-          {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
-        </select>
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search pods…"
-          style={{ background: "#0f1117", border: `1px solid ${C.border.muted}`, color: C.text.primary, borderRadius: 6, padding: "5px 10px", fontSize: 12, flex: 1 }}
-        />
-        <span style={{ fontSize: 11, color: C.text.faint, alignSelf: "center" }}>
-          {lines.length} pod{lines.length !== 1 ? "s" : ""}
-        </span>
-      </div>
 
-      <div style={{ overflowY: "auto", flex: 1 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: C.bg.base, position: "sticky", top: 0 }}>
-              {["Namespace","Name","Ready","Status","Restarts","Age","",""].map(h => (
-                <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: C.text.muted, textTransform: "uppercase", borderBottom: `1px solid ${C.border.muted}` }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((line, i) => {
-              const c = line.trim().split(/\s+/);
-              if (c.length < 5) return null;
-              const [ns, name, ready, status] = c;
-              const restarts = c[4] ?? "0";
-              const badgeKey = `${ns}/${name}`;
-              return (
-                <PodRow
-                  key={i}
-                  ns={ns}
-                  name={name}
-                  ready={ready}
-                  status={status}
-                  restarts={restarts}
-                  age={c[c.length - 1]}
-                  isBad={POD_BAD_STATUSES.has(status)}
-                  sc={podStatusColor(status)}
-                  aiBadge={aiBadges[badgeKey]}
-                  badgeLoading={!!badgeLoading[badgeKey]}
-                  onOpen={openResource}
-                  onDiagnose={fetchAIBadge}
-                  onStreamLogs={onStreamLogs}
-                />
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<PodRowData>
+        columns={columns}
+        data={parsedRows}
+        onRowClick={handleRowClick}
+        emptyMessage="No pods found"
+        keyboardNav
+        getRowClassName={getRowClassName}
+        toolbar={
+          <>
+            <select
+              value={nsFilter}
+              onChange={e => setNsFilter(e.target.value)}
+              className="h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground"
+            >
+              <option value="">All namespaces</option>
+              {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
+            </select>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search pods…"
+              className="h-8 flex-1 rounded-md border border-border bg-surface px-3 text-xs text-foreground placeholder:text-muted-foreground"
+            />
+            <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+              {parsedRows.length} pod{parsedRows.length !== 1 ? "s" : ""}
+            </span>
+          </>
+        }
+      />
 
       {(resource || loading) && (
         <ResourceModal
