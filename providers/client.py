@@ -690,29 +690,9 @@ class LLMClient:
             return
         except Exception as e:
             print(f"  [AI] Stream error ({type(e).__name__}): {str(e)[:150]}")
-            if self._handle_error(e):
-                fb = self._effective_model(use_tools)
-                print(f"  [AI] Retrying with fallback {fb}...")
-                try:
-                    for chunk in self._stream_once(fb, messages):
-                        yield chunk
-                    return
-                except Exception as e2:
-                    print(f"  [AI] Fallback failed: {e2}")
-                    raise
-
-            if _is_quota_error(e):
-                raise
-            if isinstance(e, TimeoutError) or _is_timeout_error(e):
-                raise
-
-            # Transient retry
-            time.sleep(TRANSIENT_DELAY)
-            try:
-                for chunk in self._stream_once(model, messages):
-                    yield chunk
-            except Exception:
-                raise e
+            # Activate fallback so next call uses Ollama
+            self._handle_error(e)
+            raise
 
     def _stream_once(self, model, messages):
         """Single streaming call. Yields text chunks."""

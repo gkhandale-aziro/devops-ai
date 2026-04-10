@@ -774,7 +774,23 @@ def api_chat_stream(tid):
             else:
                 yield from _agent.run(messages, target, _session, tid)
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            print(f"  [Chat] target stream error: {str(e)[:200]}")
+            # Retry with fallback if available
+            if _llm.health.status == "fallback":
+                try:
+                    full = ""
+                    for chunk in _llm.chat_stream(messages, use_tools=False):
+                        full += chunk
+                        yield f"data: {json.dumps({'t': chunk})}\n\n"
+                    if full:
+                        messages.append({"role": "assistant", "content": full})
+                        _session.set(tid, messages)
+                    yield "data: [DONE]\n\n"
+                    return
+                except Exception as e2:
+                    yield f"data: {json.dumps({'error': str(e2)})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
             yield "data: [DONE]\n\n"
 
     redactor = StreamRedactor()
@@ -1047,7 +1063,18 @@ def api_sessions_chat_stream(sid):
         except Exception as e:
             err_msg = str(e)[:200]
             print(f"  [Chat] stream error: {err_msg}")
-            yield f"data: {json.dumps({'error': f'AI model error: {err_msg}'})}\n\n"
+            # If fallback was activated, retry with fallback model
+            if _llm.health.status == "fallback" and not full:
+                print(f"  [Chat] Retrying with fallback model...")
+                try:
+                    for chunk in _llm.chat_stream(msgs, use_tools=False):
+                        full += chunk
+                        yield f"data: {json.dumps({'t': chunk})}\n\n"
+                except Exception as e2:
+                    print(f"  [Chat] Fallback also failed: {e2}")
+                    yield f"data: {json.dumps({'error': f'AI model error: {str(e2)[:200]}'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': f'AI model error: {err_msg}'})}\n\n"
         if full:
             msgs.append({"role": "assistant", "content": full})
         _sessions.set_messages(sid, msgs)
