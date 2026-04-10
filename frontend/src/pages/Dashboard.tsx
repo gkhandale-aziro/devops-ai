@@ -258,10 +258,10 @@ export function Dashboard({ target }: Props) {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", minHeight: 0 }}>
           {activeTab === "__chat" ? (
-            <div key="__chat" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", ...fadeInStyle }}>
+            <div key="__chat" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0, ...fadeInStyle }}>
               <ContextualHint id="chat-intro">Ask anything — "which pods are failing?", "show me memory usage", "why is nginx crashing?"</ContextualHint>
               <ChatPanel
                 messages={messages}
@@ -271,7 +271,7 @@ export function Dashboard({ target }: Props) {
               />
             </div>
           ) : activeTab === "__topology" ? (
-            <div key="__topology" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", ...fadeInStyle }}>
+            <div key="__topology" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0, ...fadeInStyle }}>
               <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--c-border)", display: "flex", alignItems: "center", gap: 8, background: "var(--c-bg-panel)", flexShrink: 0 }}>
                 <label style={{ fontSize: 11, color: "var(--c-text-muted)" }}>Namespace</label>
                 <input
@@ -285,7 +285,7 @@ export function Dashboard({ target }: Props) {
               <ResourceGraph target={target} namespace={topoNamespace} />
             </div>
           ) : (
-            <div key={activeTab} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", ...fadeInStyle }}>
+            <div key={activeTab} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0, ...fadeInStyle }}>
             <TabContent
               tabId={activeTab}
               data={tabData}
