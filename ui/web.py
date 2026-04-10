@@ -210,17 +210,9 @@ def api_model_health():
 
 @app.route("/api/v1/models", methods=["GET"])
 def api_models():
-    """List available models. Tries Ollama; always returns current config."""
-    from tools.base import run_command
-    ollama_models = []
-    try:
-        out = run_command("ollama list 2>&1", timeout=5)
-        for line in out.strip().split("\n")[1:]:
-            parts = line.split()
-            if parts:
-                ollama_models.append(parts[0])
-    except Exception:
-        pass  # Ollama not available — that's fine
+    """List available models. Queries Ollama HTTP API (works inside Docker)."""
+    from providers.client import _discover_ollama_models
+    ollama_models = _discover_ollama_models()
     return jsonify({
         "ollama": ollama_models,
         "current": {
