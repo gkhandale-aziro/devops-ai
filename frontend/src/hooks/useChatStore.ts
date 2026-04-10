@@ -23,6 +23,14 @@ export interface ChatMsg {
   tools?:  ToolCall[];
 }
 
+// ── Title update callback ───────────────────────────────────────────────────
+// Set by Chat.tsx so the session list can update when the AI generates a title
+let _onTitleUpdate: ((sid: string, title: string) => void) | null = null;
+
+export function setTitleUpdateCallback(cb: (sid: string, title: string) => void) {
+  _onTitleUpdate = cb;
+}
+
 // ── Module-level state (lives outside React) ─────────────────────────────────
 
 interface SessionState {
@@ -117,6 +125,10 @@ async function sendMessage(sid: string, text: string) {
       if (typeof evt.error === "string") {
         _setLastMessage(sid, { role: "assistant", content: `Error: ${evt.error}` });
         return;
+      }
+      if (typeof evt.title === "string") {
+        _onTitleUpdate?.(sid, evt.title as string);
+        continue;
       }
       if (typeof evt.t === "string") {
         full += evt.t;

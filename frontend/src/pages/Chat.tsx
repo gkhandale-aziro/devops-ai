@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Target, ChatSession } from "../types";
-import { useSessionChat, deleteSessionStore } from "../hooks/useChatStore";
+import { useSessionChat, deleteSessionStore, setTitleUpdateCallback } from "../hooks/useChatStore";
 import { ChatPanel } from "../components/ChatPanel";
 import { api } from "../api/client";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -19,13 +19,17 @@ export function Chat(_props: Props) {
     api.sessions.list().then(s => {
       setSessions(s);
     }).catch(e => console.warn("[Chat] sessions.list failed:", (e as Error)?.message));
+
+    // Register callback so AI-generated titles update the sidebar
+    setTitleUpdateCallback((sid, title) => {
+      setSessions(prev => prev.map(s => s.id === sid ? { ...s, title } : s));
+    });
   }, []);
 
   const { messages, loading, send, retry, edit, clear, load } = useSessionChat(activeSession);
 
   const createSession = useCallback(async () => {
-    const title = `Chat ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
-    const s = await api.sessions.create(title);
+    const s = await api.sessions.create("New Chat");
     setSessions(prev => [s, ...prev]);
     setActiveSession(s.id);
     clear();

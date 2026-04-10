@@ -172,6 +172,25 @@ def _trim(messages):
     return system + history[-MAX_HISTORY:]
 
 
+def _generate_session_title(user_msg, ai_response):
+    """Generate a short title from the first chat exchange using the AI model."""
+    try:
+        prompt = [
+            {"role": "system", "content": "Generate a very short title (3-6 words, no quotes) summarizing this conversation. Just output the title, nothing else."},
+            {"role": "user", "content": f"User: {user_msg[:200]}\nAssistant: {ai_response[:300]}"},
+        ]
+        title = ""
+        for chunk in _llm.chat_stream(prompt, use_tools=False):
+            title += chunk
+        title = title.strip().strip('"').strip("'")
+        if title:
+            return title[:50]
+    except Exception as e:
+        print(f"  [Chat] title generation failed: {e}")
+    # Fallback: use first user message
+    return user_msg[:50] + ("..." if len(user_msg) > 50 else "")
+
+
 _CMD_TIMEOUT = 30  # seconds per command
 
 def _run_many(target, cmds):
@@ -1003,6 +1022,9 @@ def api_sessions_chat_stream(sid):
     # Persist user message immediately so it survives navigation/abort
     _sessions.set_messages(sid, msgs)
 
+    # Check if this is the first user message (title still "New Chat")
+    is_first_msg = any(s["id"] == sid and s["title"] == "New Chat" for s in _sessions.load())
+
     def generate():
         full = ""
         try:
@@ -1018,6 +1040,13 @@ def api_sessions_chat_stream(sid):
         if full:
             msgs.append({"role": "assistant", "content": full})
         _sessions.set_messages(sid, msgs)
+
+        # Auto-generate session title from first exchange
+        if is_first_msg and full:
+            title = _generate_session_title(user_msg, full)
+            _sessions.update_title(sid, title)
+            yield f"data: {json.dumps({'title': title})}\n\n"
+
         yield "data: [DONE]\n\n"
 
     redactor = StreamRedactor()
