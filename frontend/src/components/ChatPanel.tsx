@@ -237,6 +237,42 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
                 </div>
               )}
 
+              {/* Follow-up suggestion chips — only on the most recent assistant message */}
+              {!isUser && isLast && !loading && m.suggestions && m.suggestions.length > 0 && (
+                <div style={{
+                  display: "flex", flexWrap: "wrap", gap: 6,
+                  paddingLeft: 4, paddingTop: 6, maxWidth: "82%",
+                }}>
+                  {m.suggestions.map((s, si) => (
+                    <button
+                      key={si}
+                      onClick={() => onSend(s)}
+                      style={{
+                        background: "var(--c-bg-surface)",
+                        border: `1px solid ${C.accent.primary}55`,
+                        color: C.accent.light,
+                        borderRadius: 999,
+                        padding: "4px 12px",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        transition: "all 150ms",
+                        fontFamily: "inherit",
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = `${C.accent.primary}18`;
+                        e.currentTarget.style.borderColor = C.accent.primary;
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = "var(--c-bg-surface)";
+                        e.currentTarget.style.borderColor = `${C.accent.primary}55`;
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Tool calls — expandable blocks */}
               {m.tools && m.tools.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: "82%" }}>

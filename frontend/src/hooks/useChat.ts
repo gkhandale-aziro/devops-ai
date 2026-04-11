@@ -13,6 +13,8 @@ export interface ChatMsg {
   content: string;
   cmds?:   string[];
   tools?:  ToolCall[];
+  /** Follow-up prompts suggested by the backend heuristic. Only set on the last assistant message. */
+  suggestions?: string[];
 }
 
 /** Timeout for initial server response (covers AI model latency + failover). */
@@ -121,6 +123,20 @@ export function useTargetChat(targetId: string | null) {
           setMessages((prev: ChatMsg[]) => {
             const next = [...prev];
             next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools] };
+            return next;
+          });
+        }
+        if (Array.isArray(evt.suggestions)) {
+          const suggestions = (evt.suggestions as unknown[]).filter((s): s is string => typeof s === "string");
+          setMessages((prev: ChatMsg[]) => {
+            const next = [...prev];
+            next[next.length - 1] = {
+              role: "assistant",
+              content: full,
+              cmds: [...cmds],
+              tools: [...tools],
+              suggestions,
+            };
             return next;
           });
         }

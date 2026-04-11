@@ -153,6 +153,8 @@ class Agent:
         yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
         _current_cmd = None
         _cmd_start = None
+        _full_text = ""
+        _last_cmd = None  # most recent tool call, used by suggestion heuristics
 
         for event in self._run_internal(messages, target, session, target_id):
             t = event["type"]
@@ -162,6 +164,7 @@ class Agent:
                 # New: tool_start event for expandable tool-call blocks
                 yield f"data: {json.dumps({'tool_start': {'cmd': event['cmd']}})}\n\n"
                 _current_cmd = event["cmd"]
+                _last_cmd = event["cmd"]
                 _cmd_start = time.time()
             elif t == "tool_output":
                 duration_ms = int((time.time() - _cmd_start) * 1000) if _cmd_start else 0
@@ -172,12 +175,16 @@ class Agent:
                 _current_cmd = None
                 _cmd_start = None
             elif t == "text":
+                _full_text += event["text"]
                 yield f"data: {json.dumps({'t': event['text']})}\n\n"
             elif t == "error":
                 yield f"data: {json.dumps({'error': event['msg']})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
             elif t == "done":
+                suggestions = _generate_suggestions(_full_text, _last_cmd)
+                if suggestions:
+                    yield f"data: {json.dumps({'suggestions': suggestions})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 
@@ -282,6 +289,137 @@ class Agent:
         })
         messages.append({"role": "tool", "content": output,
                          "tool_call_id": tool_call_id})
+
+
+# ── Follow-up suggestions ─────────────────────────────────────────────────────
+#
+# Heuristic follow-up generator. Rules mirror the K8s pod-failure incident
+# response flow chart: each failure state maps to the specific diagnostic
+# action that flow chart prescribes next, not generic "show logs" platitudes.
+#
+#   CrashLoopBackOff → previous logs (the new logs are already post-crash)
+#   OOMKilled        → `kubectl top pod` + review resource limits
+#   ImagePullBackOff → image tag + registry secret check
+#   Evicted          → node disk/memory pressure
+#   Pending          → events on pod → node pressure or quota
+#
+# Order matters: earlier, more specific rules win. The buckets are dedup'd
+# and the final list is capped at 3.
+
+_SUGGESTION_RULES = [
+    # CrashLoopBackOff — the live logs are post-crash noise; previous-logs is
+    # where the actual failure is captured.
+    (
+        ("crashloopbackoff", "crashloop"),
+        [
+            "Show the previous container logs",
+            "What's causing the crash?",
+            "Check the container's startup command and env",
+        ],
+    ),
+    # OOMKilled — memory limits vs actual usage is the diagnostic pair.
+    (
+        ("oomkilled", "oom killed", "out of memory"),
+        [
+            "What are the memory limits on this pod?",
+            "Show me kubectl top pod",
+            "How do I safely raise the memory limit?",
+        ],
+    ),
+    # ImagePullBackOff / ErrImagePull — wrong tag or missing registry secret.
+    (
+        ("imagepullbackoff", "errimagepull", "err image pull"),
+        [
+            "Verify the image tag exists",
+            "Check the imagePullSecrets and registry auth",
+            "Which node is trying to pull this image?",
+        ],
+    ),
+    # Config errors at container creation time.
+    (
+        ("createcontainerconfigerror", "configmap", "secret not found",
+         "invalidimagename"),
+        [
+            "Which ConfigMap or Secret is missing?",
+            "Show the pod's full spec",
+            "How do I recreate the missing resource?",
+        ],
+    ),
+    # Evicted — check node pressure per the flow chart.
+    (
+        ("evicted", "disk pressure", "memory pressure", "diskpressure",
+         "memorypressure"),
+        [
+            "Describe the node — is there disk or memory pressure?",
+            "What's consuming disk on that node?",
+            "Which pods can I safely reschedule?",
+        ],
+    ),
+    # Pending / scheduling — walk the flow chart: events → node → quota.
+    (
+        ("pending", "unschedulable", "failedscheduling", "insufficient"),
+        [
+            "Show the pod events sorted by time",
+            "Is it a node-resource or a quota issue?",
+            "Check taints, tolerations and affinity",
+        ],
+    ),
+    # Generic error wording — only used when no specific state matched.
+    (
+        ("error", "failed", "failure"),
+        [
+            "What should I check next?",
+            "Show me the recent events",
+            "Is this related to a recent change?",
+        ],
+    ),
+    # Healthy / informational replies.
+    (
+        ("running", "ready", "healthy", "active"),
+        [
+            "Show me the resource usage",
+            "Any recent events or restarts?",
+            "What else should I check?",
+        ],
+    ),
+]
+
+_DEFAULT_SUGGESTIONS = ["Tell me more", "What should I do next?"]
+
+
+def _generate_suggestions(text: str, last_cmd: str | None = None) -> list[str]:
+    """
+    Heuristic follow-up generator. Runs on the final assistant reply and picks
+    up to 3 clickable prompts the user is likely to send next. Zero LLM cost.
+
+    Skipped for very short replies (probably an error or refusal), since chips
+    under a one-liner feel like noise.
+    """
+    if not text or len(text.strip()) < 40:
+        return []
+
+    lower = text.lower()
+    picks: list[str] = []
+
+    for keywords, candidates in _SUGGESTION_RULES:
+        if any(k in lower for k in keywords):
+            for c in candidates:
+                if c not in picks:
+                    picks.append(c)
+            if len(picks) >= 3:
+                break
+
+    # If the last tool call was a read-only describe/get and we still have room,
+    # drill into logs as a natural follow-up.
+    if last_cmd and len(picks) < 3 and ("describe" in last_cmd or "get " in last_cmd):
+        extra = "Tail the logs"
+        if extra not in picks:
+            picks.append(extra)
+
+    if not picks:
+        picks = list(_DEFAULT_SUGGESTIONS)
+
+    return picks[:3]
 
 
 # ── CLI formatters ────────────────────────────────────────────────────────────
