@@ -6,7 +6,8 @@
  * zero violations. If axe finds issues, the failure message lists the
  * rule id, impact, and the HTML of the offending element.
  */
-import { render } from "@testing-library/react";
+import { render, fireEvent } from "@testing-library/react";
+import { vi } from "vitest";
 import { axe } from "vitest-axe";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -16,6 +17,14 @@ import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { DataTable } from "../components/ui/data-table";
 import type { ColumnDef } from "@tanstack/react-table";
+
+// AddTargetModal pulls in ../api/client at module load — mock before import.
+vi.mock("../api/client", () => ({
+  api: {
+    testConnection: vi.fn().mockResolvedValue({ ok: true, message: "OK" }),
+  },
+}));
+import { AddTargetModal } from "../components/AddTargetModal";
 
 // Keep axe output on failure concise and relevant.
 const axeOptions = {
@@ -109,6 +118,24 @@ describe("a11y: AlertCard", () => {
   it("interactive card (role=button) has no violations", async () => {
     const { container } = render(<AlertCard alert={baseAlert} onClick={() => {}} />);
     expect(await axe(container, axeOptions)).toHaveNoViolations();
+  });
+});
+
+describe("a11y: AddTargetModal", () => {
+  it("step 1 (type picker) has no violations", async () => {
+    const { baseElement } = render(
+      <AddTargetModal onClose={() => {}} onAdd={async () => {}} />
+    );
+    expect(await axe(baseElement, axeOptions)).toHaveNoViolations();
+  });
+
+  it("step 3 (SSH details form) has no violations — exercises form label wiring", async () => {
+    const { baseElement, getByText } = render(
+      <AddTargetModal onClose={() => {}} onAdd={async () => {}} />
+    );
+    // Click the SSH card to advance straight to the details step.
+    fireEvent.click(getByText("Linux / SSH"));
+    expect(await axe(baseElement, axeOptions)).toHaveNoViolations();
   });
 });
 

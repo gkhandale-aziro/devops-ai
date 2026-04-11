@@ -129,7 +129,9 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
         aria-label={`AI analysis — ${title}`}
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0,
-          width: "min(520px, 90vw)",
+          // clamp(min, fluid, max) — 520 on desktop, scales down on tablet
+          // so context behind the drawer stays visible at 1024px (≈430px).
+          width: "clamp(380px, 42vw, 520px)",
           background: "var(--c-bg-raised)",
           borderLeft: "1px solid var(--c-bg-active)",
           zIndex: 150,

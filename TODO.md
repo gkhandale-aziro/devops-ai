@@ -66,7 +66,7 @@ Current UI score: **3.6 / 10** — target **7+ / 10** by v1.0.
 - [x] Replace inline SVGs with Lucide icon components
 - [x] Empty states on every page with CTA
 - [x] Microcopy pass — every empty state, error, button label reviewed (`f8901d8`)
-- [x] Responsive on tablet (1024px+) — fluid widths + auto-fit grids (`86c77e3`)
+- [x] Responsive on tablet (1024px+) — AIDrawer clamp(380,42vw,520), Home/Overview auto-fit grids, Alerts toolbar flex-wrap (`86c77e3` + follow-up)
 
 ### P3 — Nice-to-have
 - [ ] Multi-pod log aggregation with regex + severity coloring
@@ -113,8 +113,8 @@ Demo: new user onboards without help; keyboard-only power users happy; topology 
 
 ### Week 5 — Polish & Compliance
 Demo: Lighthouse a11y > 95, responsive on tablet, intentional copy on every state.
-- [~] Lighthouse Accessibility > 95; axe-core CI passing — axe-core wired via vitest-axe (`fa9722c`); Lighthouse pending
-- [x] Responsive on tablet (1024px+) — fluid widths + auto-fit grids (`86c77e3`)
+- [~] Lighthouse Accessibility > 95; axe-core CI passing — axe-core wired via vitest-axe covering primitives, ErrorBoundary, ConfirmDialog, AlertCard, DataTable, AddTargetModal (`fa9722c` + follow-up); Lighthouse pending
+- [x] Responsive on tablet (1024px+) — AIDrawer clamp(380,42vw,520), Home/Overview auto-fit grids, Alerts toolbar flex-wrap (`86c77e3` + follow-up)
 - [x] Microcopy pass — every empty state, error, button label (`f8901d8`)
 - [x] Accessibility pass — landmarks, semantic buttons, focus traps, aria-live, form labels (`2c7c139`)
 
