@@ -2,10 +2,18 @@
  * ResourceGraph.tsx — Visual K8s resource topology graph.
  * Shows Deployment → Pods → Services → Ingresses as connected nodes.
  * Pure CSS/SVG — no external graph library needed.
+ *
+ * Features:
+ * - Pan (drag on background) + zoom (wheel / toolbar buttons)
+ * - Live status updates via monitor SSE (matched by object+namespace)
+ * - Health propagation: unhealthy pod → warning ring on upstream
+ *   deployment/service/ingress
  */
-import { useState, useEffect, useRef, useCallback } from "react";
-import type { Target } from "../types";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import type { Target, SSEEvent } from "../types";
 import { api } from "../api/client";
+import { useMonitorSSE } from "../hooks/useSSE";
+import { ZoomIn, ZoomOut, Maximize2, RefreshCw, Activity } from "lucide-react";
 
 interface Props {
   target:    Target;
@@ -48,14 +56,36 @@ const NODE_H = 48;
 const COL_GAP = 60;
 const ROW_GAP = 14;
 
+// Pod phase values that indicate something is wrong — propagate upstream.
+const UNHEALTHY_STATUS = new Set([
+  "CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff",
+  "ErrImagePull", "Failed", "Pending", "CreateContainerConfigError",
+  "Init:Error", "Unknown",
+]);
+
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 1.15;
+
 export function ResourceGraph({ target, namespace }: Props) {
-  const [nodes,   setNodes]   = useState<Node[]>([]);
-  const [edges,   setEdges]   = useState<Edge[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState("");
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [nodes,    setNodes]    = useState<Node[]>([]);
+  const [edges,    setEdges]    = useState<Edge[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState("");
+  const [hovered,  setHovered]  = useState<string | null>(null);
   const [selected, setSelected] = useState<Node | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // Zoom / pan viewport. Applied as a transform on a <g> wrapper.
+  const [zoom, setZoom] = useState(1);
+  const [pan,  setPan]  = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+
+  // Live-update indicator: flashes when an SSE alert touches a node.
+  const [lastLive, setLastLive] = useState<number>(0);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const refetch = useCallback(() => setReloadKey(k => k + 1), []);
 
   useEffect(() => {
     setLoading(true);
@@ -129,7 +159,129 @@ export function ResourceGraph({ target, namespace }: Props) {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [target.id, namespace]);
+  }, [target.id, namespace, reloadKey]);
+
+  // ── Health propagation ─────────────────────────────────────────────
+  // BFS upstream from any unhealthy pod, marking every ancestor (deployment,
+  // service, ingress) as "degraded" so we can render a warning ring. This is
+  // what makes the topology actually useful: a red pod taints the chain above.
+  const degradedIds = useMemo(() => {
+    const out = new Set<string>();
+    const parents: Record<string, string[]> = {};
+    edges.forEach(e => { (parents[e.to] ??= []).push(e.from); });
+
+    const queue: string[] = [];
+    nodes.forEach(n => {
+      if (n.kind === "pod" && UNHEALTHY_STATUS.has(n.status)) {
+        out.add(n.id);
+        queue.push(n.id);
+      }
+    });
+    while (queue.length) {
+      const id = queue.shift()!;
+      (parents[id] ?? []).forEach(p => {
+        if (!out.has(p)) { out.add(p); queue.push(p); }
+      });
+    }
+    return out;
+  }, [nodes, edges]);
+
+  // ── Live SSE updates ───────────────────────────────────────────────
+  // When a monitor alert fires for a pod we already have on the graph,
+  // update its status in place and flash the Live indicator. For objects
+  // we don't know about yet (new pods, new namespaces), trigger a
+  // debounced refetch so the topology stays current.
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSSE = useCallback((ev: SSEEvent) => {
+    if (ev.type !== "monitor_alert") return;
+    const { object, namespace: ns, reason } = ev;
+    let matched = false;
+    setNodes(prev => prev.map(n => {
+      if (n.kind !== "pod") return n;
+      if (n.namespace !== ns) return n;
+      if (n.name !== object && !object.startsWith(n.name)) return n;
+      matched = true;
+      return { ...n, status: reason || n.status };
+    }));
+    setLastLive(Date.now());
+    if (!matched) {
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+      refetchTimerRef.current = setTimeout(refetch, 2500);
+    }
+  }, [refetch]);
+
+  useMonitorSSE(target.type === "kubernetes", handleSSE);
+
+  useEffect(() => () => {
+    if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+  }, []);
+
+  // ── Zoom / pan handlers ────────────────────────────────────────────
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+  const zoomAt = useCallback((factor: number, cx?: number, cy?: number) => {
+    setZoom(prevZoom => {
+      const next = clamp(prevZoom * factor, ZOOM_MIN, ZOOM_MAX);
+      if (next === prevZoom) return prevZoom;
+      // Preserve world coord under cursor, if provided.
+      if (cx !== undefined && cy !== undefined) {
+        setPan(prevPan => {
+          const wx = (cx - prevPan.x) / prevZoom;
+          const wy = (cy - prevPan.y) / prevZoom;
+          return { x: cx - wx * next, y: cy - wy * next };
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (!svgRef.current) return;
+    e.preventDefault();
+    const rect = svgRef.current.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+    zoomAt(factor, cx, cy);
+  }, [zoomAt]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only pan when the background is dragged — let node clicks pass through.
+    const el = e.target as Element;
+    if (el.closest("[data-topo-node]")) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+  }, [pan.x, pan.y]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setPan({ x: d.panX + (e.clientX - d.startX), y: d.panY + (e.clientY - d.startY) });
+  }, []);
+
+  const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
+
+  const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, []);
+
+  // Keyboard shortcuts: +/- zoom, 0 reset (when topology is focused).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+      if (e.key === "+" || e.key === "=") { zoomAt(ZOOM_STEP); }
+      else if (e.key === "-" || e.key === "_") { zoomAt(1 / ZOOM_STEP); }
+      else if (e.key === "0") { resetView(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomAt, resetView]);
+
+  // Live indicator flash duration. Reset to 0 after the window elapses
+  // so the icon dims back to idle (next alert bumps it up again).
+  const isLive = lastLive > 0 && Date.now() - lastLive < 4000;
+  useEffect(() => {
+    if (lastLive === 0) return;
+    const t = setTimeout(() => setLastLive(0), 4100);
+    return () => clearTimeout(t);
+  }, [lastLive]);
 
   if (loading) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--c-text-muted)", fontSize: 13 }}>
@@ -148,14 +300,17 @@ export function ResourceGraph({ target, namespace }: Props) {
     </div>
   );
 
-  const maxX = Math.max(...nodes.map(n => n.x + n.width)) + 60;
-  const maxY = Math.max(...nodes.map(n => n.y + n.height)) + 60;
-
   const getCenter = (n: Node) => ({ x: n.x + n.width / 2, y: n.y + n.height / 2 });
+
+  const ctrlBtn: React.CSSProperties = {
+    width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+    background: "var(--c-bg-surface)", border: "1px solid var(--c-border)", borderRadius: 4,
+    color: "var(--c-text-muted)", cursor: "pointer", padding: 0,
+  };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      {/* Legend */}
+      {/* Legend + zoom toolbar */}
       <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--c-border)", display: "flex", gap: 16, alignItems: "center", flexShrink: 0, background: "var(--c-bg-panel)" }}>
         <span style={{ fontSize: 11, color: "var(--c-text-faint)", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700 }}>Topology</span>
         {(["ingress", "service", "deployment", "pod"] as const).map(kind => {
@@ -167,18 +322,68 @@ export function ResourceGraph({ target, namespace }: Props) {
             </div>
           );
         })}
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-sev2)", display: "inline-block", boxShadow: "0 0 6px var(--c-sev2)" }} />
+          <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>degraded</span>
+        </div>
+
         <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--c-text-faint)" }}>{nodes.length} resources</span>
+
+        {/* Live indicator */}
+        {target.type === "kubernetes" && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 4, fontSize: 11,
+            color: isLive ? "var(--c-accent)" : "var(--c-text-faint)",
+            transition: "color .3s",
+          }} title="Live updates from monitor stream">
+            <Activity size={12} style={{ animation: isLive ? "pulse 1s ease-in-out" : undefined }} />
+            <span>live</span>
+          </div>
+        )}
+
+        {/* Zoom controls */}
+        <div style={{ display: "flex", gap: 4, alignItems: "center", paddingLeft: 8, borderLeft: "1px solid var(--c-border)" }}>
+          <button type="button" onClick={() => zoomAt(1 / ZOOM_STEP)} style={ctrlBtn} aria-label="Zoom out" title="Zoom out (−)">
+            <ZoomOut size={13} />
+          </button>
+          <span style={{ fontSize: 10, color: "var(--c-text-muted)", minWidth: 34, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+            {Math.round(zoom * 100)}%
+          </span>
+          <button type="button" onClick={() => zoomAt(ZOOM_STEP)} style={ctrlBtn} aria-label="Zoom in" title="Zoom in (+)">
+            <ZoomIn size={13} />
+          </button>
+          <button type="button" onClick={resetView} style={ctrlBtn} aria-label="Reset view" title="Reset view (0)">
+            <Maximize2 size={13} />
+          </button>
+          <button type="button" onClick={refetch} style={ctrlBtn} aria-label="Refresh topology" title="Refresh topology">
+            <RefreshCw size={13} />
+          </button>
+        </div>
       </div>
 
       {/* SVG Graph */}
-      <div style={{ flex: 1, overflow: "auto", padding: 12, background: "var(--c-bg-panel)" }}>
-        <svg ref={svgRef} width={maxX} height={maxY} style={{ display: "block" }}>
+      <div
+        style={{
+          flex: 1, overflow: "hidden", padding: 0, background: "var(--c-bg-panel)",
+          cursor: dragRef.current ? "grabbing" : "grab", userSelect: "none",
+        }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        <svg ref={svgRef} width="100%" height="100%" style={{ display: "block" }}>
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
               <path d="M0,0 L0,6 L8,3 z" fill="var(--c-border-strong)" />
             </marker>
+            <marker id="arrow-warn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="var(--c-sev2)" />
+            </marker>
           </defs>
 
+          <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
           {/* Edges */}
           {edges.map((e, i) => {
             const from = nodes.find(n => n.id === e.from);
@@ -188,14 +393,18 @@ export function ResourceGraph({ target, namespace }: Props) {
             const t = getCenter(to);
             const mx = (f.x + t.x) / 2;
             const isHov = hovered === from.id || hovered === to.id;
+            // Degraded edge: both ends are in the propagated set.
+            const isDegraded = degradedIds.has(from.id) && degradedIds.has(to.id);
+            const stroke = isDegraded ? "var(--c-sev2)" : isHov ? "var(--c-accent)" : "var(--c-border)";
             return (
               <path
                 key={i}
                 d={`M${f.x + from.width / 2 - 10},${f.y} C${mx},${f.y} ${mx},${t.y} ${t.x - to.width / 2 + 10},${t.y}`}
                 fill="none"
-                stroke={isHov ? "var(--c-accent)" : "var(--c-border)"}
-                strokeWidth={isHov ? 1.5 : 1}
-                markerEnd="url(#arrow)"
+                stroke={stroke}
+                strokeWidth={isHov || isDegraded ? 1.5 : 1}
+                strokeDasharray={isDegraded ? "4 3" : undefined}
+                markerEnd={isDegraded ? "url(#arrow-warn)" : "url(#arrow)"}
                 style={{ transition: "stroke .15s" }}
               />
             );
@@ -206,17 +415,27 @@ export function ResourceGraph({ target, namespace }: Props) {
             const c     = KIND_COLOR[n.kind];
             const isHov = hovered === n.id;
             const isSel = selected?.id === n.id;
+            const isDegraded = degradedIds.has(n.id);
             const statusColor = n.kind === "pod" ? (POD_STATUS_COLOR[n.status] ?? "var(--c-text-muted)") : c.border;
             const shortName = n.name.length > 18 ? n.name.slice(0, 17) + "…" : n.name;
+            // Warning ring for degraded ancestors (non-pods). Pods already
+            // show their status via statusColor dot — no need to double up.
+            const showWarnRing = isDegraded && n.kind !== "pod";
 
             return (
               <g
                 key={n.id}
+                data-topo-node
                 onClick={() => setSelected(isSel ? null : n)}
                 onMouseEnter={() => setHovered(n.id)}
                 onMouseLeave={() => setHovered(null)}
                 style={{ cursor: "pointer" }}
               >
+                {/* Warning ring — degraded propagation */}
+                {showWarnRing && (
+                  <rect x={n.x - 3} y={n.y - 3} width={n.width + 6} height={n.height + 6} rx={10}
+                    fill="none" stroke="var(--c-sev2)" strokeWidth={1.5} strokeDasharray="3 2" opacity={0.85} />
+                )}
                 {/* Shadow */}
                 {(isHov || isSel) && (
                   <rect x={n.x - 2} y={n.y - 2} width={n.width + 4} height={n.height + 4} rx={9}
@@ -240,6 +459,7 @@ export function ResourceGraph({ target, namespace }: Props) {
               </g>
             );
           })}
+          </g>
         </svg>
       </div>
 
