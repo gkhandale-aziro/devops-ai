@@ -79,7 +79,7 @@ export function Home({ targets, monitorActive }: Props) {
 
   return (
     <div id="main" style={{ flex: 1, overflowY: "auto", background: "var(--c-bg-base)" }}>
-      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "36px 28px" }}>
+      <div style={{ maxWidth: 1600, margin: "0 auto", padding: "36px 32px" }}>
 
         {/* ── Page header ───────────────────────────────────────────────── */}
         <div style={{ marginBottom: 36, animation: "slideUp .3s ease-out" }}>
