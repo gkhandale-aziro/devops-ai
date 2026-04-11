@@ -14,6 +14,7 @@
 import {
   useState, useEffect, useCallback, useMemo, useRef, useDeferredValue,
 } from "react";
+import { createPortal } from "react-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { Target, PodStatus } from "../../types";
 import { api, readSSE } from "../../api/client";
@@ -562,8 +563,13 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose,
   const hasPrevLogs = resource?.data.previous && !resource.data.previous.includes("[no previous");
   const modalTabs = ["describe", "logs", ...(hasPrevLogs ? ["previous"] : []), "ai"] as const;
 
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
+  // Portal to document.body so the modal escapes any ancestor transform /
+  // containing block. Dashboard tabs wrap their content in fadeInStyle which
+  // applies `transform: translateY(0)` (with `both` fill mode), which makes
+  // `position: fixed` children contain to the tab content box instead of the
+  // viewport — causing the modal to render below the top bar and break scroll.
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center" }}
          onClick={e => e.target === e.currentTarget && onClose()}>
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="modal-title"
            onKeyDown={e => {
@@ -611,7 +617,8 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose,
         )}
         {loading && <LoadingSpinner />}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

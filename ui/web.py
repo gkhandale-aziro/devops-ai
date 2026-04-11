@@ -1310,16 +1310,35 @@ def api_search(tid):
             "nodes": f"kubectl get nodes --no-headers 2>/dev/null | grep -i -- {safe_q} | head -5",
             "deps":  f"kubectl get deployments -A --no-headers 2>/dev/null | grep -i -- {safe_q} | head -5",
         })
+
+        # run_command substitutes "[Exit code: N]" for any command that
+        # produces no stdout — which happens every time grep finds zero
+        # matches (grep exits 1). Treat those sentinels as empty, otherwise
+        # they get split into fake "[Exit / code: / N]" rows.
+        def _clean(out: str) -> str:
+            if not out:
+                return ""
+            s = out.strip()
+            if s.startswith("[Exit code:") or s.startswith("[TIMEOUT]"):
+                return ""
+            return s
+
         results = []
-        for line in (raw.get("pods") or "").strip().split("\n"):
+        for line in _clean(raw.get("pods", "")).split("\n"):
+            if not line:
+                continue
             parts = line.split()
             if len(parts) >= 4:
                 results.append({"kind": "pod", "namespace": parts[0], "name": parts[1], "status": parts[3]})
-        for line in (raw.get("nodes") or "").strip().split("\n"):
+        for line in _clean(raw.get("nodes", "")).split("\n"):
+            if not line:
+                continue
             parts = line.split()
             if len(parts) >= 2:
                 results.append({"kind": "node", "namespace": "", "name": parts[0], "status": parts[1]})
-        for line in (raw.get("deps") or "").strip().split("\n"):
+        for line in _clean(raw.get("deps", "")).split("\n"):
+            if not line:
+                continue
             parts = line.split()
             if len(parts) >= 4:
                 results.append({"kind": "deployment", "namespace": parts[0], "name": parts[1], "status": parts[2]})

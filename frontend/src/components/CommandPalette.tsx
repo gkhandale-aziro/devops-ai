@@ -185,7 +185,13 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
       const firstSpace = q.indexOf(" ");
       const firstWord  = firstSpace > 0 ? q.slice(0, firstSpace).toLowerCase() : "";
       const verb       = ACTION_VERBS[firstWord];
-      const searchTerm = verb ? q.slice(firstSpace + 1).trim() : q;
+      // After stripping the verb, only the first token of what remains is
+      // used for the backend grep. The backend's /search endpoint rejects
+      // queries with spaces (regex validation), so "describe failed pod"
+      // must become just "failed" — and the user's intent is best matched
+      // by the first identifier they typed anyway.
+      const remainder  = verb ? q.slice(firstSpace + 1).trim() : q;
+      const searchTerm = remainder.split(/\s+/)[0] ?? "";
       if (verb && !searchTerm) return;
       setLoading(true);
       const controller = new AbortController();
