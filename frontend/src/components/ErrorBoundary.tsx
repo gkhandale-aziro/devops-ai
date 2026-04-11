@@ -36,10 +36,11 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
-              Something went wrong
+              This page crashed
             </div>
-            <div style={{ fontSize: 13, color: "var(--c-text-muted)", maxWidth: 400, lineHeight: 1.6 }}>
-              {this.state.error?.message ?? "An unexpected error occurred."}
+            <div style={{ fontSize: 13, color: "var(--c-text-muted)", maxWidth: 420, lineHeight: 1.6 }}>
+              {this.state.error?.message ?? "An unexpected error interrupted this view."}
+              <div style={{ marginTop: 8 }}>Reload to recover — your connections and settings are safe.</div>
             </div>
           </div>
           <button

@@ -249,7 +249,7 @@ function buildPodColumns(opts: {
               </button>
             )}
             {isBadgeLoading && (
-              <span style={{ marginLeft: 6, fontSize: 9, color: C.accent.light }}>analyzing...</span>
+              <span style={{ marginLeft: 6, fontSize: 9, color: C.accent.light }}>analyzing…</span>
             )}
             {aiBadge && (
               <div style={{

@@ -59,7 +59,7 @@ Current UI score: **3.6 / 10** — target **7+ / 10** by v1.0.
 
 ### P2 — Polish & delight
 - [x] AI chat: tool-call visualization (expand/collapse) + thumbs up/down feedback
-- [ ] AI chat: suggested follow-up questions
+- [x] AI chat: suggested follow-up questions — heuristic backend rules + SSE frame + chip UI (`ee72620`)
 - [x] Cmd+K palette expanded — describe/logs/AI analyze actions, verb-strip parser (Week 4)
 - [x] Keyboard shortcut cheat sheet behind `?` — KeyboardHelp overlay (Week 4)
 - [x] Confirmation Dialog for destructive actions
@@ -116,7 +116,7 @@ Demo: Lighthouse a11y > 95, responsive on tablet, intentional copy on every stat
 - [ ] Lighthouse Accessibility > 95; axe-core CI passing
 - [ ] Responsive on tablet (1024px+)
 - [ ] Microcopy pass — every empty state, error, button label
-- [ ] Accessibility pass — axe audit, fix all criticals
+- [x] Accessibility pass — landmarks, semantic buttons, focus traps, aria-live, form labels (`2c7c139`)
 
 ### Week 6 — Freeze & Ship
 Demo: tagged v1.0.0, fresh-OS bug bash passes, pilot users onboarded.
@@ -134,7 +134,7 @@ All must be true to ship:
 - [x] Settings page (model selector, theme, shortcuts, notifications)
 - [x] DataTable used for all resource lists
 - [x] AI chat: tool calls, thumbs up/down
-- [ ] AI chat: follow-up suggestions
+- [x] AI chat: follow-up suggestions
 - [x] Onboarding tour completes for new user
 - [x] Cmd+K includes actions, not just nav
 - [x] Keyboard cheat sheet + 15+ shortcuts

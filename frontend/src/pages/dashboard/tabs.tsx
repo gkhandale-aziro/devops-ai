@@ -174,7 +174,7 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
 export function GenericTab({ data }: { data: Record<string, string> }) {
   if (data.error) return <div style={{ padding: 20, color: C.status.danger }}>{data.error}</div>;
   const entries = Object.entries(data);
-  if (!entries.length) return <EmptyState icon={<Database size={32} />} title="No data" description="This tab returned no information for the selected target." />;
+  if (!entries.length) return <EmptyState icon={<Database size={32} />} title="Nothing to show here" description="The target responded, but this tab has no data yet. Try refreshing or check that the underlying command has results to report." />;
   return (
     <div style={{ overflowY: "auto", padding: 16, flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
       {entries.map(([key, val]) => (

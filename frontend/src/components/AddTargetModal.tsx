@@ -390,7 +390,7 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
       {hint("Use a named profile, or provide access keys directly. Keys take precedence over profile.")}
       {field("Profile", "profile", "default")}
       {field("Region", "region", "us-east-1")}
-      {field("Access Key ID", "access_key_id", "AKIA... (optional if using profile)")}
+      {field("Access Key ID", "access_key_id", "AKIA… (optional if using profile)")}
       {field("Secret Access Key", "secret_access_key", "optional", "password")}
       {field("Session Token", "session_token", "for temporary credentials (optional)", "password")}
       {field("Endpoint URL", "endpoint_url", "http://localhost:4566 (LocalStack, optional)")}

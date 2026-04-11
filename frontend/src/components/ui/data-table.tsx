@@ -30,7 +30,7 @@ export function DataTable<TData>({
   columns,
   data,
   searchKey,
-  searchPlaceholder = "Search...",
+  searchPlaceholder = "Search…",
   onRowClick,
   emptyMessage = "No results.",
   toolbar,

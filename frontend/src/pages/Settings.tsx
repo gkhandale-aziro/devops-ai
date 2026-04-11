@@ -176,7 +176,7 @@ export function Settings({ targetCount }: Props) {
               )}
               {loading ? (
                 <p style={{ fontSize: 13, color: "var(--c-text-muted)" }}>
-                  Loading models...
+                  Loading models…
                 </p>
               ) : (
                 <div className={cn("flex flex-col gap-4")}>
@@ -285,7 +285,7 @@ export function Settings({ targetCount }: Props) {
                   }}
                 >
                   {ollamaUrlTesting && <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />}
-                  {ollamaUrlTesting ? "Testing..." : "Save & Test"}
+                  {ollamaUrlTesting ? "Testing…" : "Save & Test"}
                 </button>
               </div>
               {ollamaUrlResult && (
