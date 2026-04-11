@@ -117,7 +117,7 @@ export function Home({ targets, monitorActive }: Props) {
         </div>
 
         {/* ── Stat cards ────────────────────────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 32 }}>
           <StatCard
             label="Connections"
             value={targets.length}

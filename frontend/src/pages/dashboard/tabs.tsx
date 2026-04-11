@@ -95,7 +95,7 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
   return (
     <div style={{ overflowY: "auto", padding: 16, flex: 1 }}>
       {/* metric cards — Skill #6: SVG ring charts instead of flat bars */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
         {[
           { label: "CPU Usage",  val: `${cpuPct}%`,  sub: `Load avg: ${load}`,            pct: cpuPct  },
           { label: "Memory",     val: `${memUsed}G`, sub: `of ${memTotal}G (${memPct}%)`, pct: memPct  },

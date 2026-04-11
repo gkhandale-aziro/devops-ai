@@ -128,7 +128,8 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
         aria-modal="true"
         aria-label={`AI analysis — ${title}`}
         style={{
-          position: "fixed", top: 0, right: 0, bottom: 0, width: 520,
+          position: "fixed", top: 0, right: 0, bottom: 0,
+          width: "min(520px, 90vw)",
           background: "var(--c-bg-raised)",
           borderLeft: "1px solid var(--c-bg-active)",
           zIndex: 150,

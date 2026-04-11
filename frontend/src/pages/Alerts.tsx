@@ -94,6 +94,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
         alignItems: "center",
         gap: 14,
         flexShrink: 0,
+        flexWrap: "wrap",
         background: "var(--c-bg-raised)",
       }}>
         <span style={{
@@ -106,7 +107,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
         aria-label={monitorActive ? "Monitor is active" : "Monitor is inactive"}
         role="status" />
 
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {/* Severity counters */}
           <div style={{ display: "flex", gap: 6 }}>
             {LEVELS.map(l => {
