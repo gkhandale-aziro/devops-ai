@@ -125,15 +125,24 @@ Click **+ Add Connection** in the sidebar.
 2. Enter a name and your kubectl context (`kubectl config get-contexts`)
 3. Click **Test & Save**
 
-**Docker + local cluster?** Run this once on the host:
+**Docker + local cluster?**
 
-```bash
-kubectl config set-cluster <cluster-name> \
-  --server=https://host.docker.internal:6443 \
-  --insecure-skip-tls-verify=true
-```
+- **kind** (or GitHub Codespaces with kind): connect Aziro to kind's network and use the internal kubeconfig.
+  ```bash
+  docker network connect kind aziro-ops
+  kind get kubeconfig --name <cluster> --internal > ~/.kube/config
+  chmod 644 ~/.kube/config
+  ```
+  In the UI, pick the internal context. Full walk-through incl. host+container merge: [setup-guide.md § Local kubeconfig](setup-guide.md#local-kubeconfig-kind-minikube-docker-desktop).
 
-Cloud clusters (EKS/GKE/AKS) work without extra steps.
+- **minikube / Docker Desktop:** rewrite the server URL once on the host.
+  ```bash
+  kubectl config set-cluster <cluster-name> \
+    --server=https://host.docker.internal:6443 \
+    --insecure-skip-tls-verify=true
+  ```
+
+Cloud clusters (EKS/GKE/AKS) work without extra steps — Aziro ships `aws`, `gcloud`, `gke-gcloud-auth-plugin`, and `az` in the image and mounts your credentials directories.
 
 ### SSH server
 
