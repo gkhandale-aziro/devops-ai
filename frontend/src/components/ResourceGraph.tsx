@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Target, SSEEvent } from "../types";
 import { api } from "../api/client";
 import { useMonitorSSE } from "../hooks/useSSE";
-import { ZoomIn, ZoomOut, Maximize2, RefreshCw, Activity } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, RefreshCw, Activity } from "lucide-react";
 
 interface Props {
   target:    Target;
@@ -56,11 +56,12 @@ const NODE_H = 48;
 const COL_GAP = 60;
 const ROW_GAP = 14;
 
-// Pod phase values that indicate something is wrong — propagate upstream.
+// Pod phase values that indicate a hard failure — propagate upstream.
+// Deliberately excludes "Pending" (transient on startup) and "Unknown"
+// (parser fallback); those would produce noisy false-positive warnings.
 const UNHEALTHY_STATUS = new Set([
   "CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff",
-  "ErrImagePull", "Failed", "Pending", "CreateContainerConfigError",
-  "Init:Error", "Unknown",
+  "ErrImagePull", "Failed", "CreateContainerConfigError", "Init:Error",
 ]);
 
 const ZOOM_MIN = 0.3;
@@ -79,11 +80,17 @@ export function ResourceGraph({ target, namespace }: Props) {
   // Zoom / pan viewport. Applied as a transform on a <g> wrapper.
   const [zoom, setZoom] = useState(1);
   const [pan,  setPan]  = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
 
   // Live-update indicator: flashes when an SSE alert touches a node.
   const [lastLive, setLastLive] = useState<number>(0);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Keep a ref of the current nodes so SSE handler can look up without
+  // re-binding the callback on every state update.
+  const nodesRef = useRef<Node[]>(nodes);
+  nodesRef.current = nodes;
 
   const refetch = useCallback(() => setReloadKey(k => k + 1), []);
 
@@ -191,23 +198,26 @@ export function ResourceGraph({ target, namespace }: Props) {
   // update its status in place and flash the Live indicator. For objects
   // we don't know about yet (new pods, new namespaces), trigger a
   // debounced refetch so the topology stays current.
+  //
+  // Look up the target via nodesRef BEFORE calling setNodes so the
+  // updater stays pure (no side effects from within setState).
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSSE = useCallback((ev: SSEEvent) => {
     if (ev.type !== "monitor_alert") return;
     const { object, namespace: ns, reason } = ev;
-    let matched = false;
-    setNodes(prev => prev.map(n => {
-      if (n.kind !== "pod") return n;
-      if (n.namespace !== ns) return n;
-      if (n.name !== object && !object.startsWith(n.name)) return n;
-      matched = true;
-      return { ...n, status: reason || n.status };
-    }));
-    setLastLive(Date.now());
-    if (!matched) {
+    const match = nodesRef.current.find(n =>
+      n.kind === "pod" && n.namespace === ns &&
+      (n.name === object || object.startsWith(n.name))
+    );
+    if (match) {
+      setNodes(prev => prev.map(n =>
+        n.id === match.id ? { ...n, status: reason || n.status } : n
+      ));
+    } else {
       if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
       refetchTimerRef.current = setTimeout(refetch, 2500);
     }
+    setLastLive(Date.now());
   }, [refetch]);
 
   useMonitorSSE(target.type === "kubernetes", handleSSE);
@@ -236,8 +246,10 @@ export function ResourceGraph({ target, namespace }: Props) {
   }, []);
 
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    // Note: React 17+ attaches wheel as a passive listener, so we can't
+    // call preventDefault here. The parent container has overflow:hidden
+    // which suppresses scroll bleed, so that's OK in practice.
     if (!svgRef.current) return;
-    e.preventDefault();
     const rect = svgRef.current.getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
@@ -250,6 +262,7 @@ export function ResourceGraph({ target, namespace }: Props) {
     const el = e.target as Element;
     if (el.closest("[data-topo-node]")) return;
     dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+    setDragging(true);
   }, [pan.x, pan.y]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -258,7 +271,10 @@ export function ResourceGraph({ target, namespace }: Props) {
     setPan({ x: d.panX + (e.clientX - d.startX), y: d.panY + (e.clientY - d.startY) });
   }, []);
 
-  const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
+  const handleMouseUp = useCallback(() => {
+    dragRef.current = null;
+    setDragging(false);
+  }, []);
 
   const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, []);
 
@@ -353,7 +369,7 @@ export function ResourceGraph({ target, namespace }: Props) {
             <ZoomIn size={13} />
           </button>
           <button type="button" onClick={resetView} style={ctrlBtn} aria-label="Reset view" title="Reset view (0)">
-            <Maximize2 size={13} />
+            <RotateCcw size={13} />
           </button>
           <button type="button" onClick={refetch} style={ctrlBtn} aria-label="Refresh topology" title="Refresh topology">
             <RefreshCw size={13} />
@@ -365,7 +381,7 @@ export function ResourceGraph({ target, namespace }: Props) {
       <div
         style={{
           flex: 1, overflow: "hidden", padding: 0, background: "var(--c-bg-panel)",
-          cursor: dragRef.current ? "grabbing" : "grab", userSelect: "none",
+          cursor: dragging ? "grabbing" : "grab", userSelect: "none",
         }}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
