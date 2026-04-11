@@ -65,8 +65,8 @@ Current UI score: **3.6 / 10** — target **7+ / 10** by v1.0.
 - [x] Confirmation Dialog for destructive actions
 - [x] Replace inline SVGs with Lucide icon components
 - [x] Empty states on every page with CTA
-- [ ] Microcopy pass — every empty state, error, button label reviewed
-- [ ] Responsive on tablet (1024px+)
+- [x] Microcopy pass — every empty state, error, button label reviewed (`f8901d8`)
+- [x] Responsive on tablet (1024px+) — fluid widths + auto-fit grids (`86c77e3`)
 
 ### P3 — Nice-to-have
 - [ ] Multi-pod log aggregation with regex + severity coloring
@@ -114,8 +114,8 @@ Demo: new user onboards without help; keyboard-only power users happy; topology 
 ### Week 5 — Polish & Compliance
 Demo: Lighthouse a11y > 95, responsive on tablet, intentional copy on every state.
 - [ ] Lighthouse Accessibility > 95; axe-core CI passing
-- [ ] Responsive on tablet (1024px+)
-- [ ] Microcopy pass — every empty state, error, button label
+- [x] Responsive on tablet (1024px+) — fluid widths + auto-fit grids (`86c77e3`)
+- [x] Microcopy pass — every empty state, error, button label (`f8901d8`)
 - [x] Accessibility pass — landmarks, semantic buttons, focus traps, aria-live, form labels (`2c7c139`)
 
 ### Week 6 — Freeze & Ship
@@ -139,9 +139,9 @@ All must be true to ship:
 - [x] Cmd+K includes actions, not just nav
 - [x] Keyboard cheat sheet + 15+ shortcuts
 - [ ] Lighthouse a11y > 95
-- [ ] Responsive on tablet (1024px+)
+- [x] Responsive on tablet (1024px+)
 - [x] All 7 differentiators preserved
-- [ ] Microcopy reviewed on every empty state, error, button
+- [x] Microcopy reviewed on every empty state, error, button
 
 ### Definition of Done (12-step keyboard walkthrough)
 A new engineer must complete using only keyboard:
