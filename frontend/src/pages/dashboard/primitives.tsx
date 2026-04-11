@@ -110,13 +110,15 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
         aria-labelledby={headerId}
         aria-hidden={!open}
         style={{
-          maxHeight: open ? 2000 : 0,
+          display: "grid",
+          gridTemplateRows: open ? "1fr" : "0fr",
           opacity: open ? 1 : 0,
-          overflow: "hidden",
-          transition: "max-height .3s ease, opacity .2s ease",
+          transition: "grid-template-rows .3s ease, opacity .2s ease",
         }}
       >
-        <div style={{ padding: "14px 16px" }}>{children}</div>
+        <div style={{ overflow: "hidden", minHeight: 0 }}>
+          <div style={{ padding: "14px 16px" }}>{children}</div>
+        </div>
       </div>
     </div>
   );
