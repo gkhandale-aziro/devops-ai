@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Target } from "../types";
 import { api } from "../api/client";
+import { openResourceDetail } from "../stores/resourceDetailStore";
 
 interface Result {
   id:       string;
@@ -31,6 +32,19 @@ const PAGE_ICONS: Record<string, string> = {
   chat:      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
   ai:        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   target:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>`,
+  describe:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  logs:      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
+};
+
+// Action command prefixes: "<verb> <name>" → map verb to the tab to open.
+// Used when typing (e.g. "describe nginx") to jump straight to an action.
+const ACTION_VERBS: Record<string, { tab: "describe" | "logs" | "ai"; label: string; iconKey: string; accent: string }> = {
+  describe: { tab: "describe", label: "Describe",   iconKey: "describe", accent: "var(--c-accent)"       },
+  details:  { tab: "describe", label: "Details",    iconKey: "describe", accent: "var(--c-accent)"       },
+  logs:     { tab: "logs",     label: "View logs",  iconKey: "logs",     accent: "#f59e0b"               },
+  log:      { tab: "logs",     label: "View logs",  iconKey: "logs",     accent: "#f59e0b"               },
+  ai:       { tab: "ai",       label: "AI analyze", iconKey: "ai",       accent: "var(--c-accent-hover)" },
+  analyze:  { tab: "ai",       label: "AI analyze", iconKey: "ai",       accent: "var(--c-accent-hover)" },
 };
 
 const PAGES: Array<{ label: string; path: string; iconKey: string; accent: string }> = [
@@ -162,23 +176,73 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
     setResults(res);
     setActive(0);
 
-    // K8s live search if there's an active target
+    // K8s live search if there's an active target.
+    //
+    // Action verbs: if the query starts with "describe foo" / "logs foo" /
+    // "ai foo", strip the verb before searching and force that action's
+    // tab on the resulting rows.
     if (activeTarget && q.length >= 2) {
+      const firstSpace = q.indexOf(" ");
+      const firstWord  = firstSpace > 0 ? q.slice(0, firstSpace).toLowerCase() : "";
+      const verb       = ACTION_VERBS[firstWord];
+      const searchTerm = verb ? q.slice(firstSpace + 1).trim() : q;
+      if (verb && !searchTerm) return;
       setLoading(true);
       const controller = new AbortController();
       try {
-        const { results: kres } = await api.search(activeTarget.id, q);
+        const { results: kres } = await api.search(activeTarget.id, searchTerm);
         if (controller.signal.aborted) return;
-        const kindIcons: Record<string, string> = { pod: "◈", node: "◆", deployment: "⬡" };
         const kindColors: Record<string, string> = { pod: "#22c55e", node: "var(--c-accent)", deployment: "#f59e0b" };
-        const k8sResults: Result[] = kres.map(r => ({
-          id:     `k8s-${r.kind}-${r.name}`,
-          icon:   kindIcons[r.kind] ?? "◈",
-          label:  r.name,
-          sub:    `${r.kind}${r.namespace ? " · " + r.namespace : ""} · ${r.status}`,
-          accent: kindColors[r.kind] ?? "var(--c-text-muted)",
-          action: () => { nav("/dashboard"); setOpen(false); },
-        }));
+        // Pods/nodes get a primary row (Describe on Enter) plus two extra
+        // action rows (Logs, AI analyze). Deployments get Describe only —
+        // `kubectl logs` on a Deployment doesn't work without selecting a
+        // pod, so the Logs shortcut would be misleading.
+        const k8sResults: Result[] = [];
+        for (const r of kres) {
+          const kindLabel = r.kind.charAt(0).toUpperCase() + r.kind.slice(1);
+          const ns        = r.namespace ?? "";
+          const accent    = kindColors[r.kind] ?? "var(--c-text-muted)";
+          const actionTab = verb?.tab ?? "describe";
+          // Primary row — Enter opens the requested tab (default: Describe)
+          k8sResults.push({
+            id:     `k8s-${r.kind}-${r.name}-primary`,
+            icon:   PAGE_ICONS.describe,
+            label:  r.name,
+            sub:    `${kindLabel}${ns ? " · " + ns : ""} · ${r.status}`,
+            accent,
+            action: () => {
+              openResourceDetail(activeTarget.id, r.kind, r.name, ns, actionTab);
+              setOpen(false);
+            },
+          });
+          if (!verb && (r.kind === "pod" || r.kind === "node")) {
+            // Extra action rows — View logs (pods only) + AI analyze
+            if (r.kind === "pod") {
+              k8sResults.push({
+                id:     `k8s-${r.kind}-${r.name}-logs`,
+                icon:   PAGE_ICONS.logs,
+                label:  `View logs — ${r.name}`,
+                sub:    `Tail last 150 lines${ns ? " · " + ns : ""}`,
+                accent: "#f59e0b",
+                action: () => {
+                  openResourceDetail(activeTarget.id, r.kind, r.name, ns, "logs");
+                  setOpen(false);
+                },
+              });
+            }
+            k8sResults.push({
+              id:     `k8s-${r.kind}-${r.name}-ai`,
+              icon:   PAGE_ICONS.ai,
+              label:  `AI analyze — ${r.name}`,
+              sub:    `Diagnose ${r.kind}${ns ? " · " + ns : ""}`,
+              accent: "var(--c-accent-hover)",
+              action: () => {
+                openResourceDetail(activeTarget.id, r.kind, r.name, ns, "ai");
+                setOpen(false);
+              },
+            });
+          }
+        }
         setResults(prev => [...prev.filter(r => r.id !== "__ai__"), ...k8sResults, prev.find(r => r.id === "__ai__")!].filter(Boolean));
       } catch { /* silent */ } finally {
         setLoading(false);
@@ -236,7 +300,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Search pages, targets, pods, nodes…"
+            placeholder={activeTarget ? "Search… or try 'describe nginx', 'logs api', 'ai postgres'" : "Search pages, targets, pods, nodes…"}
             style={{
               flex: 1, background: "transparent", border: "none", outline: "none",
               color: "var(--c-text-primary)", fontSize: 15, fontFamily: "inherit",

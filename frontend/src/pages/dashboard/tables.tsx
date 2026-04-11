@@ -505,13 +505,15 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
 
 // ── Resource detail modal ───────────────────────────────────────────────────
 
-export function ResourceModal({ resource, loading, targetId: _targetId, onClose }: {
+export function ResourceModal({ resource, loading, targetId: _targetId, onClose, initialTab = "describe" }: {
   resource: { kind: string; name: string; ns: string; data: Record<string, string> } | null;
   loading:  boolean;
   targetId: string;
   onClose:  () => void;
+  /** Tab selected on mount; defaults to describe. */
+  initialTab?: "describe" | "logs" | "ai";
 }) {
-  const [tab, setTab] = useState<"describe" | "logs" | "previous" | "ai">("describe");
+  const [tab, setTab] = useState<"describe" | "logs" | "previous" | "ai">(initialTab);
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const dialogRef  = useRef<HTMLDivElement>(null);

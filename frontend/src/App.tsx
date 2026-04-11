@@ -12,6 +12,7 @@ import { Settings }   from "./pages/Settings";
 import { AddTargetModal } from "./components/AddTargetModal";
 import { CommandPalette, SearchBar } from "./components/CommandPalette";
 import { KeyboardHelp } from "./components/KeyboardHelp";
+import { GlobalResourceDetail } from "./components/GlobalResourceDetail";
 import { ThemeProvider }  from "./components/ThemeContext";
 import { ConfirmDialog } from "./components/confirm-dialog";
 import { GLOBAL_KEYFRAMES } from "./utils/animations";
@@ -183,6 +184,9 @@ export default function App() {
 
         {/* ? Keyboard shortcut cheat sheet */}
         <KeyboardHelp />
+
+        {/* Global resource-detail modal (driven by resourceDetailStore) */}
+        <GlobalResourceDetail />
       </div>
     </BrowserRouter>
     </ThemeProvider>
