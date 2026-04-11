@@ -11,6 +11,7 @@ import { Chat }       from "./pages/Chat";
 import { Settings }   from "./pages/Settings";
 import { AddTargetModal } from "./components/AddTargetModal";
 import { CommandPalette, SearchBar } from "./components/CommandPalette";
+import { KeyboardHelp } from "./components/KeyboardHelp";
 import { ThemeProvider }  from "./components/ThemeContext";
 import { ConfirmDialog } from "./components/confirm-dialog";
 import { GLOBAL_KEYFRAMES } from "./utils/animations";
@@ -179,6 +180,9 @@ export default function App() {
           activeTarget={activeTarget}
           onSelectTarget={setActiveTarget}
         />
+
+        {/* ? Keyboard shortcut cheat sheet */}
+        <KeyboardHelp />
       </div>
     </BrowserRouter>
     </ThemeProvider>
