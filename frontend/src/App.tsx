@@ -128,14 +128,15 @@ export default function App() {
           <ModelStatusBanner onModelChange={() => { window.location.href = "/settings"; }} />
 
           {/* Top bar — search */}
-          <div style={{
+          <header style={{
             padding: "8px 20px", borderBottom: "1px solid var(--c-border)",
             display: "flex", alignItems: "center", justifyContent: "flex-end",
             flexShrink: 0, background: "var(--c-bg-raised)",
           }}>
             <SearchBar />
-          </div>
+          </header>
 
+          <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Routes>
             <Route path="/"          element={<ErrorBoundary><Home targets={targets} monitorActive={monitorActive} /></ErrorBoundary>} />
             <Route path="/dashboard" element={<ErrorBoundary><Dashboard target={activeTarget} /></ErrorBoundary>} />
@@ -156,6 +157,7 @@ export default function App() {
               </div>
             } />
           </Routes>
+          </main>
         </div>
 
         {showAdd && (

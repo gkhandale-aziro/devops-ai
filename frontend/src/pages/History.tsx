@@ -234,6 +234,7 @@ export function History() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)", margin: -1 }}>Incident History</h1>
 
       {/* ── Page header + filters (top bar) ─────────────────────────────── */}
       <div style={{

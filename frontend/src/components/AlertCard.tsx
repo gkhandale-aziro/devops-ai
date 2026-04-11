@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import type { MonitorAlert } from "../types";
 import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
 
@@ -11,9 +12,22 @@ export function AlertCard({ alert, onClick }: Props) {
   const isCrit  = alert.level === "SEV1";
   const isWarn  = alert.level === "SEV2";
 
+  const interactiveProps = onClick ? {
+    role: "button",
+    tabIndex: 0,
+    "aria-label": `${alert.level} alert: ${alert.reason} on ${alert.object}. Click to open AI analysis.`,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onClick();
+      }
+    },
+  } : {};
+
   return (
     <div
       onClick={onClick}
+      {...interactiveProps}
       style={{
         background:   isCrit ? "#1a0a0e" : isWarn ? "#17110a" : "#0e141d",
         border:       `1px solid ${c.border}44`,

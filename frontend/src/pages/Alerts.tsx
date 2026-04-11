@@ -84,6 +84,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)", margin: -1 }}>Live Alerts</h1>
 
       {/* ── Top bar ────────────────────────────────────────────────────── */}
       <div style={{
@@ -101,8 +102,9 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
           display: "inline-block",
           animation: monitorActive ? "pulse 1.5s infinite" : "none",
           flexShrink: 0,
-        }} />
-        <strong style={{ fontSize: 15 }}>Live Alerts</strong>
+        }}
+        aria-label={monitorActive ? "Monitor is active" : "Monitor is inactive"}
+        role="status" />
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {/* Severity counters */}
@@ -148,6 +150,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
             value={selectedTid}
             onChange={e => { setSelectedTid(e.target.value); localStorage.setItem("alerts_selectedTid", e.target.value); }}
             disabled={monitorActive}
+            aria-label="Select target to monitor"
             style={{
               background: "var(--c-bg-surface)",
               border: "1px solid var(--c-border-strong)",
@@ -197,7 +200,13 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
       </div>
 
       {/* ── Alert feed ─────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div
+        role="feed"
+        aria-busy={monitorActive}
+        aria-live="polite"
+        aria-label="Live alerts feed"
+        style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}
+      >
         {visible.length === 0 && (
           <EmptyState
             icon={<Bell size={32} />}

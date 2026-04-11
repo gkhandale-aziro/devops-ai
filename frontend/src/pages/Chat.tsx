@@ -65,6 +65,7 @@ export function Chat(_props: Props) {
 
   return (
     <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)", margin: -1 }}>Chat</h1>
 
       {/* Session sidebar */}
       <div style={{
@@ -75,9 +76,10 @@ export function Chat(_props: Props) {
       }}>
         {/* Header */}
         <div style={{ padding: "12px 12px 8px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--c-border)" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-text-muted)", textTransform: "uppercase", letterSpacing: ".6px" }}>Conversations</span>
+          <h2 style={{ fontSize: 11, fontWeight: 700, color: "var(--c-text-muted)", textTransform: "uppercase", letterSpacing: ".6px", margin: 0 }}>Conversations</h2>
           <button
             onClick={createSession}
+            aria-label="New chat"
             title="New chat"
             style={{
               background: "var(--c-accent)", border: "none", color: "#fff", borderRadius: 6,
@@ -89,17 +91,26 @@ export function Chat(_props: Props) {
         </div>
 
         {/* Session list */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "6px" }}>
+        <ul aria-label="Chat sessions" style={{ flex: 1, overflowY: "auto", padding: "6px", margin: 0, listStyle: "none" }}>
           {sessions.length === 0 ? (
-            <div style={{ color: "#475569", fontSize: 12, textAlign: "center", padding: "24px 8px", lineHeight: 1.6 }}>
+            <li style={{ color: "#475569", fontSize: 12, textAlign: "center", padding: "24px 8px", lineHeight: 1.6 }}>
               Click <strong style={{ color: "var(--c-accent)" }}>+</strong> to start your first conversation
-            </div>
+            </li>
           ) : sessions.map(s => {
             const isActive = activeSession === s.id;
             return (
-              <div
+              <li
                 key={s.id}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isActive}
                 onClick={() => switchSession(s.id)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    switchSession(s.id);
+                  }
+                }}
                 style={{
                   padding: "9px 10px", borderRadius: 7, cursor: "pointer",
                   marginBottom: 2, fontSize: 12,
@@ -122,6 +133,7 @@ export function Chat(_props: Props) {
                 </div>
                 <button
                   onClick={e => { e.stopPropagation(); setConfirmDelete(s.id); }}
+                  aria-label={`Delete conversation ${s.title}`}
                   style={{
                     background: "none", border: "none", color: "var(--c-text-muted)",
                     fontSize: 15, cursor: "pointer", padding: "0 2px",
@@ -133,10 +145,10 @@ export function Chat(_props: Props) {
                   onMouseLeave={e => (e.currentTarget.style.color = "var(--c-text-muted)")}
                   title="Delete"
                 >×</button>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       </div>
 
       {/* Main chat area */}

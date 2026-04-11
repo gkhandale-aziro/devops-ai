@@ -120,6 +120,7 @@ export function Dashboard({ target }: Props) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)", margin: -1 }}>Dashboard — {target.name}</h1>
 
       {/* Page header */}
       <div style={{

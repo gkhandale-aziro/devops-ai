@@ -15,6 +15,35 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
   const [loading,  setLoading]  = useState(false);
   const [question, setQuestion] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  // a11y: remember origin focus on open, restore on close.
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    drawerRef.current?.focus();
+    return () => { previouslyFocusedRef.current?.focus?.(); };
+  }, [open]);
+
+  // a11y: Escape closes; Tab trapped inside the drawer.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab" || !drawerRef.current) return;
+      const focusables = drawerRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last  = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose]);
 
   // Auto-run analysis when opened
   useEffect(() => {
@@ -92,15 +121,23 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
       />
 
       {/* Drawer panel */}
-      <div style={{
-        position: "fixed", top: 0, right: 0, bottom: 0, width: 520,
-        background: "var(--c-bg-raised)",
-        borderLeft: "1px solid var(--c-bg-active)",
-        zIndex: 150,
-        display: "flex", flexDirection: "column",
-        boxShadow: "-12px 0 40px #00000066",
-        animation: "slideIn .2s ease-out",
-      }}>
+      <div
+        ref={drawerRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`AI analysis — ${title}`}
+        style={{
+          position: "fixed", top: 0, right: 0, bottom: 0, width: 520,
+          background: "var(--c-bg-raised)",
+          borderLeft: "1px solid var(--c-bg-active)",
+          zIndex: 150,
+          display: "flex", flexDirection: "column",
+          boxShadow: "-12px 0 40px #00000066",
+          animation: "slideIn .2s ease-out",
+          outline: "none",
+        }}
+      >
 
         {/* Header */}
         <div style={{
@@ -136,6 +173,7 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
 
           <button
             onClick={onClose}
+            aria-label="Close AI analysis"
             style={{
               background: "var(--c-bg-active)", border: "1px solid var(--c-border)",
               borderRadius: 6, color: "var(--c-text-secondary)",
@@ -149,6 +187,8 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
         {/* Content area */}
         <div
           ref={panelRef}
+          aria-live="polite"
+          aria-busy={loading}
           style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}
         >
           {text ? (
@@ -171,9 +211,9 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
           flexShrink: 0,
           background: "var(--c-bg-raised)",
         }}>
-          <div style={{ fontSize: 10, color: "var(--c-text-muted)", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".5px" }}>
+          <label htmlFor="aidrawer-followup" style={{ display: "block", fontSize: 10, color: "var(--c-text-muted)", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".5px" }}>
             Ask a follow-up
-          </div>
+          </label>
           <div style={{
             display: "flex", gap: 8,
             background: "var(--c-bg-surface)",
@@ -185,6 +225,7 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
             onBlurCapture={e => (e.currentTarget.style.borderColor = "var(--c-border)")}
           >
             <input
+              id="aidrawer-followup"
               value={question}
               onChange={e => setQuestion(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); askFollowUp(); } }}
@@ -198,6 +239,7 @@ export function AIDrawer({ open, context, title, onClose }: Props) {
             <button
               onClick={askFollowUp}
               disabled={loading || !question.trim()}
+              aria-label={loading ? "Sending" : "Send follow-up question"}
               style={{
                 background: loading || !question.trim() ? "var(--c-bg-active)" : "var(--c-accent)",
                 border: "none", borderRadius: 6,

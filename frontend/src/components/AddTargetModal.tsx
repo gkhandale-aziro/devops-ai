@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode, type ChangeEvent } from "react";
+import { useState, useEffect, useCallback, useRef, useId, type ReactNode, type ChangeEvent } from "react";
 import { X, Loader2, CheckCircle2, XCircle, KeyRound, Cloud, CloudCog, MonitorCloud, Laptop, ArrowLeft } from "lucide-react";
 import type { TargetType } from "../types";
 import { TARGET_META } from "../utils/targetIcons";
@@ -80,6 +80,39 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
   const [status,      setStatus]      = useState<{ type: "ok"|"err"|"info"; msg: string } | null>(null);
   const [busy,        setBusy]        = useState(false);
 
+  // a11y: unique id prefix for <label htmlFor> associations
+  const fieldIdPrefix = useId();
+  // a11y: focus trap + restore focus on close
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  // On mount: remember the element that had focus, move focus into the dialog.
+  // On unmount: restore focus to that element so keyboard users don't lose context.
+  useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    // Move focus to the dialog itself so the initial Tab stays inside.
+    dialogRef.current?.focus();
+    return () => { previouslyFocusedRef.current?.focus?.(); };
+  }, []);
+
+  // Escape closes; Tab stays trapped inside the dialog.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last  = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   // ── Cloud auth state ──────────────────────────────────────────────────────
   const [authState,    setAuthState]    = useState<AuthState>("idle");
   const [authIdentity, setAuthIdentity] = useState("");
@@ -152,35 +185,45 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
     }
   }
 
-  const field = (label: string, key: string, placeholder?: string, type = "text") => (
-    <div key={key} style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>{label}</div>
-      <input
-        type={type}
-        value={config[key] ?? ""}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => setConfig((prev: Record<string, string>) => ({ ...prev, [key]: e.target.value }))}
-        placeholder={placeholder}
-        style={{ width: "100%", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", color: "var(--c-text-primary)", borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none" }}
-        onFocus={e => (e.currentTarget.style.borderColor = "var(--c-accent)")}
-        onBlur={e  => (e.currentTarget.style.borderColor = "var(--c-border)")}
-      />
-    </div>
-  );
+  const fieldId = (key: string) => `${fieldIdPrefix}-${key}`;
 
-  const area = (label: string, key: string, placeholder?: string) => (
-    <div key={key} style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>{label}</div>
-      <textarea
-        value={config[key] ?? ""}
-        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setConfig((prev: Record<string, string>) => ({ ...prev, [key]: e.target.value }))}
-        placeholder={placeholder}
-        rows={4}
-        style={{ width: "100%", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", color: "var(--c-text-primary)", borderRadius: 6, padding: "7px 10px", fontSize: 12, fontFamily: "monospace", outline: "none", resize: "vertical" }}
-        onFocus={e => (e.currentTarget.style.borderColor = "var(--c-accent)")}
-        onBlur={e  => (e.currentTarget.style.borderColor = "var(--c-border)")}
-      />
-    </div>
-  );
+  const field = (label: string, key: string, placeholder?: string, type = "text") => {
+    const id = fieldId(key);
+    return (
+      <div key={key} style={{ marginBottom: 10 }}>
+        <label htmlFor={id} style={{ display: "block", fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>{label}</label>
+        <input
+          id={id}
+          type={type}
+          value={config[key] ?? ""}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setConfig((prev: Record<string, string>) => ({ ...prev, [key]: e.target.value }))}
+          placeholder={placeholder}
+          style={{ width: "100%", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", color: "var(--c-text-primary)", borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none" }}
+          onFocus={e => (e.currentTarget.style.borderColor = "var(--c-accent)")}
+          onBlur={e  => (e.currentTarget.style.borderColor = "var(--c-border)")}
+        />
+      </div>
+    );
+  };
+
+  const area = (label: string, key: string, placeholder?: string) => {
+    const id = fieldId(key);
+    return (
+      <div key={key} style={{ marginBottom: 10 }}>
+        <label htmlFor={id} style={{ display: "block", fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>{label}</label>
+        <textarea
+          id={id}
+          value={config[key] ?? ""}
+          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setConfig((prev: Record<string, string>) => ({ ...prev, [key]: e.target.value }))}
+          placeholder={placeholder}
+          rows={4}
+          style={{ width: "100%", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", color: "var(--c-text-primary)", borderRadius: 6, padding: "7px 10px", fontSize: 12, fontFamily: "monospace", outline: "none", resize: "vertical" }}
+          onFocus={e => (e.currentTarget.style.borderColor = "var(--c-accent)")}
+          onBlur={e  => (e.currentTarget.style.borderColor = "var(--c-border)")}
+        />
+      </div>
+    );
+  };
 
   const hint = (text: string) => (
     <div style={{ fontSize: 11, color: "var(--c-text-muted)", marginBottom: 12, lineHeight: 1.5, background: "var(--c-bg-base)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--c-border)" }}>
@@ -375,11 +418,20 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
 
   const providerLabel = K8S_PROVIDERS.find(p => p.id === k8sProvider)?.label ?? "Kubernetes";
 
+  const titleId = `${fieldIdPrefix}-title`;
+
   return (
     <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={box}>
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        style={{ ...box, outline: "none" }}
+      >
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-          <strong style={{ fontSize: 14, color: "var(--c-text-primary)" }}>
+          <strong id={titleId} style={{ fontSize: 14, color: "var(--c-text-primary)" }}>
             {step === "type" ? "Add Connection"
               : step === "k8s_provider" ? "Kubernetes Provider"
               : selType === "kubernetes" ? `Connect — ${providerLabel}` : `Connect to ${selType}`}
@@ -390,18 +442,19 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
         {step === "type" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {TYPE_CARDS.map(tc => (
-              <div
+              <button
                 key={tc.type}
+                type="button"
                 onClick={() => pickType(tc.type)}
-                style={{ background: "var(--c-bg-base)", border: "1px solid var(--c-border)", borderRadius: 8, padding: "14px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "border-color .15s" }}
+                style={{ background: "var(--c-bg-base)", border: "1px solid var(--c-border)", borderRadius: 8, padding: "14px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "border-color .15s", textAlign: "left", font: "inherit", color: "inherit" }}
                 onMouseEnter={e => (e.currentTarget.style.borderColor = tc.color)}
                 onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--c-border)")}
               >
-                <span style={{ color: tc.color, display: "flex", alignItems: "center" }}>
+                <span style={{ color: tc.color, display: "flex", alignItems: "center" }} aria-hidden="true">
                   {(() => { const Icon = TARGET_META[tc.type].icon; return <Icon size={20} />; })()}
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 500, color: "var(--c-text-primary)" }}>{tc.label}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -413,19 +466,20 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {K8S_PROVIDERS.map(p => (
-                <div
+                <button
                   key={p.id}
+                  type="button"
                   onClick={() => pickK8sProvider(p.id)}
-                  style={{ background: "var(--c-bg-base)", border: "1px solid var(--c-border)", borderRadius: 8, padding: "12px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "border-color .15s" }}
+                  style={{ background: "var(--c-bg-base)", border: "1px solid var(--c-border)", borderRadius: 8, padding: "12px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "border-color .15s", textAlign: "left", font: "inherit", color: "inherit", width: "100%" }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = p.color)}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--c-border)")}
                 >
-                  <span style={{ color: p.color, display: "flex", alignItems: "center" }}>{p.icon}</span>
+                  <span style={{ color: p.color, display: "flex", alignItems: "center" }} aria-hidden="true">{p.icon}</span>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500, color: "var(--c-text-primary)" }}>{p.label}</div>
                     <div style={{ fontSize: 11, color: "var(--c-text-muted)", marginTop: 2 }}>{p.desc}</div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
             <button onClick={() => setStep("type")} style={{ marginTop: 12, width: "100%", background: "var(--c-bg-card)", border: "1px solid var(--c-border)", color: "var(--c-text-secondary)", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
@@ -437,8 +491,9 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
         {step === "details" && selType && (
           <>
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>Name</div>
+              <label htmlFor={fieldId("__name")} style={{ display: "block", fontSize: 12, color: "var(--c-text-secondary)", marginBottom: 4 }}>Name</label>
               <input
+                id={fieldId("__name")}
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="prod-k8s"

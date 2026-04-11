@@ -116,7 +116,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
   const onlineCount = targets.filter(t => t.status === "online").length;
 
   return (
-    <div style={{
+    <nav aria-label="Main navigation" style={{
       width: 236,
       background: "var(--c-bg-surface,#0a0f1e)",
       borderRight: "1px solid var(--c-border,#1a2235)",
@@ -455,6 +455,6 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
           Restore tips
         </button>
       </div>
-    </div>
+    </nav>
   );
 }

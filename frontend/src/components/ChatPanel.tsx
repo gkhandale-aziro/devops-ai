@@ -58,7 +58,14 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
     <div style={{ display: "flex", flexDirection: "column", height: "100%", flex: 1, overflow: "hidden" }}>
 
       {/* Messages feed */}
-      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div
+        ref={feedRef}
+        role="log"
+        aria-live="polite"
+        aria-busy={loading}
+        aria-label="Chat messages"
+        style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}
+      >
         {visibleMessages.length === 0 && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, color: "var(--c-text-muted)", paddingTop: 40 }}>
             <div style={{
