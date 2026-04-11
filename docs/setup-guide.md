@@ -107,15 +107,30 @@ AI_MODEL=ollama/llama3.1:8b
 # No API key needed
 ```
 
-**In Docker:** Ollama runs on the host, not in the container. You **must** set `OLLAMA_API_BASE` in `.env`:
+**In Docker:** Ollama runs on the host, not in the container. Two things must be correct:
 
+**1.** Set `OLLAMA_API_BASE` in `.env`:
 ```bash
 # .env
 AI_MODEL=ollama/llama3.1:8b
 OLLAMA_API_BASE=http://host.docker.internal:11434
 ```
 
-The launcher script (`docker-run.sh`) adds `--add-host=host.docker.internal:host-gateway` automatically for Linux.
+**2. Linux only — rebind Ollama to all interfaces.** By default on Linux, `ollama serve` binds to `127.0.0.1:11434`, which is only reachable from the host itself. Docker containers hitting `host.docker.internal:11434` get "connection refused". Fix:
+
+- **systemd install:** edit `/etc/systemd/system/ollama.service`, add under `[Service]`:
+  ```
+  Environment="OLLAMA_HOST=0.0.0.0:11434"
+  ```
+  then `sudo systemctl daemon-reload && sudo systemctl restart ollama`
+- **Manual start** (Codespace, WSL, dev):
+  ```bash
+  OLLAMA_HOST=0.0.0.0:11434 ollama serve &
+  ```
+
+macOS Ollama already binds to `0.0.0.0` — no change needed.
+
+The launcher script (`docker-run.sh`) adds `--add-host=host.docker.internal:host-gateway` automatically for Linux, so DNS resolution works out of the box. The bind issue is the only remaining gotcha.
 
 Without `OLLAMA_API_BASE`, the container tries to reach Ollama at `localhost:11434` inside itself — which doesn't exist.
 

@@ -279,13 +279,17 @@ Alternatively, you can skip host mounts entirely and **paste credentials directl
 Ollama runs on the host, not in the container:
 
 ```bash
-ollama serve                   # on the host
+# Linux/Codespace/WSL — rebind to all interfaces so Docker can reach it
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+
+# macOS — default bind is fine
+ollama serve
 
 # Add to .env:
 OLLAMA_API_BASE=http://host.docker.internal:11434
 ```
 
-On Linux, the launcher script adds `--add-host=host.docker.internal:host-gateway` automatically.
+On Linux, the launcher script adds `--add-host=host.docker.internal:host-gateway` automatically, so DNS works. **But** Ollama's default Linux bind is `127.0.0.1:11434` which containers cannot reach — you **must** set `OLLAMA_HOST=0.0.0.0:11434` or the container will get `connection refused`. For systemd installs, add `Environment="OLLAMA_HOST=0.0.0.0:11434"` to `/etc/systemd/system/ollama.service` under `[Service]`.
 
 ### Persistent data
 

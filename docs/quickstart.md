@@ -45,6 +45,14 @@ sudo systemctl start ollama
 ollama list
 ```
 
+> **⚠ Docker on Linux:** Ollama's default bind is `127.0.0.1:11434`, which Docker containers **cannot** reach via `host.docker.internal`. You **must** rebind it to all interfaces. For systemd installs, edit `/etc/systemd/system/ollama.service` and add under `[Service]`:
+> ```
+> Environment="OLLAMA_HOST=0.0.0.0:11434"
+> ```
+> Then `sudo systemctl daemon-reload && sudo systemctl restart ollama`. For manual starts (e.g., Codespace, WSL): `OLLAMA_HOST=0.0.0.0:11434 ollama serve &`
+>
+> On macOS, Ollama already binds to `0.0.0.0` by default — no change needed.
+
 Skip this step if you only want cloud models (no fallback).
 
 ---
