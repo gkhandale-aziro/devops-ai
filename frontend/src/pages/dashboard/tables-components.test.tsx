@@ -193,9 +193,13 @@ describe("ResourceModal", () => {
 
   it("calls onClose when clicking the backdrop", () => {
     const onClose = vi.fn();
-    const { container } = render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={onClose} />);
-    // The backdrop is the outermost fixed div
-    const backdrop = container.firstChild as HTMLElement;
+    render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={onClose} />);
+    // ResourceModal renders via createPortal to document.body (to escape
+    // ancestor stacking contexts from Dashboard's fadeInStyle transform),
+    // so the backdrop is NOT in the RTL-returned container. Find it at the
+    // role=dialog's grandparent (dialog → modal-box → backdrop).
+    const dialog = screen.getByRole("dialog");
+    const backdrop = dialog.parentElement as HTMLElement;
     fireEvent.click(backdrop);
     expect(onClose).toHaveBeenCalled();
   });

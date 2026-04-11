@@ -293,6 +293,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
 
         {/* Add connection button */}
         <button
+          data-tour="add-connection"
           onClick={onAddClick}
           style={{
             width: "100%", marginTop: targets.length > 0 ? 4 : 2,
@@ -333,6 +334,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
         <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative" }} ref={pickerRef}>
           {aiModel && (
             <button
+              data-tour="model-picker"
               onClick={openModelPicker}
               style={{
                 display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0,

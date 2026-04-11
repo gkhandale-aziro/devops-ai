@@ -20,6 +20,7 @@ import { Toaster } from "sonner";
 import { toast } from "./utils/toast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ModelStatusBanner } from "./components/ModelStatusBanner";
+import { OnboardingTour } from "./components/OnboardingTour";
 
 export default function App() {
   const [targets,       setTargets]       = useState<Target[]>([]);
@@ -187,6 +188,9 @@ export default function App() {
 
         {/* Global resource-detail modal (driven by resourceDetailStore) */}
         <GlobalResourceDetail />
+
+        {/* First-run guided tour — auto-runs once, replayable from Settings */}
+        <OnboardingTour />
       </div>
     </BrowserRouter>
     </ThemeProvider>

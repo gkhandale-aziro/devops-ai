@@ -9,7 +9,9 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  PlayCircle,
 } from "lucide-react";
+import { replayOnboardingTour } from "../components/OnboardingTour";
 
 import {
   Card,
@@ -363,6 +365,73 @@ export function Settings({ targetCount }: Props) {
                     </kbd>
                   </div>
                 ))}
+
+                {/* Replay onboarding tour — same card so the "help yourself"
+                    affordances live together */}
+                <div
+                  style={{
+                    marginTop: 6,
+                    paddingTop: 12,
+                    borderTop: "1px solid var(--c-border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "var(--c-text-secondary)",
+                      }}
+                    >
+                      Onboarding tour
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--c-text-muted)",
+                        marginTop: 2,
+                      }}
+                    >
+                      Replay the first-run walkthrough
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      replayOnboardingTour();
+                      toast.info("Starting tour…");
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "var(--c-bg-base)",
+                      border: "1px solid var(--c-border)",
+                      borderRadius: 6,
+                      color: "var(--c-accent, #6366f1)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      padding: "6px 12px",
+                      cursor: "pointer",
+                      transition: "all .15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor =
+                        "var(--c-accent, #6366f1)";
+                      e.currentTarget.style.background =
+                        "var(--c-accent-dim, #6366f118)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "var(--c-border)";
+                      e.currentTarget.style.background = "var(--c-bg-base)";
+                    }}
+                  >
+                    <PlayCircle size={13} />
+                    Replay tour
+                  </button>
+                </div>
               </div>
             </CardContent>
           </Card>

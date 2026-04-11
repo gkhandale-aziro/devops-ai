@@ -62,6 +62,7 @@ let _openPalette: (() => void) | null = null;
 export function SearchBar() {
   return (
     <button
+      data-tour="search"
       onClick={() => _openPalette?.()}
       style={{
         display: "flex", alignItems: "center", gap: 8,
