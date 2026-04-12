@@ -5,7 +5,7 @@
  * All API calls mocked via page.route(); no backend required.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { mockApi, TARGETS, TAB_DATA, PODS } from "./fixtures";
+import { mockApi } from "./fixtures";
 
 // ── Extended mock helpers ──────────────────────────────────────────────────
 
@@ -103,24 +103,52 @@ async function mockFullApi(page: Page) {
     }),
   );
 
-  // SSE monitor — return a SEV1 alert event
-  await page.route("**/api/v1/monitor/stream**", (route) =>
-    route.fulfill({
-      status: 200,
-      headers: { "Content-Type": "text/event-stream" },
-      body: `data: ${JSON.stringify({
-        type: "alert",
-        level: "SEV1",
-        reason: "CrashLoopBackOff",
-        object: "pod/broken-api-6b4c-crash",
-        namespace: "staging",
-        message: "Back-off restarting failed container",
-      })}\n\n`,
-    }),
-  );
+  // SSE monitor — EventSource can't be intercepted by page.route(),
+  // so we stub it via addInitScript to deliver a SEV1 alert event.
+  await page.addInitScript(() => {
+    const _OrigES = window.EventSource;
+    // @ts-ignore
+    window.EventSource = class FakeEventSource {
+      static CONNECTING = 0; static OPEN = 1; static CLOSED = 2;
+      readyState = 0;
+      onopen: ((ev: Event) => void) | null = null;
+      onmessage: ((ev: MessageEvent) => void) | null = null;
+      onerror: ((ev: Event) => void) | null = null;
+      url: string;
+      constructor(url: string) {
+        this.url = url;
+        if (url.includes("/monitor/stream")) {
+          setTimeout(() => {
+            this.readyState = 1;
+            this.onopen?.(new Event("open"));
+            const data = JSON.stringify({
+              type: "monitor_alert",
+              level: "SEV1",
+              reason: "CrashLoopBackOff",
+              object: "pod/broken-api-6b4c-crash",
+              namespace: "staging",
+              message: "Back-off restarting failed container",
+            });
+            this.onmessage?.(new MessageEvent("message", { data }));
+          }, 100);
+        } else {
+          // For non-monitor EventSource (e.g. log streams), use real impl
+          const real = new _OrigES(url);
+          Object.assign(this, { close: () => real.close() });
+          real.onopen = (e) => { this.readyState = 1; this.onopen?.(e); };
+          real.onmessage = (e) => this.onmessage?.(e);
+          real.onerror = (e) => this.onerror?.(e);
+        }
+      }
+      close() { this.readyState = 2; }
+      addEventListener() {}
+      removeEventListener() {}
+      dispatchEvent() { return true; }
+    };
+  });
 
   // Chat stream — mock AI response with tool call + follow-up suggestions
-  await page.route("**/api/v1/chat/stream**", (route) =>
+  await page.route("**/api/v1/chat/*/stream**", (route) =>
     route.fulfill({
       status: 200,
       headers: { "Content-Type": "text/event-stream" },
@@ -188,6 +216,41 @@ async function mockFullApi(page: Page) {
       },
     }),
   );
+
+  // Monitor status — report active so AlertBanner subscribes to SSE
+  await page.route("**/api/v1/monitor/status**", (route) =>
+    route.fulfill({ json: { active: true } }),
+  );
+
+  // Monitor start/stop
+  await page.route("**/api/v1/monitor", (route) =>
+    route.fulfill({ json: { ok: true } }),
+  );
+  await page.route("**/api/v1/monitor/**", (route) => {
+    if (route.request().url().includes("/status")) return route.fallback();
+    return route.fulfill({ json: { ok: true, monitoring: "k8s-1" } });
+  });
+
+  // Model health
+  await page.route("**/api/v1/models/health**", (route) =>
+    route.fulfill({
+      json: { status: "ok", primary_answer: "gemini-2.5-flash" },
+    }),
+  );
+
+  // Models list (needed by Settings page)
+  await page.route("**/api/v1/models", (route) => {
+    if (route.request().url().includes("/health")) return route.fallback();
+    return route.fulfill({
+      json: {
+        ollama: ["llama3"],
+        cloud: [],
+        current: { tool_model: "gemini-2.5-flash", answer_model: "gemini-2.5-flash" },
+        ollama_url: "http://localhost:11434",
+        health: "ok",
+      },
+    });
+  });
 }
 
 /** Set theme via localStorage before navigating. */
@@ -200,7 +263,7 @@ async function setTheme(page: Page, theme: "day" | "night") {
 /** Mark onboarding as seen so the tour doesn't auto-start. */
 async function skipOnboarding(page: Page) {
   await page.addInitScript(() => {
-    localStorage.setItem("onboarding-seen", "true");
+    localStorage.setItem("aziro-tour-seen", "1");
   });
 }
 
@@ -238,31 +301,29 @@ test.describe("Step 3: Onboarding tour", () => {
     await mockFullApi(page);
     await skipOnboarding(page);
     await page.goto("/settings");
-    const replayBtn = page.getByRole("button", { name: /Replay.*tour/i });
-    await expect(replayBtn).toBeVisible();
+    await page.waitForTimeout(1000);
+    const replayBtn = page.getByText("Replay tour");
+    await replayBtn.scrollIntoViewIfNeeded();
+    await expect(replayBtn).toBeVisible({ timeout: 5000 });
     await replayBtn.click();
-    // Tour should start
-    await expect(page.getByRole("button", { name: /Next/i })).toBeVisible({ timeout: 5000 });
+    // Toast confirms the tour is starting
+    await expect(page.getByText(/Starting tour/i).first()).toBeVisible({ timeout: 5000 });
+    // The localStorage key should be cleared (tour will auto-start on next Home visit)
+    const tourSeen = await page.evaluate(() => localStorage.getItem("aziro-tour-seen"));
+    expect(tourSeen).toBeNull();
   });
 });
 
 // ── Step 4: Real charts ─────────────────────────────────────────────────────
 
 test.describe("Step 4: Real charts on Overview", () => {
-  test("Overview tab shows metric charts with real data", async ({ page }) => {
+  test("Home page shows health summary with pod counts", async ({ page }) => {
     await mockFullApi(page);
     await skipOnboarding(page);
-    await page.goto("/dashboard");
-    await expect(page.getByText("prod-cluster").first()).toBeVisible();
-    // Navigate to Overview (first tab for K8s might be Workloads, click Overview)
-    const overviewTab = page.getByRole("tab", { name: "Overview" });
-    if (await overviewTab.isVisible()) {
-      await overviewTab.click();
-    }
-    // Check for chart containers (recharts renders SVG)
-    await page.waitForTimeout(500);
-    // Health summary should be visible
-    await expect(page.getByText(/running/i).first()).toBeVisible();
+    await page.goto("/");
+    await expect(page.getByText("prod-cluster").first()).toBeVisible({ timeout: 5000 });
+    // Health summary bar fetches /api/v1/health and shows pod status counts
+    await expect(page.getByText(/running/i).first()).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -316,13 +377,15 @@ test.describe("Step 8: AI chat with tool calls", () => {
     await mockFullApi(page);
     await skipOnboarding(page);
     await page.goto("/dashboard");
-    await expect(page.getByText("prod-cluster").first()).toBeVisible();
+    await expect(page.getByText("prod-cluster").first()).toBeVisible({ timeout: 5000 });
     // Switch to AI Chat tab
-    await page.getByRole("tab", { name: /AI Chat/i }).click();
-    await page.waitForTimeout(300);
+    const chatTab = page.getByRole("tab", { name: /AI Chat/i });
+    await expect(chatTab).toBeVisible({ timeout: 5000 });
+    await chatTab.click();
+    await page.waitForTimeout(1000);
     // Type a message and send
-    const input = page.getByPlaceholder(/Ask about/i);
-    await expect(input).toBeVisible();
+    const input = page.getByPlaceholder(/Ask/i);
+    await expect(input).toBeVisible({ timeout: 5000 });
     await input.fill("Why is broken-api crashing?");
     await input.press("Enter");
     // Wait for response with tool call
@@ -346,7 +409,7 @@ test.describe("Step 9: Suggested follow-up questions", () => {
     await page.goto("/dashboard");
     await page.getByRole("tab", { name: /AI Chat/i }).click();
     await page.waitForTimeout(300);
-    const input = page.getByPlaceholder(/Ask about/i);
+    const input = page.getByPlaceholder(/Ask/i);
     await input.fill("Diagnose the issue");
     await input.press("Enter");
     // Wait for suggestions to appear
@@ -366,7 +429,7 @@ test.describe("Step 10: Feedback + copy code block", () => {
     await page.goto("/dashboard");
     await page.getByRole("tab", { name: /AI Chat/i }).click();
     await page.waitForTimeout(300);
-    const input = page.getByPlaceholder(/Ask about/i);
+    const input = page.getByPlaceholder(/Ask/i);
     await input.fill("Help me debug");
     await input.press("Enter");
     // Wait for response
@@ -382,19 +445,20 @@ test.describe("Step 10: Feedback + copy code block", () => {
     await mockFullApi(page);
     await skipOnboarding(page);
     await page.goto("/dashboard");
+    await expect(page.getByText("prod-cluster").first()).toBeVisible({ timeout: 5000 });
     await page.getByRole("tab", { name: /AI Chat/i }).click();
-    await page.waitForTimeout(300);
-    const input = page.getByPlaceholder(/Ask about/i);
+    await page.waitForTimeout(1000);
+    const input = page.getByPlaceholder(/Ask/i);
+    await expect(input).toBeVisible({ timeout: 5000 });
     await input.fill("Show me the fix");
     await input.press("Enter");
     // Wait for code block to render
     await expect(page.locator("pre").first()).toBeVisible({ timeout: 10000 });
     // Hover over code block to reveal copy button
     await page.locator("pre").first().hover();
+    // Copy button should exist (may be hidden until hover in some browsers)
     const copyBtn = page.getByRole("button", { name: /copy/i }).first();
-    if (await copyBtn.isVisible()) {
-      await copyBtn.click();
-    }
+    await expect(copyBtn).toBeVisible({ timeout: 3000 });
   });
 });
 
@@ -411,8 +475,8 @@ test.describe("Step 11: Acknowledge incident", () => {
     await page.getByText(/CrashLoopBackOff/).first().click();
     // Wait for detail panel
     await page.waitForTimeout(500);
-    // Find and click Acknowledge button
-    const ackBtn = page.getByRole("button", { name: /Acknowledge/i });
+    // Find and click Acknowledge button (first one — there may be multiple events)
+    const ackBtn = page.getByRole("button", { name: /Acknowledge/i }).first();
     if (await ackBtn.isVisible()) {
       await ackBtn.click();
       // Toast should appear
@@ -455,15 +519,17 @@ test.describe("Bonus: Sidebar collapse/expand", () => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "AziroOps" })).toBeVisible();
     // Find collapse toggle button
-    const toggle = page.getByRole("button", { name: /collapse|toggle.*sidebar/i });
-    if (await toggle.isVisible()) {
-      await toggle.click();
-      // Sidebar should be narrow — check nav text is hidden
-      await page.waitForTimeout(300);
-      // Expand again
-      await toggle.click();
-      await page.waitForTimeout(300);
-    }
+    const collapseBtn = page.getByRole("button", { name: /Collapse sidebar/i });
+    await expect(collapseBtn).toBeVisible({ timeout: 5000 });
+    await collapseBtn.click();
+    await page.waitForTimeout(300);
+    // After collapse, button changes to "Expand sidebar"
+    const expandBtn = page.getByRole("button", { name: /Expand sidebar/i });
+    await expect(expandBtn).toBeVisible({ timeout: 3000 });
+    await expandBtn.click();
+    await page.waitForTimeout(300);
+    // Should be back to expanded
+    await expect(collapseBtn).toBeVisible({ timeout: 3000 });
   });
 });
 

@@ -235,7 +235,7 @@ describe("History", () => {
 
   it("shows plural 'events' for multiple events", async () => {
     const { api } = await import("../api/client");
-    (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT, { ...MOCK_EVENT, id: 2 }]);
+    (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT, { ...MOCK_EVENT, id: 2, object: "pod/other-pod" }]);
     render(
       <MemoryRouter>
         <History />
