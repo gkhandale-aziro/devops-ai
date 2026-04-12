@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,9 +8,23 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+
+export interface RowAction {
+  label: string;
+  icon?: ReactNode;
+  onClick: () => void;
+  variant?: "default" | "destructive";
+  disabled?: boolean;
+}
 
 interface DataTableProps<TData> {
   columns: ColumnDef<TData, unknown>[];
@@ -24,6 +38,8 @@ interface DataTableProps<TData> {
   getRowClassName?: (row: TData) => string;
   /** When true, rows get tabIndex=0 and arrow-key navigation between siblings. */
   keyboardNav?: boolean;
+  /** Kebab menu actions per row. When provided, appends a three-dot actions column. */
+  rowActions?: (row: TData) => RowAction[];
 }
 
 export function DataTable<TData>({
@@ -36,13 +52,59 @@ export function DataTable<TData>({
   toolbar,
   getRowClassName,
   keyboardNav,
+  rowActions,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
 
+  // Append kebab actions column when rowActions is provided
+  const allColumns = useMemo(() => {
+    if (!rowActions) return columns;
+    const actionsCol: ColumnDef<TData, unknown> = {
+      id: "_actions",
+      header: "",
+      size: 40,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const actions = rowActions(row.original);
+        if (actions.length === 0) return null;
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Row actions"
+              >
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {actions.map((action) => (
+                <DropdownMenuItem
+                  key={action.label}
+                  variant={action.variant}
+                  disabled={action.disabled}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    action.onClick();
+                  }}
+                >
+                  {action.icon}
+                  {action.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    };
+    return [...columns, actionsCol];
+  }, [columns, rowActions]);
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
@@ -112,7 +174,7 @@ export function DataTable<TData>({
             {table.getRowModel().rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length}
+                  colSpan={allColumns.length}
                   className="py-8 text-center text-sm text-muted-foreground"
                 >
                   {emptyMessage}

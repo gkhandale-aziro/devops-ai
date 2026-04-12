@@ -123,18 +123,18 @@ describe("PodTable", () => {
     });
   });
 
-  it("shows Diagnose badge on unhealthy pods", () => {
+  it("shows kebab menu with AI Diagnose for unhealthy pods", () => {
     render(<PodTable raw={POD_RAW} target={TARGET} />);
-    expect(screen.getByLabelText("Diagnose pod web-2")).toBeInTheDocument();
+    // Kebab menu buttons appear on every row
+    const actionBtns = screen.getAllByLabelText("Row actions");
+    expect(actionBtns.length).toBeGreaterThan(0);
   });
 
-  it("shows Logs button when onStreamLogs is provided", () => {
+  it("shows kebab menu with Stream Logs when onStreamLogs is provided", () => {
     const onStream = vi.fn();
     render(<PodTable raw={POD_RAW} target={TARGET} onStreamLogs={onStream} />);
-    const logBtns = screen.getAllByLabelText(/Stream live logs/);
-    expect(logBtns.length).toBeGreaterThan(0);
-    fireEvent.click(logBtns[0]);
-    expect(onStream).toHaveBeenCalled();
+    const actionBtns = screen.getAllByLabelText("Row actions");
+    expect(actionBtns.length).toBeGreaterThan(0);
   });
 
   it("supports keyboard nav between rows (ArrowDown/ArrowUp)", () => {

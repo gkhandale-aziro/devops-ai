@@ -22,7 +22,7 @@ import { parseKubectl } from "../../utils/parseKubectl";
 import { Sparkles, Play, FileText } from "lucide-react";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, Z_INDEX } from "../../utils/theme";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type RowAction } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Markdown } from "../../components/Markdown";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -160,6 +160,9 @@ export function NodeTable({ raw, target }: { raw: string; target: Target }) {
         onRowClick={handleRowClick}
         emptyMessage="No nodes found"
         keyboardNav
+        rowActions={(row) => [
+          { label: "Describe", icon: <FileText size={14} />, onClick: () => openNode(row.name) },
+        ]}
       />
 
       {(resource || loading) && (
@@ -209,10 +212,8 @@ interface PodRowData {
 function buildPodColumns(opts: {
   aiBadges: Record<string, string>;
   badgeLoading: Record<string, boolean>;
-  onDiagnose: (name: string, ns: string, status: string) => void;
-  onStreamLogs?: (pod: string, ns: string) => void;
 }): ColumnDef<PodRowData, unknown>[] {
-  const { aiBadges, badgeLoading, onDiagnose, onStreamLogs } = opts;
+  const { aiBadges, badgeLoading } = opts;
 
   return [
     {
@@ -226,7 +227,7 @@ function buildPodColumns(opts: {
       accessorKey: "name",
       header: "Name",
       cell: ({ row }) => {
-        const { name, ns, status, isBad } = row.original;
+        const { name, ns } = row.original;
         const badgeKey = `${ns}/${name}`;
         const aiBadge = aiBadges[badgeKey];
         const isBadgeLoading = !!badgeLoading[badgeKey];
@@ -234,20 +235,6 @@ function buildPodColumns(opts: {
         return (
           <div>
             <span className="text-[13px] font-semibold">{name}</span>
-            {isBad && !aiBadge && !isBadgeLoading && (
-              <button
-                onClick={e => { e.stopPropagation(); onDiagnose(name, ns, status); }}
-                aria-label={`Diagnose pod ${name}`}
-                title="Get AI diagnosis for this pod"
-                style={{
-                  marginLeft: SPACE.sm, background: `${C.accent.light}22`, border: `1px solid ${C.accent.light}44`,
-                  color: C.accent.light, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
-                  fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer", verticalAlign: "middle",
-                }}
-              >
-                <Sparkles size={10} style={{ marginRight: 3, display: "inline" }} /> Diagnose
-              </button>
-            )}
             {isBadgeLoading && (
               <span style={{ marginLeft: SPACE.sm, fontSize: FONT_SIZE.xs, color: C.accent.light }}>analyzing…</span>
             )}
@@ -300,37 +287,6 @@ function buildPodColumns(opts: {
       header: "Age",
       cell: ({ row }) => (
         <span className="text-xs text-muted-foreground">{row.original.age}</span>
-      ),
-    },
-    {
-      id: "logs",
-      header: "",
-      enableSorting: false,
-      cell: ({ row }) => {
-        if (!onStreamLogs) return null;
-        const { name, ns } = row.original;
-        return (
-          <button
-            onClick={e => { e.stopPropagation(); onStreamLogs(name, ns); }}
-            aria-label={`Stream live logs for pod ${name}`}
-            title="Stream live logs"
-            style={{
-              background: `${C.status.info}22`, border: `1px solid ${C.status.info}44`,
-              color: C.status.info, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
-              fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
-            }}
-          >
-            <Play size={9} style={{ marginRight: 3, display: "inline" }} /> Logs
-          </button>
-        );
-      },
-    },
-    {
-      id: "chevron",
-      header: "",
-      enableSorting: false,
-      cell: () => (
-        <span className="text-muted-foreground text-right block">&#8250;</span>
       ),
     },
   ];
@@ -449,9 +405,24 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
   /** Column defs are rebuilt when AI badge state changes so cell renderers
    *  close over the latest values. */
   const columns = useMemo(
-    () => buildPodColumns({ aiBadges, badgeLoading, onDiagnose: fetchAIBadge, onStreamLogs }),
-    [aiBadges, badgeLoading, fetchAIBadge, onStreamLogs]
+    () => buildPodColumns({ aiBadges, badgeLoading }),
+    [aiBadges, badgeLoading]
   );
+
+  /** Kebab menu actions per pod row. */
+  const podRowActions = useCallback((row: PodRowData): RowAction[] => {
+    const actions: RowAction[] = [
+      { label: "Describe", icon: <FileText size={14} />, onClick: () => openResource("pod", row.name, row.ns) },
+    ];
+    if (onStreamLogs) {
+      actions.push({ label: "Stream Logs", icon: <Play size={14} />, onClick: () => onStreamLogs(row.name, row.ns) });
+    }
+    const badgeKey = `${row.ns}/${row.name}`;
+    if (row.isBad && !aiBadges[badgeKey] && !badgeLoading[badgeKey]) {
+      actions.push({ label: "AI Diagnose", icon: <Sparkles size={14} />, onClick: () => fetchAIBadge(row.name, row.ns, row.status) });
+    }
+    return actions;
+  }, [openResource, onStreamLogs, aiBadges, badgeLoading, fetchAIBadge]);
 
   if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
     return <div style={{ padding: SPACE.xl, color: C.text.muted, fontSize: FONT_SIZE.md }}>kubectl not available or no pods found.</div>;
@@ -469,6 +440,7 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
         emptyMessage="No pods found"
         keyboardNav
         getRowClassName={getRowClassName}
+        rowActions={podRowActions}
         toolbar={
           <>
             <select
