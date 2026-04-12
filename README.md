@@ -338,105 +338,121 @@ See [`docs/setup-guide.md`](docs/setup-guide.md) for the full Docker reference a
 
 ```
 devops-ai/
-├── app.py                     ← Flask web server entry point
-├── main.py                    ← CLI entry point (TerminalUI + agent loop)
+├── app.py                       ← Flask web server entry point
+├── main.py                      ← CLI entry point (TerminalUI + agent loop)
+├── Dockerfile                   ← Multi-stage parallel build (8 BuildKit stages)
+├── docker-compose.yml           ← Compose with resource limits
+├── docker-run.sh                ← Launcher script (mounts credentials)
+├── .env.example                 ← Environment variable template
 │
 ├── ui/
-│   ├── web.py                 ← Flask routes + API key auth middleware
-│   └── terminal.py            ← CLI terminal UI
+│   ├── web.py                   ← Flask routes + API key auth middleware (~50 endpoints)
+│   └── terminal.py              ← CLI terminal UI
 │
-├── frontend/                  ← React 18 + TypeScript + Vite
+├── frontend/                    ← React 18 + TypeScript + Vite
 │   ├── src/
-│   │   ├── App.tsx            ← Root: routing, sidebar, alert banner
+│   │   ├── App.tsx              ← Root: routing, sidebar, alert banner, monitor state
 │   │   ├── pages/
-│   │   │   ├── Home.tsx       ← Landing — stat cards, health bars, recent events
-│   │   │   ├── Dashboard.tsx  ← Target dashboard — tab dispatcher, chat, topology
-│   │   │   ├── Alerts.tsx     ← Live SSE alerts with start/stop monitor
-│   │   │   ├── History.tsx    ← Incident log with detail panel
-│   │   │   ├── Chat.tsx       ← General AI chat sessions
-│   │   │   ├── Settings.tsx   ← Models, theme, Ollama URL, shortcuts, tour replay
+│   │   │   ├── Home.tsx         ← Landing — stat cards, health bars, recent events
+│   │   │   ├── Dashboard.tsx    ← Target dashboard — tab dispatcher, chat, topology
+│   │   │   ├── Alerts.tsx       ← Live SSE alerts with start/stop monitor
+│   │   │   ├── History.tsx      ← Incident log with detail panel + deduplication
+│   │   │   ├── Chat.tsx         ← General AI chat sessions
+│   │   │   ├── Settings.tsx     ← Models, theme, Ollama URL, shortcuts, tour replay
 │   │   │   └── dashboard/
-│   │   │       ├── tabs.tsx       ← 12+ tab components (Workloads, Pods, Overview, etc.)
-│   │   │       ├── tables.tsx     ← PodTable, NodeTable, ResourceModal, LogsTab
-│   │   │       └── primitives.tsx ← RingChart, PodSummaryBar, Card, SkeletonLoader
+│   │   │       ├── tabs.tsx         ← 12+ tab components (Workloads, Pods, Overview…)
+│   │   │       ├── tables.tsx       ← PodTable, NodeTable, ResourceModal, LogsTab
+│   │   │       └── primitives.tsx   ← RingChart, PodSummaryBar, Card, SkeletonLoader
 │   │   ├── components/
-│   │   │   ├── Sidebar.tsx        ← Collapsible nav with target connections
-│   │   │   ├── CommandPalette.tsx ← Cmd+K with live search + verb actions
-│   │   │   ├── ChatPanel.tsx      ← Streaming chat with tool-call blocks
-│   │   │   ├── ResourceGraph.tsx  ← SVG topology with zoom/pan/SSE
-│   │   │   ├── LogStream.tsx      ← EventSource log tray
-│   │   │   ├── AlertBanner.tsx    ← Route-persistent SEV1/SEV2 banner
-│   │   │   ├── AlertCard.tsx      ← Alert card with AI + ack actions
-│   │   │   ├── OnboardingTour.tsx ← react-joyride tour
-│   │   │   ├── AddTargetModal.tsx ← Wizard with cloud auth pre-checks
-│   │   │   ├── KeyboardHelp.tsx   ← ? shortcut overlay
-│   │   │   └── Markdown.tsx       ← Rendered markdown with copy button
-│   │   ├── components/ui/         ← Shared primitives (shadcn-inspired)
-│   │   │   ├── data-table.tsx     ← @tanstack/react-table wrapper
-│   │   │   ├── health-summary.tsx ← Pod/deploy/node status bar
-│   │   │   ├── metric-chart.tsx   ← Recharts time series
+│   │   │   ├── Sidebar.tsx          ← Collapsible nav with target connections
+│   │   │   ├── CommandPalette.tsx   ← Cmd+K with live search + verb actions
+│   │   │   ├── ChatPanel.tsx        ← Streaming chat with tool-call blocks
+│   │   │   ├── ResourceGraph.tsx    ← SVG topology with zoom/pan/SSE
+│   │   │   ├── LogStream.tsx        ← EventSource log tray
+│   │   │   ├── AlertBanner.tsx      ← Route-persistent SEV1/SEV2 banner
+│   │   │   ├── AlertCard.tsx        ← Alert card with AI + ack actions
+│   │   │   ├── OnboardingTour.tsx   ← react-joyride tour
+│   │   │   ├── AddTargetModal.tsx   ← Wizard with cloud auth pre-checks
+│   │   │   ├── KeyboardHelp.tsx     ← ? shortcut overlay
+│   │   │   ├── ModelStatusBanner.tsx← AI model health indicator
+│   │   │   ├── Markdown.tsx         ← Rendered markdown with copy button
+│   │   │   ├── ErrorBoundary.tsx    ← Per-route error boundary
+│   │   │   └── confirm-dialog.tsx   ← Destructive action confirmation
+│   │   ├── components/ui/           ← Shared primitives (shadcn-inspired)
+│   │   │   ├── data-table.tsx       ← @tanstack/react-table + kebab menu
+│   │   │   ├── health-summary.tsx   ← Pod/deploy/node status bar
+│   │   │   ├── metric-chart.tsx     ← Recharts time series
 │   │   │   ├── time-range-picker.tsx
 │   │   │   ├── breadcrumb.tsx, badge.tsx, button.tsx, card.tsx
 │   │   │   ├── dialog.tsx, dropdown-menu.tsx, input.tsx, tooltip.tsx
 │   │   │   └── empty-state.tsx
 │   │   ├── hooks/
-│   │   │   ├── useChat.ts         ← SSE chat with tool-call parsing
-│   │   │   ├── useSSE.ts          ← Monitor SSE with exponential backoff
-│   │   │   ├── useMetrics.ts      ← Polling metrics API
-│   │   │   └── useAutoRefresh.ts  ← Configurable refresh intervals
-│   │   ├── api/client.ts          ← Typed API layer + SSE stream reader
+│   │   │   ├── useChat.ts           ← SSE chat with tool-call parsing
+│   │   │   ├── useChatStore.ts      ← Zustand-like chat session state
+│   │   │   ├── useSSE.ts            ← Monitor SSE with exponential backoff
+│   │   │   ├── useMetrics.ts        ← Polling metrics API
+│   │   │   └── useAutoRefresh.ts    ← Configurable refresh intervals
+│   │   ├── stores/
+│   │   │   └── resourceDetailStore.ts ← Global resource detail modal state
+│   │   ├── api/client.ts            ← Typed API layer + SSE stream reader
 │   │   ├── utils/
-│   │   │   ├── theme.ts           ← Design tokens (colors, spacing, radius, fonts)
-│   │   │   ├── animations.ts      ← Shared animation styles
-│   │   │   ├── toast.ts           ← Sonner toast wrapper
-│   │   │   └── parseKubectl.ts    ← kubectl output → table parser
-│   │   └── types/index.ts         ← Shared TypeScript types
-│   └── e2e/                       ← Playwright specs
-│       ├── dod-walkthrough.spec.ts ← 18 tests: DoD 12-step keyboard walkthrough
-│       ├── dashboard.spec.ts       ← Dashboard visual regression
-│       └── fixtures.ts             ← Mock API data
+│   │   │   ├── theme.ts             ← Design tokens (colors, spacing, radius, fonts)
+│   │   │   ├── animations.ts        ← Shared animation styles
+│   │   │   ├── toast.ts             ← Sonner toast wrapper
+│   │   │   ├── targetIcons.tsx      ← Target type → Lucide icon mapping
+│   │   │   └── parseKubectl.ts      ← kubectl output → table parser
+│   │   └── types/index.ts           ← Shared TypeScript types + tab registry
+│   └── e2e/                         ← Playwright specs
+│       ├── dod-walkthrough.spec.ts   ← 18 tests: DoD 12-step walkthrough
+│       ├── dashboard.spec.ts         ← Dashboard visual regression
+│       ├── week1.spec.ts             ← Theme + toast smoke tests
+│       └── fixtures.ts               ← Mock API data + route helpers
 │
-├── agent/                     ← Agentic AI loop
-│   ├── conversation.py        ← SSE streaming + tool loop (max 5 steps)
-│   ├── manager.py             ← Per-target message history
-│   └── needs_tools.py         ← Greeting vs infra-question classifier
+├── agent/                       ← Agentic AI loop
+│   ├── conversation.py          ← SSE streaming + tool loop (max 5 steps)
+│   ├── manager.py               ← Per-target message history
+│   └── needs_tools.py           ← Greeting vs infra-question classifier
 │
 ├── providers/
-│   └── client.py              ← LiteLLM wrapper: TOOL_MODEL / ANSWER_MODEL routing
+│   └── client.py                ← LiteLLM wrapper: TOOL_MODEL / ANSWER_MODEL routing
 │
-├── tools/                     ← One file per target type
-│   ├── executor.py            ← Routes to correct tool, parallel _run_many
-│   ├── base.py                ← run_command(), 30s timeout, truncation
-│   ├── filter.py              ← is_destructive() — blocks dangerous commands
+├── tools/                       ← One file per target type
+│   ├── executor.py              ← Routes to correct tool, parallel _run_many
+│   ├── base.py                  ← run_command(), 30s timeout, truncation
+│   ├── filter.py                ← is_destructive() — blocks dangerous commands
 │   ├── kubectl.py, ssh.py, docker.py, local.py
 │   └── aws.py, gcp.py, azure.py, terraform.py
 │
-├── monitor/                   ← Background event watcher
-│   ├── watcher.py             ← kubectl get events -w stream
-│   └── triage.py              ← SEV1/SEV2/SEV3 classifier
+├── monitor/                     ← Background event watcher
+│   ├── watcher.py               ← kubectl get events -w stream
+│   └── triage.py                ← SEV1/SEV2/SEV3 classifier
 │
 ├── store/
-│   ├── db.py                  ← SQLite: events, snapshots, analyses
-│   └── metrics.py             ← SQLite MetricCollector (zero-config time series)
+│   ├── db.py                    ← SQLite: events, snapshots, analyses
+│   └── metrics.py               ← SQLite MetricCollector (zero-config time series)
 │
 ├── sessions/
-│   └── manager.py             ← Chat sessions persisted to JSON
+│   └── manager.py               ← Chat sessions persisted to JSON
 │
 ├── targets/
-│   ├── manager.py             ← Connection CRUD, credential masking
-│   └── crypto.py              ← Fernet encryption for credentials at rest
+│   ├── manager.py               ← Connection CRUD, credential masking
+│   └── crypto.py                ← Fernet encryption for credentials at rest
 │
-├── sandbox/                   ← Execution isolation
-│   ├── safe.py                ← Read-only command whitelist
-│   ├── docker_sandbox.py      ← Container isolation
-│   ├── executor.py            ← SANDBOX=safe|docker|local routing
-│   └── redact.py              ← StreamRedactor — scrubs secrets from SSE
+├── sandbox/                     ← Execution isolation
+│   ├── safe.py                  ← Read-only command whitelist
+│   ├── docker_sandbox.py        ← Container isolation
+│   ├── executor.py              ← SANDBOX=safe|docker|local routing
+│   └── redact.py                ← StreamRedactor — scrubs secrets from SSE
 │
 ├── prompts/
-│   ├── system_prompt.txt      ← Editable system prompt
-│   └── builder.py             ← Injects live pod list at startup
+│   ├── system_prompt.txt        ← Editable system prompt
+│   └── builder.py               ← Injects live pod list at startup
 │
-└── tests/                     ← 153 pytest + 507 Vitest + 18 Playwright
+├── docs/
+│   ├── setup-guide.md           ← Full Docker + target connection guide
+│   └── quickstart.md            ← Getting started in 5 minutes
+│
+└── tests/                       ← 153 pytest + 507 Vitest + 18 Playwright
 ```
 
 ### Request flow
@@ -448,19 +464,25 @@ Browser (React SPA)
        ▼
 ui/web.py  (Flask + AZIRO_API_KEY middleware)
        │
-       ├─ /api/v1/targets           → targets/manager.py  (credential-masked)
+       ├─ /api/v1/info              → runtime model + version info
+       ├─ /api/v1/models/*          → list, set, health check, Ollama URL
+       ├─ /api/v1/targets (CRUD)    → targets/manager.py  (credential-masked)
+       ├─ /api/v1/cloud/check/<p>   → cloud auth pre-check (AWS/GCP/Azure)
        ├─ /api/v1/tab/<tid>/<tab>   → tools/executor.py   (parallel _run_many)
        ├─ /api/v1/resource/<tid>    → tools/executor.py   (describe + logs)
+       ├─ /api/v1/namespaces/<tid>  → kubectl get namespaces (namespace filter)
        ├─ /api/v1/topology/<tid>    → kubectl → structured JSON (nodes/edges)
        ├─ /api/v1/logs/<tid>/stream → subprocess kubectl logs -f (SSE)
        ├─ /api/v1/search/<tid>      → parallel kubectl grep (Cmd+K)
        ├─ /api/v1/chat/<tid>/stream → agent/conversation.py (tool loop + stream)
        ├─ /api/v1/analyze/stream    → one-shot AI diagnosis (SSE)
        ├─ /api/v1/sessions/...      → sessions/manager.py (persistent history)
-       ├─ /api/v1/monitor/stream    → monitor/watcher.py (SSE push)
+       ├─ /api/v1/monitor/...       → monitor/watcher.py (SSE push + status)
        ├─ /api/v1/health/<tid>      → pod/deploy/node counts
        ├─ /api/v1/metrics/<tid>     → store/metrics.py (time series)
-       └─ /api/v1/events/...        → store/db.py (SQLite with JOIN)
+       ├─ /api/v1/events/...        → store/db.py (SQLite with JOIN)
+       ├─ /api/v1/feedback          → AI response thumbs up/down
+       └─ /api/v1/stats             → event statistics + counts
 ```
 
 ### AI agent loop
