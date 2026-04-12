@@ -32,6 +32,9 @@ export default function App() {
   const [health,        setHealth]        = useState<ModelHealthStatus | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [editTarget,    setEditTarget]    = useState<Target | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("sidebar-collapsed") === "true"
+  );
 
   const pollHealth = useCallback(() => {
     api.modelHealth().then(h => {
@@ -137,6 +140,12 @@ export default function App() {
           aiModel={aiModel}
           onModelChange={(m) => { setAiModel(m); pollHealth(); }}
           modelStatus={health?.status ?? "healthy"}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(prev => {
+            const next = !prev;
+            localStorage.setItem("sidebar-collapsed", String(next));
+            return next;
+          })}
         />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
