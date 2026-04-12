@@ -19,7 +19,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import type { Target, PodStatus } from "../../types";
 import { api, readSSE } from "../../api/client";
 import { parseKubectl } from "../../utils/parseKubectl";
-import { Sparkles, Play, FileText, Clipboard, Check } from "lucide-react";
+import { Sparkles, Play, FileText, Clipboard, Check, X } from "lucide-react";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, Z_INDEX } from "../../utils/theme";
 import { DataTable, type RowAction } from "@/components/ui/data-table";
@@ -212,8 +212,9 @@ interface PodRowData {
 function buildPodColumns(opts: {
   aiBadges: Record<string, string>;
   badgeLoading: Record<string, boolean>;
+  onDismissBadge: (key: string) => void;
 }): ColumnDef<PodRowData, unknown>[] {
-  const { aiBadges, badgeLoading } = opts;
+  const { aiBadges, badgeLoading, onDismissBadge } = opts;
 
   return [
     {
@@ -243,8 +244,16 @@ function buildPodColumns(opts: {
                 marginTop: SPACE.xs, fontSize: FONT_SIZE.xs, color: C.accent.light, lineHeight: 1.4,
                 background: C.bg.active, border: `1px solid ${C.accent.primary}33`,
                 borderRadius: RADIUS.sm, padding: `${SPACE.xs}px ${SPACE.sm}px`, maxWidth: 400,
+                display: "flex", alignItems: "flex-start", gap: SPACE.xs,
               }}>
-                <Sparkles size={10} style={{ display: "inline", marginRight: 3 }} /> {aiBadge}
+                <span style={{ flex: 1 }}><Sparkles size={10} style={{ display: "inline", marginRight: 3 }} /> {aiBadge}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDismissBadge(badgeKey); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: C.text.muted, padding: 0, lineHeight: 1 }}
+                  aria-label="Dismiss AI badge"
+                >
+                  <X size={12} />
+                </button>
               </div>
             )}
           </div>
@@ -312,7 +321,9 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
   const [loading,      setLoading]      = useState(false);
   const [nsFilter,     setNsFilter]     = useState("");
   const [search,       setSearch]       = useState("");
-  const [aiBadges,     setAiBadges]     = useState<Record<string, string>>({});
+  const [aiBadges,     setAiBadges]     = useState<Record<string, string>>(() => {
+    try { return JSON.parse(sessionStorage.getItem(`ai-badges-${target.id}`) || "{}"); } catch { return {}; }
+  });
   const [badgeLoading, setBadgeLoading] = useState<Record<string, boolean>>({});
 
   const deferredSearch = useDeferredValue(search);
@@ -385,13 +396,26 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
         if (typeof evt.error === "string") { text = evt.error; break; }
         if (typeof evt.t === "string") text += evt.t;
       }
-      setAiBadges(prev => ({ ...prev, [key]: text.slice(0, 120) || "AI unavailable" }));
+      const updated = { ...aiBadges, [key]: text.slice(0, 120) || "AI unavailable" };
+      setAiBadges(updated);
+      sessionStorage.setItem(`ai-badges-${target.id}`, JSON.stringify(updated));
     } catch {
-      setAiBadges(prev => ({ ...prev, [key]: "AI unavailable" }));
+      const updated = { ...aiBadges, [key]: "AI unavailable" };
+      setAiBadges(updated);
+      sessionStorage.setItem(`ai-badges-${target.id}`, JSON.stringify(updated));
     } finally {
       setBadgeLoading(prev => ({ ...prev, [key]: false }));
     }
-  }, []);
+  }, [aiBadges, target.id]);
+
+  const dismissBadge = useCallback((key: string) => {
+    setAiBadges(prev => {
+      const next = { ...prev };
+      delete next[key];
+      sessionStorage.setItem(`ai-badges-${target.id}`, JSON.stringify(next));
+      return next;
+    });
+  }, [target.id]);
 
   const handleRowClick = useCallback((row: PodRowData) => {
     openResource("pod", row.name, row.ns);
@@ -405,8 +429,8 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
   /** Column defs are rebuilt when AI badge state changes so cell renderers
    *  close over the latest values. */
   const columns = useMemo(
-    () => buildPodColumns({ aiBadges, badgeLoading }),
-    [aiBadges, badgeLoading]
+    () => buildPodColumns({ aiBadges, badgeLoading, onDismissBadge: dismissBadge }),
+    [aiBadges, badgeLoading, dismissBadge]
   );
 
   /** Kebab menu actions per pod row. */
@@ -419,7 +443,8 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
     }
     const badgeKey = `${row.ns}/${row.name}`;
     if (!aiBadges[badgeKey] && !badgeLoading[badgeKey]) {
-      actions.push({ label: "AI Diagnose", icon: <Sparkles size={14} />, onClick: () => fetchAIBadge(row.name, row.ns, row.status) });
+      const label = row.isBad ? "AI Diagnose" : "AI Analyze";
+      actions.push({ label, icon: <Sparkles size={14} />, onClick: () => fetchAIBadge(row.name, row.ns, row.status) });
     }
     return actions;
   }, [openResource, onStreamLogs, aiBadges, badgeLoading, fetchAIBadge]);
