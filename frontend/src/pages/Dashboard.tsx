@@ -308,7 +308,7 @@ export function Dashboard({ target }: Props) {
               <ResourceGraph target={target} namespace={topoNamespace} />
             </div>
           ) : (
-            <div key={activeTab} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0, ...fadeInStyle }}>
+            <div key={activeTab} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minHeight: 0, ...fadeInStyle }}>
             <TabContent
               tabId={activeTab}
               data={tabData}

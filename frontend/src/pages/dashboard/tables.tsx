@@ -418,7 +418,7 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
       actions.push({ label: "Stream Logs", icon: <Play size={14} />, onClick: () => onStreamLogs(row.name, row.ns) });
     }
     const badgeKey = `${row.ns}/${row.name}`;
-    if (row.isBad && !aiBadges[badgeKey] && !badgeLoading[badgeKey]) {
+    if (!aiBadges[badgeKey] && !badgeLoading[badgeKey]) {
       actions.push({ label: "AI Diagnose", icon: <Sparkles size={14} />, onClick: () => fetchAIBadge(row.name, row.ns, row.status) });
     }
     return actions;
