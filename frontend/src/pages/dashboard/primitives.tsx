@@ -5,7 +5,7 @@
 import { useState, type ReactNode } from "react";
 import { Command, Sparkles, Target, Play, ChevronDown, ChevronRight } from "lucide-react";
 import { fadeInStyle, skeletonStyle } from "../../utils/animations";
-import { C } from "../../utils/theme";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOW } from "../../utils/theme";
 
 // ── RingChart — SVG donut ring for metric cards ─────────────────────────────
 
@@ -32,7 +32,7 @@ export function RingChart({ pct, color, size = 52 }: { pct: number; color: strin
       <span style={{
         position: "absolute", inset: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
-        color, fontSize: 10, fontWeight: 700, pointerEvents: "none",
+        color, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, pointerEvents: "none",
       }}>
         {pct}%
       </span>
@@ -53,8 +53,8 @@ export function PodSummaryBar({ counts }: { counts: { running: number; pending: 
     ...(other > 0 ? [{ label: "Other", count: other, color: C.text.muted }] : []),
   ];
   return (
-    <div style={{ padding: "8px 16px", background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
-      <div style={{ flex: 1, height: 6, borderRadius: 3, background: C.border.subtle, display: "flex", overflow: "hidden" }}>
+    <div style={{ padding: `${SPACE.sm}px ${SPACE.lg}px`, background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, display: "flex", alignItems: "center", gap: SPACE.lg, flexShrink: 0 }}>
+      <div style={{ flex: 1, height: 6, borderRadius: RADIUS.sm, background: C.border.subtle, display: "flex", overflow: "hidden" }}>
         {segments.map(seg => seg.count > 0 && (
           <div key={seg.label} style={{
             width: `${seg.count / counts.total * 100}%`,
@@ -63,14 +63,14 @@ export function PodSummaryBar({ counts }: { counts: { running: number; pending: 
           }} />
         ))}
       </div>
-      <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+      <div style={{ display: "flex", gap: SPACE.sm, flexShrink: 0 }}>
         {segments.map(seg => (
-          <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: seg.color, display: "inline-block", boxShadow: seg.label === "Running" ? `0 0 5px ${seg.color}88` : "none" }} />
-            <span style={{ fontSize: 11, color: C.text.secondary, fontWeight: 500 }}>{seg.count} {seg.label}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary, fontWeight: FONT_WEIGHT.medium }}>{seg.count} {seg.label}</span>
           </div>
         ))}
-        <span style={{ fontSize: 11, color: C.text.faint }}>/ {counts.total} total</span>
+        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint }}>/ {counts.total} total</span>
       </div>
     </div>
   );
@@ -87,7 +87,7 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
   const [open, setOpen] = useState(defaultOpen);
   const headerId = `card-${title.replace(/\s+/g, "-").toLowerCase()}`;
   return (
-    <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,.3)" }}>
+    <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.xl, overflow: "hidden", boxShadow: SHADOW.md }}>
       <div
         id={headerId}
         role="button"
@@ -95,14 +95,14 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(o => !o); } }}
-        style={{ padding: "10px 14px", borderBottom: open ? `1px solid ${C.border.muted}` : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none", transition: "border-bottom-color .25s" }}
+        style={{ padding: `${SPACE.sm}px ${SPACE.md}px`, borderBottom: open ? `1px solid ${C.border.muted}` : "none", fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, display: "flex", alignItems: "center", gap: SPACE.sm, cursor: "pointer", userSelect: "none", transition: "border-bottom-color .25s" }}
       >
         <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={C.text.muted} strokeWidth="1.5"
           style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .2s ease", flexShrink: 0 }}>
           <polyline points="3,1 7,5 3,9" />
         </svg>
         {title}
-        {hint && <span style={{ fontSize: 11, color: C.text.muted, fontWeight: 400 }}>· {hint}</span>}
+        {hint && <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, fontWeight: FONT_WEIGHT.normal }}>· {hint}</span>}
         <span aria-hidden="true" style={{ marginLeft: "auto", color: C.text.faint, display: "flex", alignItems: "center" }}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
       </div>
       <div
@@ -117,7 +117,7 @@ export function Card({ title, hint, children, defaultOpen = true }: { title: str
         }}
       >
         <div style={{ overflow: "hidden", minHeight: 0 }}>
-          <div style={{ padding: "14px 16px" }}>{children}</div>
+          <div style={{ padding: `${SPACE.md}px ${SPACE.lg}px` }}>{children}</div>
         </div>
       </div>
     </div>
@@ -142,32 +142,32 @@ export function NoTargetEmptyState() {
             <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
           </svg>
         </div>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text.primary, marginBottom: 8, letterSpacing: "-.3px" }}>
+        <h2 style={{ fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: C.text.primary, marginBottom: SPACE.sm, letterSpacing: "-.3px" }}>
           Connect your first target
         </h2>
-        <p style={{ fontSize: 13, color: C.text.muted, lineHeight: 1.7, marginBottom: 28 }}>
+        <p style={{ fontSize: FONT_SIZE.md, color: C.text.muted, lineHeight: 1.7, marginBottom: SPACE.xxl }}>
           Add a Kubernetes cluster, SSH server, Docker host, or cloud account from the sidebar to start monitoring and managing your infrastructure with AI.
         </p>
-        <div style={{ background: C.bg.elevated, border: `1px solid ${C.border.subtle}`, borderRadius: 10, padding: "16px 20px", textAlign: "left", marginBottom: 24 }}>
-          <div style={{ fontSize: 11, color: C.text.faint, textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 700, marginBottom: 12 }}>Getting started</div>
+        <div style={{ background: C.bg.elevated, border: `1px solid ${C.border.subtle}`, borderRadius: RADIUS.xl, padding: `${SPACE.lg}px ${SPACE.xl}px`, textAlign: "left", marginBottom: SPACE.xxl }}>
+          <div style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, textTransform: "uppercase", letterSpacing: ".6px", fontWeight: FONT_WEIGHT.bold, marginBottom: SPACE.md }}>Getting started</div>
           {[
             "Click + in the sidebar to add a connection",
             "Choose the target type — Kubernetes, SSH, Docker, AWS…",
             "Explore resources, stream logs, and ask AI anything",
           ].map((step, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: i < 2 ? 10 : 0 }}>
-              <span style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--c-bg-active)", border: `1px solid ${C.border.strong}`, color: C.accent.light, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
-              <span style={{ fontSize: 13, color: C.text.secondary, lineHeight: 1.5 }}>{step}</span>
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: SPACE.sm, marginBottom: i < 2 ? SPACE.sm : 0 }}>
+              <span style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--c-bg-active)", border: `1px solid ${C.border.strong}`, color: C.accent.light, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+              <span style={{ fontSize: FONT_SIZE.md, color: C.text.secondary, lineHeight: 1.5 }}>{step}</span>
             </div>
           ))}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: SPACE.sm }}>
           {FEATURE_HINTS.map(f => (
-            <div key={f.label} style={{ background: C.bg.panel, border: `1px solid ${C.border.subtle}`, borderRadius: 8, padding: "10px 12px", textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <div key={f.label} style={{ background: C.bg.panel, border: `1px solid ${C.border.subtle}`, borderRadius: RADIUS.lg, padding: `${SPACE.sm}px ${SPACE.md}px`, textAlign: "left", display: "flex", gap: SPACE.sm, alignItems: "flex-start" }}>
               <span style={{ width: 20, flexShrink: 0, color: C.accent.primary, display: "flex", alignItems: "center", justifyContent: "center" }}>{f.icon}</span>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-primary)", marginBottom: 2 }}>{f.label}</div>
-                <div style={{ fontSize: 11, color: C.text.faint, lineHeight: 1.4 }}>{f.desc}</div>
+                <div style={{ fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: C.text.primary, marginBottom: SPACE.xxs }}>{f.label}</div>
+                <div style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, lineHeight: 1.4 }}>{f.desc}</div>
               </div>
             </div>
           ))}
@@ -186,12 +186,12 @@ export function ContextualHint({ id, children }: { id: string; children: ReactNo
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(`hint-${id}`) === "1");
   if (dismissed) return null;
   return (
-    <div style={{ margin: "8px 16px 0", background: "#0f1a2e", border: "1px solid #1e3a5f", borderRadius: 6, padding: "7px 12px", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7dd3fc", flexShrink: 0 }}>
+    <div style={{ margin: `${SPACE.sm}px ${SPACE.lg}px 0`, background: `${C.status.info}12`, border: `1px solid ${C.status.info}33`, borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, display: "flex", alignItems: "center", gap: SPACE.sm, fontSize: FONT_SIZE.sm, color: C.status.info, flexShrink: 0 }}>
       <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <span style={{ flex: 1 }}>{children}</span>
       <button onClick={() => { localStorage.setItem(`hint-${id}`, "1"); setDismissed(true); }}
         aria-label="Dismiss tip"
-        style={{ background: "none", border: "none", color: C.text.faint, cursor: "pointer", fontSize: 14, padding: 2, display: "flex", alignItems: "center" }}>
+        style={{ background: "none", border: "none", color: C.text.faint, cursor: "pointer", fontSize: FONT_SIZE.md, padding: SPACE.xxs, display: "flex", alignItems: "center" }}>
         <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -200,7 +200,7 @@ export function ContextualHint({ id, children }: { id: string; children: ReactNo
 
 export function Pre({ children }: { children: ReactNode }) {
   return (
-    <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 12, color: "var(--c-text-secondary)", whiteSpace: "pre-wrap", lineHeight: 1.6, margin: 0 }}>
+    <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: FONT_SIZE.sm, color: C.text.secondary, whiteSpace: "pre-wrap", lineHeight: 1.6, margin: 0 }}>
       {children}
     </pre>
   );
@@ -208,7 +208,7 @@ export function Pre({ children }: { children: ReactNode }) {
 
 export function LoadingSpinner() {
   return (
-    <div role="status" aria-live="polite" aria-label="Loading" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, color: C.text.muted, fontSize: 13 }}>
+    <div role="status" aria-live="polite" aria-label="Loading" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, gap: SPACE.sm, color: C.text.muted, fontSize: FONT_SIZE.md }}>
       <span aria-hidden="true" style={{ display: "inline-block", width: 16, height: 16, border: `2px solid ${C.border.muted}`, borderTopColor: "var(--c-accent-hover)", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
       Loading…
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -223,9 +223,9 @@ export type SkeletonVariant = "cards" | "table" | "mixed";
  *                 rows, "mixed" (default) for a card-row followed by a list. */
 export function SkeletonLoader({ variant = "mixed" }: { variant?: SkeletonVariant } = {}) {
   return (
-    <div role="status" aria-live="polite" aria-label="Loading content" style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column", gap: 12, ...fadeInStyle }}>
+    <div role="status" aria-live="polite" aria-label="Loading content" style={{ flex: 1, padding: SPACE.lg, display: "flex", flexDirection: "column", gap: SPACE.md, ...fadeInStyle }}>
       {(variant === "cards" || variant === "mixed") && (
-        <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ display: "flex", gap: SPACE.md }}>
           {[1,2,3,4].map(i => (
             <div key={i} style={{ ...skeletonStyle, height: 72, flex: 1 }} />
           ))}
@@ -233,7 +233,7 @@ export function SkeletonLoader({ variant = "mixed" }: { variant?: SkeletonVarian
       )}
       {(variant === "table" || variant === "mixed") && (
         <>
-          <div style={{ ...skeletonStyle, height: 14, width: "35%", marginTop: variant === "mixed" ? 8 : 0 }} />
+          <div style={{ ...skeletonStyle, height: 14, width: "35%", marginTop: variant === "mixed" ? SPACE.sm : 0 }} />
           {[1,2,3,4,5,6,7].slice(0, variant === "table" ? 7 : 5).map(i => (
             <div key={i} style={{ ...skeletonStyle, height: 36, width: `${100 - i * 2}%` }} />
           ))}

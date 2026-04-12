@@ -8,6 +8,7 @@ import { AIDrawer }      from "../components/AIDrawer";
 import { EmptyState }    from "../components/ui/empty-state";
 import { Bell }          from "lucide-react";
 import { toast }         from "../utils/toast";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 
 interface Props {
   targets:         Target[];
@@ -98,14 +99,14 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
         borderBottom: "1px solid var(--c-border)",
         display: "flex",
         alignItems: "center",
-        gap: 14,
+        gap: SPACE.md,
         flexShrink: 0,
         flexWrap: "wrap",
         background: "var(--c-bg-raised)",
       }}>
         <span style={{
           width: 8, height: 8, borderRadius: "50%",
-          background: monitorActive ? "#ef4444" : "var(--c-text-muted)",
+          background: monitorActive ? C.status.danger : C.text.muted,
           display: "inline-block",
           animation: monitorActive ? "pulse 1.5s infinite" : "none",
           flexShrink: 0,
@@ -115,17 +116,17 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {/* Severity counters */}
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: SPACE.sm }}>
             {LEVELS.map(l => {
               const c = LEVEL_COLORS[l];
               return (
                 <div key={l} style={{
                   background: c.bg, border: `1px solid ${c.border}`,
-                  borderRadius: 8, padding: "4px 10px", textAlign: "center",
-                  display: "flex", alignItems: "center", gap: 6, minWidth: 56,
+                  borderRadius: RADIUS.lg, padding: `${SPACE.xs}px ${SPACE.sm}px`, textAlign: "center",
+                  display: "flex", alignItems: "center", gap: SPACE.sm, minWidth: 56,
                 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: c.text }}>{counts[l]}</span>
-                  <span style={{ fontSize: 10, color: "var(--c-text-muted)" }}>{l}</span>
+                  <span style={{ fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: c.text }}>{counts[l]}</span>
+                  <span style={{ fontSize: FONT_SIZE.xs, color: C.text.muted }}>{l}</span>
                 </div>
               );
             })}
@@ -140,7 +141,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
                 key={f}
                 onClick={() => setFilter(f)}
                 style={{
-                  padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  padding: `${SPACE.xs}px ${SPACE.sm}px`, borderRadius: RADIUS.xl, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
                   background: filter === f ? (f === "all" ? "var(--c-bg-active)" : LEVEL_COLORS[f].bg) : "transparent",
                   border: `1px solid ${filter === f ? (f === "all" ? "var(--c-accent-hover)" : LEVEL_COLORS[f].border) : "var(--c-border-strong)"}`,
                   color: filter === f ? (f === "all" ? "var(--c-accent-hover)" : LEVEL_COLORS[f].text) : "var(--c-text-muted)",
@@ -162,9 +163,9 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
               background: "var(--c-bg-surface)",
               border: "1px solid var(--c-border-strong)",
               color: "var(--c-text-primary)",
-              borderRadius: 6,
-              padding: "5px 10px",
-              fontSize: 12,
+              borderRadius: RADIUS.md,
+              padding: `${SPACE.xs}px ${SPACE.sm}px`,
+              fontSize: FONT_SIZE.sm,
               outline: "none",
               minWidth: 140,
             }}
@@ -181,7 +182,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
               disabled={!selectedTid || starting}
               style={{
                 background: "#16a34a", border: "none", color: "#fff",
-                borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+                borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
                 cursor: selectedTid ? "pointer" : "not-allowed",
                 opacity: selectedTid ? 1 : 0.5,
               }}
@@ -191,7 +192,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
               onClick={stopMonitor}
               style={{
                 background: "#b91c1c", border: "none", color: "#fff",
-                borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+                borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
                 cursor: "pointer",
               }}
             >Stop</button>
@@ -200,7 +201,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
           {alerts.length > 0 && (
             <button
               onClick={() => setAlerts([])}
-              style={{ background: "none", border: "1px solid var(--c-border-strong)", color: "var(--c-text-muted)", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+              style={{ background: "none", border: `1px solid ${C.border.strong}`, color: C.text.muted, borderRadius: RADIUS.md, padding: `${SPACE.xs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, cursor: "pointer" }}
             >Clear</button>
           )}
         </div>

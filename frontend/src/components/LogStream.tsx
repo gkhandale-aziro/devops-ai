@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Play, Pause } from "lucide-react";
 import type { Target } from "../types";
 import { api } from "../api/client";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 
 const MAX_RETRIES  = 5;
 const BASE_DELAY_MS = 1500;
@@ -26,9 +27,9 @@ const ERROR_RE = /error|fatal/i;
 const WARN_RE  = /warn/i;
 
 function highlightLine(line: string): string {
-  if (ERROR_RE.test(line)) return "#ef4444";
-  if (WARN_RE.test(line))  return "#f59e0b";
-  return "#8b949e";
+  if (ERROR_RE.test(line)) return C.status.danger;
+  if (WARN_RE.test(line))  return C.status.warning;
+  return C.text.muted;
 }
 
 export function LogStream({ target, pod, namespace, container, onClose }: Props) {
@@ -115,27 +116,27 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
     }}>
       {/* Header */}
       <div style={{
-        padding: "6px 12px",
-        borderBottom: "1px solid var(--c-border)",
-        display: "flex", alignItems: "center", gap: 10,
-        background: "var(--c-bg-raised)",
+        padding: `${SPACE.sm}px ${SPACE.md}px`,
+        borderBottom: `1px solid ${C.border.muted}`,
+        display: "flex", alignItems: "center", gap: SPACE.sm,
+        background: C.bg.elevated,
         flexShrink: 0,
       }}>
         <span style={{
           width: 7, height: 7, borderRadius: "50%",
-          background: connected ? "#22c55e" : "#ef4444",
-          boxShadow: connected ? "0 0 6px #22c55e" : "none",
+          background: connected ? C.status.success : C.status.danger,
+          boxShadow: connected ? `0 0 6px ${C.status.success}` : "none",
           animation: connected ? "pulse 2s infinite" : "none",
           flexShrink: 0,
         }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", textTransform: "uppercase", letterSpacing: ".5px" }}>
+        <span style={{ fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: C.accent.light, textTransform: "uppercase", letterSpacing: ".5px" }}>
           Logs
         </span>
-        <span style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 500 }}>
+        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary, fontWeight: FONT_WEIGHT.medium }}>
           {pod}
         </span>
-        <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>/ {namespace}</span>
-        {container && <span style={{ fontSize: 11, color: "#475569" }}>({container})</span>}
+        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>/ {namespace}</span>
+        {container && <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint }}>({container})</span>}
 
         <div style={{ flex: 1 }} />
 
@@ -144,8 +145,8 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
           onChange={e => setSearch(e.target.value)}
           placeholder="Filter…"
           style={{
-            width: 160, background: "var(--c-bg-surface)", border: "1px solid var(--c-border-strong)",
-            color: "var(--c-text-primary)", borderRadius: 5, padding: "3px 8px", fontSize: 11,
+            width: 160, background: "var(--c-bg-surface)", border: `1px solid ${C.border.strong}`,
+            color: C.text.primary, borderRadius: RADIUS.sm, padding: `3px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm,
           }}
         />
 
@@ -153,11 +154,11 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
           onClick={() => setPaused(p => !p)}
           title={paused ? "Resume auto-scroll" : "Freeze scroll (logs still stream)"}
           style={{
-            background: paused ? "#f59e0b22" : "transparent",
-            border: `1px solid ${paused ? "#f59e0b" : "var(--c-border-strong)"}`,
-            color: paused ? "#f59e0b" : "var(--c-text-muted)",
-            borderRadius: 5, padding: "3px 8px", fontSize: 10,
-            fontWeight: 700, cursor: "pointer",
+            background: paused ? `${C.status.warning}22` : "transparent",
+            border: `1px solid ${paused ? C.status.warning : C.border.strong}`,
+            color: paused ? C.status.warning : C.text.muted,
+            borderRadius: RADIUS.sm, padding: `3px ${SPACE.sm}px`, fontSize: FONT_SIZE.xs,
+            fontWeight: FONT_WEIGHT.bold, cursor: "pointer",
           }}
         >
           {paused ? <><Play size={10} style={{ marginRight: 4 }} /> Resume scroll</> : <><Pause size={10} style={{ marginRight: 4 }} /> Scroll lock</>}
@@ -167,20 +168,20 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
           onClick={() => { setLines([]); }}
           title="Clear"
           style={{
-            background: "transparent", border: "1px solid var(--c-border-strong)",
-            color: "var(--c-text-muted)", borderRadius: 5, padding: "3px 8px",
-            fontSize: 10, cursor: "pointer",
+            background: "transparent", border: `1px solid ${C.border.strong}`,
+            color: C.text.muted, borderRadius: RADIUS.sm, padding: `3px ${SPACE.sm}px`,
+            fontSize: FONT_SIZE.xs, cursor: "pointer",
           }}
         >
           Clear
         </button>
 
-        <span style={{ fontSize: 10, color: "#475569" }}>{lines.length} lines</span>
+        <span style={{ fontSize: FONT_SIZE.xs, color: C.text.faint }}>{lines.length} lines</span>
 
         <button
           onClick={onClose}
           aria-label="Close log stream"
-          style={{ background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px 4px" }}
+          style={{ background: "none", border: "none", color: C.text.muted, cursor: "pointer", display: "flex", alignItems: "center", padding: `${SPACE.xxs}px ${SPACE.xs}px` }}
         >
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -188,12 +189,12 @@ export function LogStream({ target, pod, namespace, container, onClose }: Props)
 
       {/* Log content */}
       <div style={{
-        flex: 1, overflowY: "auto", padding: "6px 12px",
+        flex: 1, overflowY: "auto", padding: `${SPACE.sm}px ${SPACE.md}px`,
         fontFamily: "'Cascadia Code','Consolas',monospace",
-        fontSize: 11, lineHeight: 1.7,
+        fontSize: FONT_SIZE.sm, lineHeight: 1.7,
       }}>
         {filtered.length === 0 && (
-          <div style={{ color: "#475569", padding: "20px 0", textAlign: "center" }}>
+          <div style={{ color: C.text.faint, padding: `${SPACE.xl}px 0`, textAlign: "center" }}>
             {connected ? "Waiting for logs…" : "Connecting…"}
           </div>
         )}

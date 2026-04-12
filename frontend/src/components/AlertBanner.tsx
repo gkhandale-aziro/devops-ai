@@ -10,6 +10,7 @@ import { AlertTriangle, X } from "lucide-react";
 import type { SSEEvent, MonitorAlert } from "../types";
 import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
 import { useMonitorSSE } from "../hooks/useSSE";
+import { SPACE, FONT_SIZE } from "../utils/theme";
 
 interface Props {
   monitorActive: boolean;
@@ -43,11 +44,11 @@ export function AlertBanner({ monitorActive }: Props) {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "8px 14px",
+        gap: SPACE.sm,
+        padding: `${SPACE.sm}px ${SPACE.md}px`,
         background: colors.bg,
         border: `1px solid ${colors.border}`,
-        fontSize: 12,
+        fontSize: FONT_SIZE.sm,
         color: colors.text,
         flexShrink: 0,
         cursor: "pointer",
@@ -65,7 +66,7 @@ export function AlertBanner({ monitorActive }: Props) {
         </span>
       </div>
 
-      <span style={{ fontSize: 11, color: "var(--c-text-muted)", flexShrink: 0 }}>
+      <span style={{ fontSize: FONT_SIZE.sm, color: "var(--c-text-muted)", flexShrink: 0 }}>
         View alerts
       </span>
 

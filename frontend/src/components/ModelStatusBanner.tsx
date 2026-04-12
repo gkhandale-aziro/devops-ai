@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, RefreshCw, X } from "lucide-react";
 import { api, type ModelHealthStatus } from "../api/client";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 
 interface Props {
   /** Called when user explicitly switches model from the banner. */
@@ -42,14 +43,14 @@ export function ModelStatusBanner({ onModelChange }: Props) {
   const isUnavailable = health.status === "unavailable";
 
   const bgColor = isFallback
-    ? "var(--c-sev2-bg, #f59e0b18)"
-    : "var(--c-sev1-bg, #ef444418)";
+    ? `var(--c-sev2-bg, ${C.status.warning}18)`
+    : `var(--c-sev1-bg, ${C.status.danger}18)`;
   const borderColor = isFallback
-    ? "var(--c-sev2, #f59e0b)"
-    : "var(--c-sev1, #ef4444)";
+    ? `var(--c-sev2, ${C.status.warning})`
+    : `var(--c-sev1, ${C.status.danger})`;
   const textColor = isFallback
-    ? "var(--c-sev2, #f59e0b)"
-    : "var(--c-sev1, #ef4444)";
+    ? `var(--c-sev2, ${C.status.warning})`
+    : `var(--c-sev1, ${C.status.danger})`;
 
   return (
     <div
@@ -57,12 +58,12 @@ export function ModelStatusBanner({ onModelChange }: Props) {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "8px 14px",
+        gap: SPACE.sm,
+        padding: `${SPACE.sm}px ${SPACE.md}px`,
         background: bgColor,
         border: `1px solid ${borderColor}`,
         borderRadius: 0,
-        fontSize: 12,
+        fontSize: FONT_SIZE.sm,
         color: textColor,
         flexShrink: 0,
       }}
@@ -93,8 +94,8 @@ export function ModelStatusBanner({ onModelChange }: Props) {
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            fontSize: 11,
-            fontWeight: 600,
+            fontSize: FONT_SIZE.sm,
+            fontWeight: FONT_WEIGHT.semibold,
             color: textColor,
             textDecoration: "underline",
             whiteSpace: "nowrap",
@@ -112,13 +113,13 @@ export function ModelStatusBanner({ onModelChange }: Props) {
             display: "flex",
             alignItems: "center",
             gap: 4,
-            padding: "4px 10px",
-            borderRadius: 6,
+            padding: `${SPACE.xs}px ${SPACE.sm}px`,
+            borderRadius: RADIUS.md,
             border: `1px solid ${borderColor}`,
             background: "transparent",
             color: textColor,
-            fontSize: 11,
-            fontWeight: 600,
+            fontSize: FONT_SIZE.sm,
+            fontWeight: FONT_WEIGHT.semibold,
             cursor: "pointer",
             whiteSpace: "nowrap",
             flexShrink: 0,

@@ -15,6 +15,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { Joyride, STATUS, EVENTS, type Step, type EventData, type TooltipRenderProps } from "react-joyride";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 
 /**
  * Custom tooltip — identical to Joyride's DefaultTooltip except the title
@@ -151,7 +152,7 @@ export function OnboardingTour() {
         showProgress:       true,
         skipBeacon:         true,
         overlayClickAction: false,
-        primaryColor:       "#4f46e5",  // darker indigo — passes WCAG AA contrast on white text (5.5:1)
+        primaryColor:       "#4f46e5",  // darker indigo — passes WCAG AA contrast on white text (5.5:1); intentionally not C.accent.primary for contrast
         backgroundColor:    "var(--c-bg-card)",
         textColor:          "var(--c-text-primary)",
         arrowColor:         "var(--c-bg-card)",
@@ -160,37 +161,37 @@ export function OnboardingTour() {
       }}
       styles={{
         tooltip: {
-          borderRadius: 12,
-          border:       "1px solid var(--c-border)",
-          padding:      16,
-          fontSize:     13,
+          borderRadius: RADIUS.xl,
+          border:       `1px solid ${C.border.muted}`,
+          padding:      SPACE.lg,
+          fontSize:     FONT_SIZE.md,
           fontFamily:   "inherit",
           boxShadow:    "0 24px 64px rgba(0,0,0,.5), 0 4px 16px rgba(0,0,0,.3)",
         },
         tooltipTitle: {
-          fontSize:     14,
-          fontWeight:   600,
-          marginBottom: 6,
-          color:        "var(--c-text-primary)",
+          fontSize:     FONT_SIZE.lg,
+          fontWeight:   FONT_WEIGHT.semibold,
+          marginBottom: SPACE.sm,
+          color:        C.text.primary,
         },
         tooltipContent: {
           padding:    0,
           lineHeight: 1.55,
-          color:      "var(--c-text-secondary)",
+          color:      C.text.secondary,
         },
         buttonPrimary: {
-          borderRadius: 6,
-          fontSize:     12,
-          fontWeight:   600,
-          padding:      "6px 14px",
+          borderRadius: RADIUS.md,
+          fontSize:     FONT_SIZE.sm,
+          fontWeight:   FONT_WEIGHT.semibold,
+          padding:      `${SPACE.sm}px ${SPACE.md}px`,
         },
         buttonBack: {
-          color:    "var(--c-text-muted)",
-          fontSize: 12,
+          color:    C.text.muted,
+          fontSize: FONT_SIZE.sm,
         },
         buttonSkip: {
-          color:    "var(--c-text-muted)",
-          fontSize: 12,
+          color:    C.text.muted,
+          fontSize: FONT_SIZE.sm,
         },
       }}
     />

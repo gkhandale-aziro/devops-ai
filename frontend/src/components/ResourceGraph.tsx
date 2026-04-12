@@ -14,6 +14,7 @@ import type { Target, SSEEvent } from "../types";
 import { api } from "../api/client";
 import { useMonitorSSE } from "../hooks/useSSE";
 import { ZoomIn, ZoomOut, RotateCcw, RefreshCw, Activity } from "lucide-react";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 
 interface Props {
   target:    Target;
@@ -34,27 +35,29 @@ interface Node {
 
 interface Edge { from: string; to: string }
 
+// TODO: move to theme.ts
 const KIND_COLOR: Record<string, { bg: string; border: string; text: string }> = {
-  deployment: { bg: "#1a1040", border: "var(--c-accent)", text: "#818cf8" },
-  pod:        { bg: "#0a1a14", border: "#22c55e", text: "#4ade80" },
-  service:    { bg: "#1a1100", border: "#f59e0b", text: "#fbbf24" },
-  ingress:    { bg: "#0c1a2a", border: "#06b6d4", text: "#22d3ee" },
+  deployment: { bg: "#1a1040", border: "var(--c-accent)", text: C.accent.light },
+  pod:        { bg: "#0a1a14", border: C.status.success, text: "#4ade80" },
+  service:    { bg: "#1a1100", border: C.status.warning, text: "#fbbf24" },
+  ingress:    { bg: "#0c1a2a", border: C.status.info, text: "#22d3ee" },
 };
 
+// TODO: move to theme.ts
 const POD_STATUS_COLOR: Record<string, string> = {
-  Running:           "#22c55e",
-  Completed:         "#06b6d4",
-  Pending:           "#f59e0b",
-  CrashLoopBackOff:  "#ef4444",
-  Error:             "#ef4444",
-  OOMKilled:         "#ef4444",
+  Running:           C.status.success,
+  Completed:         C.status.info,
+  Pending:           C.status.warning,
+  CrashLoopBackOff:  C.status.danger,
+  Error:             C.status.danger,
+  OOMKilled:         C.status.danger,
   ImagePullBackOff:  "#f97316",
 };
 
 const NODE_W = 160;
 const NODE_H = 48;
 const COL_GAP = 60;
-const ROW_GAP = 14;
+const ROW_GAP = SPACE.md;
 
 // Pod phase values that indicate a hard failure — propagate upstream.
 // Deliberately excludes "Pending" (transient on startup) and "Unknown"
@@ -300,18 +303,18 @@ export function ResourceGraph({ target, namespace }: Props) {
   }, [lastLive]);
 
   if (loading) return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--c-text-muted)", fontSize: 13 }}>
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: SPACE.sm, color: C.text.muted, fontSize: FONT_SIZE.md }}>
       <span style={{ width: 14, height: 14, border: "2px solid var(--c-border)", borderTopColor: "var(--c-accent)", borderRadius: "50%", animation: "spin .7s linear infinite", display: "inline-block" }} />
       Building topology…
     </div>
   );
 
   if (error) return (
-    <div style={{ padding: 20, color: "var(--c-sev1)", fontSize: 13 }}>kubectl not available or no resources found.</div>
+    <div style={{ padding: SPACE.xl, color: "var(--c-sev1)", fontSize: FONT_SIZE.md }}>kubectl not available or no resources found.</div>
   );
 
   if (nodes.length === 0) return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#475569", fontSize: 13 }}>
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.text.faint, fontSize: FONT_SIZE.md }}>
       No resources found in {namespace || "any namespace"}.
     </div>
   );
@@ -320,36 +323,36 @@ export function ResourceGraph({ target, namespace }: Props) {
 
   const ctrlBtn: React.CSSProperties = {
     width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
-    background: "var(--c-bg-surface)", border: "1px solid var(--c-border)", borderRadius: 4,
-    color: "var(--c-text-muted)", cursor: "pointer", padding: 0,
+    background: "var(--c-bg-surface)", border: "1px solid var(--c-border)", borderRadius: RADIUS.sm,
+    color: C.text.muted, cursor: "pointer", padding: 0,
   };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Legend + zoom toolbar */}
-      <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--c-border)", display: "flex", gap: 16, alignItems: "center", flexShrink: 0, background: "var(--c-bg-panel)" }}>
-        <span style={{ fontSize: 11, color: "var(--c-text-faint)", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700 }}>Topology</span>
+      <div style={{ padding: `${SPACE.sm}px ${SPACE.lg}px`, borderBottom: `1px solid ${C.border.muted}`, display: "flex", gap: SPACE.lg, alignItems: "center", flexShrink: 0, background: C.bg.panel }}>
+        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: FONT_WEIGHT.bold }}>Topology</span>
         {(["ingress", "service", "deployment", "pod"] as const).map(kind => {
           const c = KIND_COLOR[kind];
           return (
-            <div key={kind} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 2, background: c.border, display: "inline-block" }} />
-              <span style={{ fontSize: 11, color: "var(--c-text-muted)", textTransform: "capitalize" }}>{kind}</span>
+            <div key={kind} style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
+              <span style={{ width: 8, height: 8, borderRadius: RADIUS.sm / 2, background: c.border, display: "inline-block" }} />
+              <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, textTransform: "capitalize" }}>{kind}</span>
             </div>
           );
         })}
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-sev2)", display: "inline-block", boxShadow: "0 0 6px var(--c-sev2)" }} />
-          <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>degraded</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>degraded</span>
         </div>
 
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--c-text-faint)" }}>{nodes.length} resources</span>
+        <span style={{ marginLeft: "auto", fontSize: FONT_SIZE.sm, color: C.text.faint }}>{nodes.length} resources</span>
 
         {/* Live indicator */}
         {target.type === "kubernetes" && (
           <div style={{
-            display: "flex", alignItems: "center", gap: 4, fontSize: 11,
-            color: isLive ? "var(--c-accent)" : "var(--c-text-faint)",
+            display: "flex", alignItems: "center", gap: SPACE.xs, fontSize: FONT_SIZE.sm,
+            color: isLive ? "var(--c-accent)" : C.text.faint,
             transition: "color .3s",
           }} title="Live updates from monitor stream">
             <Activity size={12} style={{ animation: isLive ? "pulse 1s ease-in-out" : undefined }} />
@@ -358,11 +361,11 @@ export function ResourceGraph({ target, namespace }: Props) {
         )}
 
         {/* Zoom controls */}
-        <div style={{ display: "flex", gap: 4, alignItems: "center", paddingLeft: 8, borderLeft: "1px solid var(--c-border)" }}>
+        <div style={{ display: "flex", gap: SPACE.xs, alignItems: "center", paddingLeft: SPACE.sm, borderLeft: `1px solid ${C.border.muted}` }}>
           <button type="button" onClick={() => zoomAt(1 / ZOOM_STEP)} style={ctrlBtn} aria-label="Zoom out" title="Zoom out (−)">
             <ZoomOut size={13} />
           </button>
-          <span style={{ fontSize: 10, color: "var(--c-text-muted)", minWidth: 34, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+          <span style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, minWidth: 34, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
             {Math.round(zoom * 100)}%
           </span>
           <button type="button" onClick={() => zoomAt(ZOOM_STEP)} style={ctrlBtn} aria-label="Zoom in" title="Zoom in (+)">
@@ -458,18 +461,18 @@ export function ResourceGraph({ target, namespace }: Props) {
                     fill="none" stroke={c.border} strokeWidth={2} opacity={0.4} />
                 )}
                 {/* Card */}
-                <rect x={n.x} y={n.y} width={n.width} height={n.height} rx={7}
+                <rect x={n.x} y={n.y} width={n.width} height={n.height} rx={RADIUS.lg}
                   fill={c.bg} stroke={isSel ? c.border : isHov ? c.border + "88" : "var(--c-border)"} strokeWidth={isSel ? 2 : 1} />
                 {/* Left accent bar */}
                 <rect x={n.x} y={n.y + 8} width={3} height={n.height - 16} rx={2} fill={c.border} />
                 {/* Status dot */}
                 <circle cx={n.x + n.width - 12} cy={n.y + n.height / 2} r={4} fill={statusColor} />
                 {/* Kind label */}
-                <text x={n.x + 14} y={n.y + 16} fontSize={9} fill={c.text} fontWeight={700} style={{ textTransform: "uppercase", letterSpacing: ".5px" }}>
+                <text x={n.x + 14} y={n.y + 16} fontSize={FONT_SIZE.xs} fill={c.text} fontWeight={FONT_WEIGHT.bold} style={{ textTransform: "uppercase", letterSpacing: ".5px" }}>
                   {n.kind}
                 </text>
                 {/* Name */}
-                <text x={n.x + 14} y={n.y + 32} fontSize={11} fill="var(--c-text-secondary)" fontWeight={500}>
+                <text x={n.x + 14} y={n.y + 32} fontSize={FONT_SIZE.sm} fill={C.text.secondary} fontWeight={FONT_WEIGHT.medium}>
                   {shortName}
                 </text>
               </g>
@@ -515,54 +518,54 @@ function TopologyDetail({ target, node, onClose }: { target: Target; node: Node;
   return (
     <div style={{ flexShrink: 0, borderTop: "1px solid var(--c-border)", background: "var(--c-bg-raised)", display: "flex", flexDirection: "column", height: panelHeight, transition: "height .2s" }}>
       {/* Header */}
-      <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--c-border)", flexShrink: 0 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: c.text, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, padding: "2px 8px", textTransform: "uppercase" }}>
+      <div style={{ padding: `${SPACE.sm}px ${SPACE.lg}px`, display: "flex", alignItems: "center", gap: SPACE.sm, borderBottom: `1px solid ${C.border.muted}`, flexShrink: 0 }}>
+        <span style={{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: c.text, background: c.bg, border: `1px solid ${c.border}`, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`, textTransform: "uppercase" }}>
           {node.kind}
         </span>
-        <strong style={{ fontSize: 13 }}>{node.name}</strong>
-        {node.namespace && <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>/ {node.namespace}</span>}
-        <span style={{ fontSize: 11, color: "var(--c-text-muted)" }}>Status: <span style={{ color: statusColor }}>{node.status}</span></span>
+        <strong style={{ fontSize: FONT_SIZE.md }}>{node.name}</strong>
+        {node.namespace && <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>/ {node.namespace}</span>}
+        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Status: <span style={{ color: statusColor }}>{node.status}</span></span>
 
         {/* Tabs */}
         <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
           {(["info", "describe", "logs"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
-              padding: "3px 10px", fontSize: 11, background: tab === t ? "var(--c-bg-active)" : "transparent",
-              border: `1px solid ${tab === t ? "var(--c-accent)" : "var(--c-border-strong)"}`,
-              color: tab === t ? "var(--c-accent-hover)" : "var(--c-text-muted)",
-              borderRadius: 4, cursor: "pointer", fontWeight: tab === t ? 600 : 400,
+              padding: `3px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, background: tab === t ? "var(--c-bg-active)" : "transparent",
+              border: `1px solid ${tab === t ? "var(--c-accent)" : C.border.strong}`,
+              color: tab === t ? "var(--c-accent-hover)" : C.text.muted,
+              borderRadius: RADIUS.sm, cursor: "pointer", fontWeight: tab === t ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal,
             }}>{t === "describe" ? "Details" : t === "info" ? "Info" : "Logs"}</button>
           ))}
         </div>
         <button onClick={() => setExpanded(e => !e)} title={expanded ? "Minimize" : "Maximize"}
-          style={{ background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}>
+          style={{ background: "none", border: "none", color: C.text.muted, cursor: "pointer", padding: `${SPACE.xxs}px ${SPACE.xs}px`, display: "flex", alignItems: "center" }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             {expanded ? <polyline points="18 15 12 9 6 15"/> : <polyline points="6 9 12 15 18 9"/>}
           </svg>
         </button>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px 4px" }}>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.text.muted, cursor: "pointer", display: "flex", alignItems: "center", padding: `${SPACE.xxs}px ${SPACE.xs}px` }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: `${SPACE.sm}px ${SPACE.lg}px` }}>
         {tab === "info" && (
-          <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "4px 12px", fontSize: 12 }}>
-            <span style={{ color: "var(--c-text-muted)" }}>Kind</span><span>{node.kind}</span>
-            <span style={{ color: "var(--c-text-muted)" }}>Name</span><span>{node.name}</span>
-            <span style={{ color: "var(--c-text-muted)" }}>Namespace</span><span>{node.namespace || "—"}</span>
-            <span style={{ color: "var(--c-text-muted)" }}>Status</span><span style={{ color: statusColor }}>{node.status}</span>
+          <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: `${SPACE.xs}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm }}>
+            <span style={{ color: C.text.muted }}>Kind</span><span>{node.kind}</span>
+            <span style={{ color: C.text.muted }}>Name</span><span>{node.name}</span>
+            <span style={{ color: C.text.muted }}>Namespace</span><span>{node.namespace || "—"}</span>
+            <span style={{ color: C.text.muted }}>Status</span><span style={{ color: statusColor }}>{node.status}</span>
           </div>
         )}
         {tab === "describe" && (
-          loading ? <span style={{ color: "var(--c-text-muted)", fontSize: 12 }}>Loading…</span>
-            : <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 11, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.5, margin: 0 }}>{detail.describe ?? "—"}</pre>
+          loading ? <span style={{ color: C.text.muted, fontSize: FONT_SIZE.sm }}>Loading…</span>
+            : <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: FONT_SIZE.sm, color: C.text.muted, whiteSpace: "pre-wrap", lineHeight: 1.5, margin: 0 }}>{detail.describe ?? "—"}</pre>
         )}
         {tab === "logs" && (
-          loading ? <span style={{ color: "var(--c-text-muted)", fontSize: 12 }}>Loading…</span>
+          loading ? <span style={{ color: C.text.muted, fontSize: FONT_SIZE.sm }}>Loading…</span>
             : node.kind === "pod"
-              ? <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: 11, color: "#8b949e", whiteSpace: "pre-wrap", lineHeight: 1.5, margin: 0 }}>{detail.logs ?? "No logs (only available for pods)"}</pre>
-              : <div style={{ color: "var(--c-text-muted)", fontSize: 12, paddingTop: 8 }}>Logs are only available for pod resources.</div>
+              ? <pre style={{ fontFamily: "'Cascadia Code','Consolas',monospace", fontSize: FONT_SIZE.sm, color: C.text.muted, whiteSpace: "pre-wrap", lineHeight: 1.5, margin: 0 }}>{detail.logs ?? "No logs (only available for pods)"}</pre>
+              : <div style={{ color: C.text.muted, fontSize: FONT_SIZE.sm, paddingTop: SPACE.sm }}>Logs are only available for pod resources.</div>
         )}
       </div>
     </div>
