@@ -20,6 +20,7 @@ import { Toaster } from "sonner";
 import { toast } from "./utils/toast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ModelStatusBanner } from "./components/ModelStatusBanner";
+import { AlertBanner } from "./components/AlertBanner";
 import { OnboardingTour } from "./components/OnboardingTour";
 
 export default function App() {
@@ -140,6 +141,7 @@ export default function App() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <ModelStatusBanner onModelChange={() => { window.location.href = "/settings"; }} />
+          <AlertBanner monitorActive={monitorActive} />
 
           {/* Top bar — search */}
           <header style={{

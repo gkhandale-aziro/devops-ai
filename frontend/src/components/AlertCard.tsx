@@ -1,13 +1,15 @@
 import type { KeyboardEvent } from "react";
+import { Check } from "lucide-react";
 import type { MonitorAlert } from "../types";
 import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
 
 interface Props {
-  alert: MonitorAlert & { ts: string };
+  alert: MonitorAlert & { ts: string; acknowledged?: boolean };
   onClick?: () => void;
+  onAck?: () => void;
 }
 
-export function AlertCard({ alert, onClick }: Props) {
+export function AlertCard({ alert, onClick, onAck }: Props) {
   const c       = LEVEL_COLORS[alert.level];
   const isCrit  = alert.level === "SEV1";
   const isWarn  = alert.level === "SEV2";
@@ -97,10 +99,33 @@ export function AlertCard({ alert, onClick }: Props) {
         </div>
       )}
 
-      {/* Source */}
+      {/* Source + ack */}
       <div style={{ marginTop: 5, fontSize: 10, color: "#374151", display: "flex", alignItems: "center", gap: 4 }}>
         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M2 12h3m14 0h3M12 2v3m0 14v3"/></svg>
         {alert.source}
+        <span style={{ flex: 1 }} />
+        {onAck && !alert.acknowledged && (
+          <button
+            onClick={e => { e.stopPropagation(); onAck(); }}
+            aria-label="Acknowledge alert"
+            style={{
+              display: "flex", alignItems: "center", gap: 3,
+              padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+              background: "transparent", border: `1px solid ${c.border}66`,
+              color: c.text, cursor: "pointer", opacity: 0.8,
+              transition: "opacity .15s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+            onMouseLeave={e => (e.currentTarget.style.opacity = "0.8")}
+          >
+            <Check size={10} /> Ack
+          </button>
+        )}
+        {alert.acknowledged && (
+          <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: "#22c55e", opacity: 0.7 }}>
+            <Check size={10} /> Acknowledged
+          </span>
+        )}
       </div>
     </div>
   );

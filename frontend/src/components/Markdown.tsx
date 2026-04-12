@@ -3,6 +3,7 @@
  * Handles: headings, bold, italic, inline code, code blocks, lists,
  *          blockquotes, horizontal rules, links.
  */
+import { useRef, useEffect } from "react";
 
 interface Props {
   children: string;
@@ -11,8 +12,44 @@ interface Props {
 
 export function Markdown({ children, className }: Props) {
   const html = parse(children ?? "");
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Inject copy buttons into <pre> blocks after render.
+  useEffect(() => {
+    if (!ref.current) return;
+    const pres = ref.current.querySelectorAll("pre");
+    pres.forEach(pre => {
+      if (pre.querySelector(".md-copy")) return; // already injected
+      // Wrap pre in a relative container for absolute positioning of the button
+      const wrapper = document.createElement("div");
+      wrapper.style.position = "relative";
+      pre.parentNode?.insertBefore(wrapper, pre);
+      wrapper.appendChild(pre);
+
+      const btn = document.createElement("button");
+      btn.className = "md-copy";
+      btn.textContent = "Copy";
+      btn.setAttribute("aria-label", "Copy code");
+      btn.style.cssText =
+        "position:absolute;top:6px;right:6px;padding:2px 8px;font-size:10px;" +
+        "background:var(--c-bg-active);border:1px solid var(--c-border);color:var(--c-text-muted);" +
+        "border-radius:4px;cursor:pointer;opacity:0;transition:opacity .15s;";
+      wrapper.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
+      wrapper.addEventListener("mouseleave", () => { btn.style.opacity = "0"; });
+      btn.addEventListener("click", () => {
+        const code = pre.querySelector("code")?.textContent ?? pre.textContent ?? "";
+        navigator.clipboard.writeText(code).then(() => {
+          btn.textContent = "Copied!";
+          setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+        });
+      });
+      wrapper.appendChild(btn);
+    });
+  });
+
   return (
     <div
+      ref={ref}
       className={`md${className ? " " + className : ""}`}
       dangerouslySetInnerHTML={{ __html: html }}
     />

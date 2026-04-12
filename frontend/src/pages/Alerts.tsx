@@ -7,6 +7,7 @@ import { AlertCard }     from "../components/AlertCard";
 import { AIDrawer }      from "../components/AIDrawer";
 import { EmptyState }    from "../components/ui/empty-state";
 import { Bell }          from "lucide-react";
+import { toast }         from "../utils/toast";
 
 interface Props {
   targets:         Target[];
@@ -14,7 +15,7 @@ interface Props {
   onMonitorChange: (active: boolean) => void;
 }
 
-type AlertEntry = MonitorAlert & { ts: string; id: number };
+type AlertEntry = MonitorAlert & { ts: string; id: number; acknowledged?: boolean };
 
 const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 
@@ -67,6 +68,11 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
   async function stopMonitor() {
     await api.monitor.stop();
     onMonitorChange(false);
+  }
+
+  function ackAlert(id: number) {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
+    toast.success("Alert acknowledged");
   }
 
   function openAIForAlert(a: AlertEntry) {
@@ -218,7 +224,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
           />
         )}
         {visible.map(a => (
-          <AlertCard key={a.id} alert={a} onClick={() => openAIForAlert(a)} />
+          <AlertCard key={a.id} alert={a} onClick={() => openAIForAlert(a)} onAck={() => ackAlert(a.id)} />
         ))}
       </div>
 
