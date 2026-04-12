@@ -13,7 +13,45 @@
  * Uses react-joyride v3's named export + onEvent callback signature.
  */
 import { useEffect, useState, useCallback } from "react";
-import { Joyride, STATUS, EVENTS, type Step, type EventData } from "react-joyride";
+import type { ReactNode } from "react";
+import { Joyride, STATUS, EVENTS, type Step, type EventData, type TooltipRenderProps } from "react-joyride";
+
+/**
+ * Custom tooltip — identical to Joyride's DefaultTooltip except the title
+ * renders as a `<p>` instead of `<h4>`. Joyride's hardcoded `<h4>` breaks
+ * heading-order (Lighthouse a11y) because no <h1>–<h3> exists on the page.
+ */
+function TourTooltip(props: TooltipRenderProps) {
+  const { backProps, index, isLastStep, primaryProps, skipProps, step, tooltipProps } = props;
+  const { buttons, content, styles, title } = step;
+  const btns: Record<string, ReactNode> = {};
+
+  if (buttons.includes("primary"))
+    btns.primary = <button data-testid="button-primary" style={styles.buttonPrimary} type="button" {...primaryProps} />;
+  if (buttons.includes("skip") && !isLastStep)
+    btns.skip = <button aria-live="off" data-testid="button-skip" style={styles.buttonSkip} type="button" {...skipProps} />;
+  if (buttons.includes("back") && index > 0)
+    btns.back = <button data-testid="button-back" style={styles.buttonBack} type="button" {...backProps} />;
+
+  return (
+    <div key="JoyrideTooltip" className="react-joyride__tooltip" data-joyride-step={index}
+      style={styles.tooltip} {...tooltipProps}
+      {...(title ? { "aria-labelledby": "joyride-tooltip-title", "aria-describedby": "joyride-tooltip-content" } : { "aria-describedby": "joyride-tooltip-content" })}
+    >
+      <div style={styles.tooltipContainer}>
+        {title && <p id="joyride-tooltip-title" style={{ ...styles.tooltipTitle, margin: 0 }}>{title}</p>}
+        <div id="joyride-tooltip-content" style={styles.tooltipContent}>{content}</div>
+      </div>
+      {buttons.some(b => b === "back" || b === "primary" || b === "skip") && (
+        <div style={styles.tooltipFooter}>
+          <div style={styles.tooltipFooterSpacer}>{btns.skip}</div>
+          {btns.back}
+          {btns.primary}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TOUR_SEEN_KEY = "aziro-tour-seen";
 
@@ -97,6 +135,7 @@ export function OnboardingTour() {
       run={run}
       stepIndex={stepIndex}
       continuous
+      tooltipComponent={TourTooltip}
       onEvent={handleEvent}
       locale={{
         back:  "Back",
@@ -112,7 +151,7 @@ export function OnboardingTour() {
         showProgress:       true,
         skipBeacon:         true,
         overlayClickAction: false,
-        primaryColor:       "var(--c-accent, #6366f1)",
+        primaryColor:       "#4f46e5",  // darker indigo — passes WCAG AA contrast on white text (5.5:1)
         backgroundColor:    "var(--c-bg-card)",
         textColor:          "var(--c-text-primary)",
         arrowColor:         "var(--c-bg-card)",
