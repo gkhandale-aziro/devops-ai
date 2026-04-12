@@ -194,6 +194,12 @@ body {
 .hover-opacity-full:hover  { opacity: 1 !important; }
 .hover-text-danger:hover   { color: var(--c-status-danger, #ef4444) !important; }
 .hover-glow-accent:hover   { box-shadow: 0 0 12px var(--c-accent-dim) !important; }
+.hover-lift:hover          { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+
+/* Connection row — hover reveals action buttons */
+.conn-row:hover { background: var(--c-bg-elevated) !important; }
+.conn-row .conn-action { opacity: 0; transition: opacity .15s, color .15s; }
+.conn-row:hover .conn-action { opacity: 1; }
 
 /* Nav item — Sidebar navigation links */
 .nav-item {

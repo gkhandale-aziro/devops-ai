@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { Settings } from "./Settings";
 import { vi } from "vitest";
 
@@ -27,7 +28,7 @@ vi.mock("../utils/toast", () => ({
 
 describe("Settings", () => {
   it("renders settings sections", async () => {
-    render(<Settings targetCount={3} />);
+    render(<MemoryRouter><Settings targetCount={3} /></MemoryRouter>);
     expect(screen.getByText(/AI Model/i)).toBeInTheDocument();
     expect(screen.getByText(/Appearance/i)).toBeInTheDocument();
     expect(screen.getByText(/Keyboard Shortcuts/i)).toBeInTheDocument();

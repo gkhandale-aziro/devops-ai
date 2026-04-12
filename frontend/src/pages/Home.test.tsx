@@ -39,7 +39,7 @@ describe("Home", () => {
         <Home targets={[TARGET]} monitorActive={false} />
       </MemoryRouter>,
     );
-    expect(screen.getByText("test-cluster")).toBeInTheDocument();
+    expect(screen.getAllByText("test-cluster").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("1 online")).toBeInTheDocument();
   });
 

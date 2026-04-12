@@ -53,7 +53,7 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
               fontWeight: active ? 600 : 500,
               lineHeight: 1,
               background: active ? C.accent.primary : "transparent",
-              color: active ? "#ffffff" : C.text.muted,
+              color: active ? "#fff" : C.text.muted,
               transition: "background 150ms ease, color 150ms ease",
             }}
           >

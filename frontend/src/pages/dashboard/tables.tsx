@@ -19,7 +19,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import type { Target, PodStatus } from "../../types";
 import { api, readSSE } from "../../api/client";
 import { parseKubectl } from "../../utils/parseKubectl";
-import { Sparkles, Play, FileText } from "lucide-react";
+import { Sparkles, Play, FileText, Clipboard, Check } from "lucide-react";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, Z_INDEX } from "../../utils/theme";
 import { DataTable, type RowAction } from "@/components/ui/data-table";
@@ -478,17 +478,39 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
 
 // ── Resource detail modal ───────────────────────────────────────────────────
 
-export function ResourceModal({ resource, loading, targetId: _targetId, onClose, initialTab = "describe" }: {
+/** Small icon button used in the ResourceModal action bar. */
+function ActionBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="hover-bg-raised"
+      style={{
+        background: "none", border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.md,
+        width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", color: C.text.muted, transition: "background .15s, color .15s, border-color .15s",
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
+
+export function ResourceModal({ resource, loading, targetId: _targetId, onClose, initialTab = "describe", onStreamLogs }: {
   resource: { kind: string; name: string; ns: string; data: Record<string, string> } | null;
   loading:  boolean;
   targetId: string;
   onClose:  () => void;
   /** Tab selected on mount; defaults to describe. */
   initialTab?: "describe" | "logs" | "ai";
+  /** Optional callback to open the log stream panel for this resource's pod. */
+  onStreamLogs?: (podName: string, ns: string) => void;
 }) {
   const [tab, setTab] = useState<"describe" | "logs" | "previous" | "ai">(initialTab);
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const dialogRef  = useRef<HTMLDivElement>(null);
   const openerRef  = useRef<HTMLElement | null>(null);
 
@@ -563,7 +585,36 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose,
           </span>
           <strong id="modal-title" style={{ fontSize: FONT_SIZE.lg }}>{resource?.name}</strong>
           {resource?.ns && <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>· {resource.ns}</span>}
-          <span style={{ marginLeft: "auto", fontSize: FONT_SIZE.xs, color: C.text.faint }}>Esc to close</span>
+
+          {/* ── Action bar ── */}
+          {!loading && resource && (
+            <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, marginLeft: "auto" }}>
+              <ActionBtn
+                icon={copied ? <Check size={14} /> : <Clipboard size={14} />}
+                label="Copy resource name"
+                onClick={() => {
+                  navigator.clipboard.writeText(resource.name);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+              />
+              <ActionBtn
+                icon={<Sparkles size={14} />}
+                label="AI Diagnose"
+                onClick={() => setTab("ai")}
+              />
+              {resource.kind === "pod" && onStreamLogs && (
+                <ActionBtn
+                  icon={<Play size={14} />}
+                  label="Stream Logs"
+                  onClick={() => { onStreamLogs(resource.name, resource.ns); onClose(); }}
+                />
+              )}
+            </div>
+          )}
+          {loading && <span style={{ marginLeft: "auto" }} />}
+
+          <span style={{ fontSize: FONT_SIZE.xs, color: C.text.faint }}>Esc to close</span>
           <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: C.text.muted, cursor: "pointer", display: "flex", alignItems: "center", padding: SPACE.xs }}>
             <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>

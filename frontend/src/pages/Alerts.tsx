@@ -7,6 +7,7 @@ import { AlertCard }     from "../components/AlertCard";
 import { AIDrawer }      from "../components/AIDrawer";
 import { EmptyState }    from "../components/ui/empty-state";
 import { Bell }          from "lucide-react";
+import { Breadcrumb }    from "../components/ui/breadcrumb";
 import { toast }         from "../utils/toast";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 
@@ -104,6 +105,11 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
         flexWrap: "wrap",
         background: "var(--c-bg-raised)",
       }}>
+        <Breadcrumb items={[
+          { label: "Home", href: "/" },
+          { label: "Live Alerts", icon: <Bell size={14} /> },
+        ]} />
+
         <span style={{
           width: 8, height: 8, borderRadius: "50%",
           background: monitorActive ? C.status.danger : C.text.muted,
@@ -181,7 +187,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
               onClick={startMonitor}
               disabled={!selectedTid || starting}
               style={{
-                background: "#16a34a", border: "none", color: "#fff",
+                background: C.status.success, border: "none", color: "#fff",
                 borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
                 cursor: selectedTid ? "pointer" : "not-allowed",
                 opacity: selectedTid ? 1 : 0.5,
@@ -191,7 +197,7 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
             <button
               onClick={stopMonitor}
               style={{
-                background: "#b91c1c", border: "none", color: "#fff",
+                background: C.status.danger, border: "none", color: "#fff",
                 borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
                 cursor: "pointer",
               }}

@@ -198,6 +198,33 @@ export interface Tab {
   label: string;
 }
 
+// ── Workload Health Summary ─────────────────────────────────────────────────
+
+export interface HealthPods {
+  running: number; pending: number; failed: number; succeeded: number; total: number;
+}
+
+export interface HealthCountPair {
+  ready: number; total: number;
+}
+
+export interface HealthContainers {
+  running: number; stopped: number; total: number;
+}
+
+export interface HealthServices {
+  active: number; failed: number; total: number;
+}
+
+/** Shape varies by target type — K8s returns pods/deployments/nodes, Docker returns containers, SSH returns services */
+export interface HealthSummary {
+  pods?:        HealthPods;
+  deployments?: HealthCountPair;
+  nodes?:       HealthCountPair;
+  containers?:  HealthContainers;
+  services?:    HealthServices;
+}
+
 export const TABS_BY_TYPE: Record<TargetType, Tab[]> = {
   ssh: [
     { id: "overview",   label: "Overview"   },

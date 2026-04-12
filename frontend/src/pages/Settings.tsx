@@ -24,6 +24,7 @@ import { ThemeToggle } from "../components/ThemeContext";
 import { toast } from "../utils/toast";
 import { cn } from "@/lib/utils";
 import { C, FONT_SIZE, FONT_WEIGHT, RADIUS, SPACE } from "../utils/theme";
+import { Breadcrumb } from "../components/ui/breadcrumb";
 
 interface Props {
   targetCount: number;
@@ -104,24 +105,11 @@ export function Settings({ targetCount }: Props) {
     >
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
         {/* Page header */}
-        <div
-          className={cn("flex items-center gap-3")}
-          style={{ marginBottom: 28 }}
-        >
-          <SettingsIcon
-            size={22}
-            style={{ color: "var(--c-accent)" }}
-          />
-          <h1
-            style={{
-              fontSize: FONT_SIZE.xxl,
-              fontWeight: FONT_WEIGHT.bold,
-              color: C.text.primary,
-              margin: 0,
-            }}
-          >
-            Settings
-          </h1>
+        <div style={{ marginBottom: 28 }}>
+          <Breadcrumb items={[
+            { label: "Home", href: "/" },
+            { label: "Settings", icon: <SettingsIcon size={14} /> },
+          ]} />
         </div>
 
         <div className={cn("flex flex-col gap-5")}>

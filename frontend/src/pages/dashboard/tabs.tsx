@@ -17,6 +17,7 @@ import { EmptyState } from '../../components/ui/empty-state';
 import { TimeRangePicker } from '../../components/ui/time-range-picker';
 import { api } from '../../api/client';
 import { useMetrics } from '../../hooks/useMetrics';
+import { HealthSummaryBar } from '../../components/ui/health-summary';
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOW } from '../../utils/theme';
 
 // ── Resource detail helpers ──────────────────────────────────────────────────
@@ -94,6 +95,13 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
 
   return (
     <div style={{ overflowY: "auto", padding: 16, flex: 1 }}>
+      {/* workload health summary */}
+      {targetId && (
+        <div style={{ marginBottom: 12 }}>
+          <HealthSummaryBar targetId={targetId} />
+        </div>
+      )}
+
       {/* metric cards — Skill #6: SVG ring charts instead of flat bars */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
         {[

@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { LayoutGrid, ChevronRight, RefreshCw, Grid3X3, MessageSquare, Network } from "lucide-react";
+import { LayoutGrid, RefreshCw, Grid3X3, MessageSquare, Network } from "lucide-react";
+import { Breadcrumb } from "../components/ui/breadcrumb";
 import type { Target, TabId } from "../types";
 import { TABS_BY_TYPE }  from "../types";
 import { api }  from "../api/client";
 import { TARGET_META } from "../utils/targetIcons";
 import { useTargetChat } from "../hooks/useChat";
+import { useAutoRefresh, useStaleness } from "../hooks/useAutoRefresh";
 import { ChatPanel } from "../components/ChatPanel";
 import { LogStream } from "../components/LogStream";
 import { ResourceGraph } from "../components/ResourceGraph";
@@ -37,7 +39,8 @@ export function Dashboard({ target }: Props) {
   const [reloadKey, setReloadKey] = useState(0);
   const reloadTab = useCallback(() => setReloadKey(k => k + 1), []);
   const [topoNamespace, setTopoNamespace] = useState("");
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const { interval: autoInterval, setInterval: setAutoInterval, lastRefreshed, markRefreshed, intervalOptions } = useAutoRefresh(reloadTab, `dashboard-refresh-${target?.id ?? ""}`);
+  const { label: stalenessLabel, stale } = useStaleness(lastRefreshed);
   const [errorToast, setErrorToast] = useState<string | null>(null);
 
   // Auto-dismiss error toast after 6 seconds
@@ -75,7 +78,7 @@ export function Dashboard({ target }: Props) {
       tabs.some(t => t.id === savedTab)
     );
     setActiveTab(validTab ? (savedTab as TabId) : tabs[0].id);
-    setLastRefreshed(null);
+    // staleness resets on next successful load via markRefreshed()
     const savedNs = localStorage.getItem(`dashboard-ns-${target.id}`) ?? "";
     setNsFilter(savedNs);
     clear();
@@ -102,7 +105,7 @@ export function Dashboard({ target }: Props) {
     const params: Record<string, string> = {};
     if (isK8s && nsFilter) params.ns = nsFilter;
     api.tab(target.id, activeTab, Object.keys(params).length ? params : undefined)
-      .then(d => { setTabData(d); setLastRefreshed(new Date()); })
+      .then(d => { setTabData(d); markRefreshed(); })
       .catch((e) => {
         console.error(`[Dashboard] tab "${activeTab}" load failed:`, e);
         const detail = (e as Error)?.message ? ` (${(e as Error).message})` : "";
@@ -132,10 +135,16 @@ export function Dashboard({ target }: Props) {
         flexShrink: 0,
         background: C.bg.elevated,
       }}>
-        <LayoutGrid size={16} stroke="var(--c-accent-hover)" />
-        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, fontWeight: FONT_WEIGHT.medium }}>Dashboard</span>
-        <ChevronRight size={10} stroke="var(--c-border-strong)" />
-        <strong style={{ fontSize: FONT_SIZE.lg, color: C.text.primary }}>{target.name}</strong>
+        <Breadcrumb items={[
+          { label: "Home", href: "/" },
+          { label: "Dashboard", icon: <LayoutGrid size={14} /> },
+          { label: target.name },
+          ...(activeTab && activeTab !== "__chat" && activeTab !== "__topology"
+            ? [{ label: tabs.find(t => t.id === activeTab)?.label ?? activeTab }]
+            : activeTab === "__chat" ? [{ label: "AI Chat" }]
+            : activeTab === "__topology" ? [{ label: "Topology" }]
+            : []),
+        ]} />
         <span style={{ fontSize: FONT_SIZE.md, color: C.text.muted, background: C.bg.card, padding: `${SPACE.xxs}px ${SPACE.sm}px`, borderRadius: RADIUS.sm, display: "inline-flex", alignItems: "center", gap: SPACE.xs }}>
           {(() => { const meta = TARGET_META[target.type as keyof typeof TARGET_META]; if (meta) { const Icon = meta.icon; return <Icon size={11} />; } return null; })()}
           {target.type}
@@ -161,28 +170,44 @@ export function Dashboard({ target }: Props) {
               </select>
             </div>
           )}
-          {lastRefreshed && (
-            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint }}>
-              Refreshed {Math.round((Date.now() - lastRefreshed.getTime()) / 60000) < 1
-                ? "just now"
-                : `${Math.round((Date.now() - lastRefreshed.getTime()) / 60000)}m ago`}
-            </span>
-          )}
+          {/* ── Live staleness + auto-refresh controls ── */}
           {activeTab && activeTab !== "__chat" && activeTab !== "__topology" && (
-            <button onClick={reloadTab} disabled={tabLoading}
-            className="btn-interactive"
-            aria-label={tabLoading ? "Refreshing tab data" : "Refresh tab data"}
-            aria-busy={tabLoading}
-            title={tabLoading ? "Refreshing…" : "Refresh"}
-            style={{
-              background: "none", border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.sm,
-              color: C.text.muted, cursor: tabLoading ? "wait" : "pointer", display: "flex", alignItems: "center",
-              gap: SPACE.xs, padding: `${SPACE.xs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, transition: BTN_TRANSITION,
-              opacity: tabLoading ? 0.6 : 1,
-            }}>
-              <RefreshCw size={11} style={tabLoading ? { animation: "spin 0.7s linear infinite" } : undefined} />
-              {tabLoading ? "Refreshing…" : "Refresh"}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
+              {stalenessLabel && (
+                <span style={{ display: "flex", alignItems: "center", gap: SPACE.xs, fontSize: FONT_SIZE.sm, color: stale ? C.status.warning : C.text.faint }}>
+                  {stale && <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.status.warning, display: "inline-block", animation: "pulse 1.5s infinite" }} title="Data is stale (>2 min)" />}
+                  {stalenessLabel}
+                </span>
+              )}
+              <select
+                value={autoInterval ?? "off"}
+                onChange={e => setAutoInterval(e.target.value === "off" ? null : Number(e.target.value) as 15 | 30 | 60)}
+                aria-label="Auto-refresh interval"
+                style={{
+                  background: C.bg.base, border: `1px solid ${C.border.muted}`, color: autoInterval ? "var(--c-accent-hover)" : C.text.secondary,
+                  borderRadius: RADIUS.sm, padding: `${SPACE.xs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, cursor: "pointer",
+                  fontWeight: autoInterval ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal,
+                }}
+              >
+                {intervalOptions.map(o => (
+                  <option key={String(o.value)} value={o.value ?? "off"}>{o.value ? `Auto ${o.label}` : "Auto Off"}</option>
+                ))}
+              </select>
+              <button onClick={reloadTab} disabled={tabLoading}
+              className="btn-interactive"
+              aria-label={tabLoading ? "Refreshing tab data" : "Refresh tab data"}
+              aria-busy={tabLoading}
+              title={tabLoading ? "Refreshing…" : "Refresh"}
+              style={{
+                background: "none", border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.sm,
+                color: C.text.muted, cursor: tabLoading ? "wait" : "pointer", display: "flex", alignItems: "center",
+                gap: SPACE.xs, padding: `${SPACE.xs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, transition: BTN_TRANSITION,
+                opacity: tabLoading ? 0.6 : 1,
+              }}>
+                <RefreshCw size={11} style={tabLoading ? { animation: "spin 0.7s linear infinite" } : undefined} />
+                {tabLoading ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
           )}
         </div>
       </div>

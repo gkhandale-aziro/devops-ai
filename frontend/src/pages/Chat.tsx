@@ -5,6 +5,8 @@ import { ChatPanel } from "../components/ChatPanel";
 import { api } from "../api/client";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
+import { Breadcrumb } from "../components/ui/breadcrumb";
+import { MessageSquare } from "lucide-react";
 
 interface Props {
   targets:       Target[];
@@ -65,9 +67,18 @@ export function Chat(_props: Props) {
   }, [activeSession, load]);
 
   return (
-    <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)", margin: -1 }}>Chat</h1>
 
+      {/* Breadcrumb bar */}
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--c-border)", background: "var(--c-bg-raised)", flexShrink: 0 }}>
+        <Breadcrumb items={[
+          { label: "Home", href: "/" },
+          { label: "AI Chat", icon: <MessageSquare size={14} /> },
+        ]} />
+      </div>
+
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
       {/* Session sidebar */}
       <div style={{
         width: 220, flexShrink: 0,
@@ -216,6 +227,7 @@ export function Chat(_props: Props) {
         onConfirm={() => { if (confirmDelete) { deleteSession(confirmDelete); setConfirmDelete(null); } }}
         variant="destructive"
       />
+      </div>
     </div>
   );
 }

@@ -28,7 +28,7 @@ beforeEach(() => {
   mockFetch = vi.fn();
   vi.stubGlobal("fetch", mockFetch);
   // Clear any API key so authHeaders() returns {}
-  (window as Record<string, unknown>).__AZIRO_API_KEY__ = undefined;
+  (window as unknown as Record<string, unknown>).__AZIRO_API_KEY__ = undefined;
   localStorage.removeItem("aziro_api_key");
 });
 
@@ -244,11 +244,11 @@ describe("api.events", () => {
   it("list() — GET /api/v1/events with optional params", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse([]));
 
-    await api.events.list({ level: "critical", limit: 5 });
+    await api.events.list({ level: "SEV1", limit: 5 });
 
     const url = mockFetch.mock.calls[0][0] as string;
     expect(url).toContain("/api/v1/events?");
-    expect(url).toContain("level=critical");
+    expect(url).toContain("level=SEV1");
     expect(url).toContain("limit=5");
   });
 
@@ -344,7 +344,7 @@ describe("error handling", () => {
 
 describe("auth headers", () => {
   it("sends Authorization header when API key is set via window global", async () => {
-    (window as Record<string, unknown>).__AZIRO_API_KEY__ = "test-key-123";
+    (window as unknown as Record<string, unknown>).__AZIRO_API_KEY__ = "test-key-123";
     mockFetch.mockResolvedValueOnce(jsonResponse([]));
 
     await api.targets.list();
@@ -354,7 +354,7 @@ describe("auth headers", () => {
   });
 
   it("sends Authorization header from localStorage fallback", async () => {
-    (window as Record<string, unknown>).__AZIRO_API_KEY__ = undefined;
+    (window as unknown as Record<string, unknown>).__AZIRO_API_KEY__ = undefined;
     localStorage.setItem("aziro_api_key", "ls-key");
     mockFetch.mockResolvedValueOnce(jsonResponse([]));
 

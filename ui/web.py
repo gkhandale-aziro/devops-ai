@@ -1243,6 +1243,118 @@ def api_topology(tid):
         return jsonify({"error": str(e)}), 500
 
 
+# ── Workload Health Summary ───────────────────────────────────────────────────
+
+@app.route("/api/v1/health/<tid>", methods=["GET"])
+def api_health(tid):
+    """
+    Lightweight workload counts for dashboard health bars.
+    Returns pod/deployment/node (or container/service) counts by status.
+    """
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
+
+    ttype = target.get("type", "kubernetes")
+
+    try:
+        if ttype == "kubernetes":
+            raw = _run_many(target, {
+                "pods":        "kubectl get pods -A --no-headers 2>/dev/null",
+                "deployments": "kubectl get deployments -A --no-headers 2>/dev/null",
+                "nodes":       "kubectl get nodes --no-headers 2>/dev/null",
+            })
+
+            # Parse pods: NS NAME READY STATUS RESTARTS AGE
+            pod_counts = {"running": 0, "pending": 0, "failed": 0, "succeeded": 0, "total": 0}
+            for line in (raw.get("pods", "") or "").strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    pod_counts["total"] += 1
+                    status = parts[3].lower()
+                    if status == "running":
+                        pod_counts["running"] += 1
+                    elif status == "pending" or status == "containercreating":
+                        pod_counts["pending"] += 1
+                    elif status == "succeeded" or status == "completed":
+                        pod_counts["succeeded"] += 1
+                    else:
+                        pod_counts["failed"] += 1
+
+            # Parse deployments: NS NAME READY UP-TO-DATE AVAILABLE AGE
+            dep_ready, dep_total = 0, 0
+            for line in (raw.get("deployments", "") or "").strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 3:
+                    dep_total += 1
+                    ready_str = parts[2]  # e.g. "3/3"
+                    try:
+                        cur, desired = ready_str.split("/")
+                        if cur == desired:
+                            dep_ready += 1
+                    except ValueError:
+                        pass
+
+            # Parse nodes: NAME STATUS ROLES AGE VERSION
+            node_ready, node_total = 0, 0
+            for line in (raw.get("nodes", "") or "").strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    node_total += 1
+                    if "ready" in parts[1].lower() and "notready" not in parts[1].lower():
+                        node_ready += 1
+
+            return jsonify({
+                "pods":        pod_counts,
+                "deployments": {"ready": dep_ready, "total": dep_total},
+                "nodes":       {"ready": node_ready, "total": node_total},
+            })
+
+        elif ttype == "docker":
+            raw = _run_many(target, {
+                "containers": "docker ps -a --format '{{.Status}}' 2>/dev/null",
+            })
+            running, stopped, total = 0, 0, 0
+            for line in (raw.get("containers", "") or "").strip().split("\n"):
+                if not line.strip():
+                    continue
+                total += 1
+                if line.lower().startswith("up"):
+                    running += 1
+                else:
+                    stopped += 1
+
+            return jsonify({
+                "containers": {"running": running, "stopped": stopped, "total": total},
+            })
+
+        elif ttype in ("ssh", "local"):
+            raw = _run_many(target, {
+                "failed": "systemctl list-units --state=failed --no-legend 2>/dev/null | wc -l",
+                "active": "systemctl list-units --state=active --no-legend 2>/dev/null | wc -l",
+            })
+            failed = 0
+            active = 0
+            try:
+                failed = int((raw.get("failed", "") or "0").strip())
+            except ValueError:
+                pass
+            try:
+                active = int((raw.get("active", "") or "0").strip())
+            except ValueError:
+                pass
+
+            return jsonify({
+                "services": {"active": active, "failed": failed, "total": active + failed},
+            })
+
+        else:
+            return jsonify({"error": f"unsupported target type: {ttype}"}), 400
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ── Live log streaming ────────────────────────────────────────────────────────
 
 _SAFE_POD_RE = re.compile(r'^[a-z0-9][a-z0-9.\-]*$', re.IGNORECASE)

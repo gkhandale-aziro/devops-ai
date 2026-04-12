@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
 import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight, Clock } from "lucide-react";
+import { Breadcrumb } from "../components/ui/breadcrumb";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { StoredEvent, TriageLevel, Snapshot, Analysis, IncidentStatus } from "../types";
 import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
@@ -247,10 +248,10 @@ export function History() {
         flexShrink: 0,
         background: "var(--c-bg-raised)",
       }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent-hover)" strokeWidth="2">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
-        <strong style={{ fontSize: FONT_SIZE.lg }}>Incident History</strong>
+        <Breadcrumb items={[
+          { label: "Home", href: "/" },
+          { label: "Incident History", icon: <Clock size={14} /> },
+        ]} />
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {/* Severity filter pills */}

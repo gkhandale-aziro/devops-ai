@@ -1,6 +1,6 @@
 import type {
   Target, TargetType, StoredEvent, Stats, ChatSession, TriageLevel,
-  TopologyResponse, SearchResponse,
+  TopologyResponse, SearchResponse, HealthSummary,
 } from "../types";
 
 const BASE = "";  // same origin — Vite proxy handles /api in dev
@@ -210,6 +210,9 @@ export const api = {
   },
 
   stats: () => req<Stats>("/api/v1/stats"),
+
+  // ── Health summary ────────────────────────────────────────────────────────
+  health: (targetId: string) => req<HealthSummary>(`/api/v1/health/${targetId}`),
 
   // ── Topology ──────────────────────────────────────────────────────────────
   topology: (targetId: string, namespace?: string) => {

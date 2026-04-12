@@ -71,7 +71,6 @@ function SidebarTooltip({ label, children, side = "right" }: { label: string; ch
 export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddClick, monitorActive, aiModel, onModelChange, modelStatus = "healthy", collapsed = false, onToggle }: Props) {
   const loc = useLocation();
   const nav = useNavigate();
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [availableModels, setAvailableModels] = useState<{ name: string; provider: string }[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
@@ -319,7 +318,6 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
 
         {targets.map(t => {
           const isActive  = t.id === activeId;
-          const isHovered = t.id === hoveredId;
           const dotColor  = t.status === "online" ? C.status.success : t.status === "offline" ? C.status.danger : C.text.muted;
           const typeColor = TYPE_COLORS[t.type] ?? C.status.neutral;
 
@@ -357,16 +355,13 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
           return (
             <div
               key={t.id}
+              className="conn-row"
               onClick={() => { onSelect(t); nav("/dashboard"); }}
-              onMouseEnter={() => setHoveredId(t.id)}
-              onMouseLeave={() => setHoveredId(null)}
               style={{
                 display: "flex", alignItems: "center", gap: SPACE.sm,
                 padding: `${SPACE.sm - 1}px ${SPACE.sm}px`, borderRadius: RADIUS.lg, cursor: "pointer",
                 marginBottom: SPACE.xxs, transition: "all .15s",
-                background: isActive
-                  ? "var(--c-accent-dim)"
-                  : isHovered ? C.bg.elevated : "transparent",
+                background: isActive ? "var(--c-accent-dim)" : "transparent",
                 border: `1px solid ${isActive ? `${C.accent.primary}33` : "transparent"}`,
                 boxShadow: isActive ? SHADOW.sm : "none",
               }}
@@ -410,14 +405,12 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
                 <button
                   onClick={e => { e.stopPropagation(); onEdit(t); }}
                   aria-label="Edit connection"
-                  className="hover-text-accent"
+                  className="conn-action hover-text-accent"
                   style={{
                     background: "none", border: "none",
                     color: C.text.faint,
                     cursor: "pointer", padding: "3px", borderRadius: RADIUS.sm,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    opacity: isHovered ? 1 : 0,
-                    transition: "opacity .15s, color .15s",
                     flexShrink: 0,
                   }}
                 >
@@ -427,14 +420,12 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
               <button
                 onClick={e => { e.stopPropagation(); onRemove(t.id); }}
                 aria-label="Remove connection"
-                className="hover-text-danger"
+                className="conn-action hover-text-danger"
                 style={{
                   background: "none", border: "none",
                   color: C.text.faint,
                   cursor: "pointer", padding: "3px", borderRadius: RADIUS.sm,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  opacity: isHovered ? 1 : 0,
-                  transition: "opacity .15s, color .15s",
                   flexShrink: 0,
                 }}
               >

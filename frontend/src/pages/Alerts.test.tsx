@@ -49,7 +49,8 @@ describe("Alerts", () => {
         <Alerts targets={[TARGET]} monitorActive={false} onMonitorChange={vi.fn()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText("Live Alerts")).toBeInTheDocument();
+    expect(screen.getByLabelText("Breadcrumb")).toBeInTheDocument();
+    expect(screen.getAllByText("Live Alerts").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows severity counter badges", () => {

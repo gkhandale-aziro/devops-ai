@@ -5,6 +5,7 @@ import { TARGET_META } from "../utils/targetIcons";
 import type { Target, StoredEvent, TriageLevel } from "../types";
 import { LEVEL_COLORS } from "../types";
 import { api } from "../api/client";
+import { HealthSummaryBar } from "../components/ui/health-summary";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOW } from "../utils/theme";
 
 interface Props {
@@ -270,7 +271,7 @@ export function Home({ targets, monitorActive }: Props) {
                         fontSize: 9, fontWeight: FONT_WEIGHT.bold, padding: `${SPACE.xxs}px ${SPACE.md / 2}px`, borderRadius: RADIUS.sm,
                         textTransform: "uppercase", letterSpacing: ".3px",
                         color:       evt.status === "resolved" ? C.status.success : evt.status === "acknowledged" ? C.status.warning : "var(--c-sev1)",
-                        background:  evt.status === "resolved" ? "#052e16" : evt.status === "acknowledged" ? "#2a1a00" : "var(--c-sev1-bg)",
+                        background:  evt.status === "resolved" ? "var(--c-green-bg)" : evt.status === "acknowledged" ? "var(--c-sev2-bg)" : "var(--c-sev1-bg)",
                         border: `1px solid ${evt.status === "resolved" ? `${C.status.success}44` : evt.status === "acknowledged" ? `${C.status.warning}44` : `${C.error.border}44`}`,
                       }}>
                         {(evt.status ?? "open")}
@@ -294,6 +295,20 @@ export function Home({ targets, monitorActive }: Props) {
             )}
           </div>
         </Section>
+
+        {/* ── Workload health per online target ────────────────────────── */}
+        {targets.filter(t => t.status === "online").length > 0 && (
+          <Section label="Workload Health">
+            <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+              {targets.filter(t => t.status === "online").map(t => (
+                <div key={t.id} style={{ display: "flex", flexDirection: "column", gap: SPACE.xxs }}>
+                  <span style={{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: C.text.muted }}>{t.name}</span>
+                  <HealthSummaryBar targetId={t.id} />
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
 
         {/* ── Connections overview ──────────────────────────────────────── */}
         {targets.length > 0 && (
