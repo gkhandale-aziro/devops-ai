@@ -19,50 +19,50 @@
  * - `error.*`  — error toast/banner surface
  */
 export const C = {
-  // Backgrounds (dark surfaces, lightest → darkest depth order)
+  // Backgrounds — all reference CSS custom properties so they adapt to Day/Night
   bg: {
-    base:     "#0d1117",   // page background
-    panel:    "#0b0d14",   // sidebars, card bodies
-    elevated: "#0f1219",   // headers, raised surfaces
-    card:     "#1a1d27",   // cards, hover states
-    active:   "#1e2340",   // active row/tab
+    base:     "var(--c-bg-base)",
+    panel:    "var(--c-bg-panel)",
+    elevated: "var(--c-bg-raised)",
+    card:     "var(--c-bg-card)",
+    active:   "var(--c-bg-active)",
   },
 
-  // Borders (subtle → strong)
+  // Borders
   border: {
-    subtle: "#1e2235",
-    muted:  "#2d3148",
-    strong: "#2d3555",
+    subtle: "var(--c-border-subtle)",
+    muted:  "var(--c-border)",
+    strong: "var(--c-border-strong)",
   },
 
-  // Text (primary → faint)
+  // Text
   text: {
-    primary: "#e2e8f0",
-    secondary: "#94a3b8",
-    muted:   "#64748b",
-    faint:   "#475569",
-    dim:     "#334155",
+    primary:   "var(--c-text-primary)",
+    secondary: "var(--c-text-secondary)",
+    muted:     "var(--c-text-muted)",
+    faint:     "var(--c-text-faint)",
+    dim:       "var(--c-text-dim)",
   },
 
-  // Brand / accent
+  // Brand / accent — same in both themes
   accent: {
-    primary: "#6366f1",   // indigo — CTAs, active state
-    light:   "#818cf8",   // indigo-300 — icons, highlights
-    soft:    "#a78bfa",   // violet — network policies
+    primary: "#6366f1",
+    light:   "#818cf8",
+    soft:    "#a78bfa",
   },
 
-  // Semantic status
+  // Semantic status — same in both themes (used with opacity concatenation)
   status: {
-    success: "#22c55e",   // healthy, bound, normal
-    warning: "#f59e0b",   // pending, degraded, paused
-    danger:  "#ef4444",   // failed, crashloop, lost
-    info:    "#06b6d4",   // cyan — nodeport, images
-    neutral: "#64748b",   // clusterip, generic
+    success: "#22c55e",
+    warning: "#f59e0b",
+    danger:  "#ef4444",
+    info:    "#06b6d4",
+    neutral: "#64748b",
   },
 
   // Error surfaces
   error: {
-    bg:     "#2a0011",
+    bg:     "var(--c-sev1-bg)",
     border: "#f43f5e",
     text:   "#fb7185",
   },
@@ -104,4 +104,48 @@ export const TIMING = {
   pulse:           2000,
   transition:      300,
   transitionFast:  150,
+} as const;
+
+// ── Typography ────────────────────────────────────────────────────────────
+
+/** Font-size scale (px) — max 7 levels. Use instead of magic numbers. */
+export const FONT_SIZE = {
+  xs:   10,   // badges, metadata labels
+  sm:   11,   // captions, secondary text
+  md:   13,   // body text (base)
+  lg:   15,   // subheadings, card titles
+  xl:   18,   // section headings
+  xxl:  24,   // page headings
+  hero: 32,   // stat card hero numbers
+} as const;
+
+/** Font-weight scale. */
+export const FONT_WEIGHT = {
+  normal:   400,
+  medium:   500,
+  semibold: 600,
+  bold:     700,
+  black:    800,
+} as const;
+
+// ── Elevation ─────────────────────────────────────────────────────────────
+
+/** Box-shadow tokens — reference CSS vars so they adapt to Day/Night. */
+export const SHADOW = {
+  sm:   "var(--shadow-sm)",
+  md:   "var(--shadow-md)",
+  lg:   "var(--shadow-lg)",
+  glow: "var(--shadow-glow-accent)",
+} as const;
+
+// ── Z-index ───────────────────────────────────────────────────────────────
+
+/** Z-index scale — use instead of arbitrary numbers. */
+export const Z_INDEX = {
+  base:     0,
+  dropdown: 50,
+  sticky:   100,
+  modal:    200,
+  toast:    300,
+  tooltip:  400,
 } as const;

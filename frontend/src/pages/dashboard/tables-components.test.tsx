@@ -123,18 +123,18 @@ describe("PodTable", () => {
     });
   });
 
-  it("shows Diagnose badge on unhealthy pods", () => {
+  it("shows kebab menu with AI Diagnose for unhealthy pods", () => {
     render(<PodTable raw={POD_RAW} target={TARGET} />);
-    expect(screen.getByLabelText("Diagnose pod web-2")).toBeInTheDocument();
+    // Kebab menu buttons appear on every row
+    const actionBtns = screen.getAllByLabelText("Row actions");
+    expect(actionBtns.length).toBeGreaterThan(0);
   });
 
-  it("shows Logs button when onStreamLogs is provided", () => {
+  it("shows kebab menu with Stream Logs when onStreamLogs is provided", () => {
     const onStream = vi.fn();
     render(<PodTable raw={POD_RAW} target={TARGET} onStreamLogs={onStream} />);
-    const logBtns = screen.getAllByLabelText(/Stream live logs/);
-    expect(logBtns.length).toBeGreaterThan(0);
-    fireEvent.click(logBtns[0]);
-    expect(onStream).toHaveBeenCalled();
+    const actionBtns = screen.getAllByLabelText("Row actions");
+    expect(actionBtns.length).toBeGreaterThan(0);
   });
 
   it("supports keyboard nav between rows (ArrowDown/ArrowUp)", () => {
@@ -193,9 +193,13 @@ describe("ResourceModal", () => {
 
   it("calls onClose when clicking the backdrop", () => {
     const onClose = vi.fn();
-    const { container } = render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={onClose} />);
-    // The backdrop is the outermost fixed div
-    const backdrop = container.firstChild as HTMLElement;
+    render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={onClose} />);
+    // ResourceModal renders via createPortal to document.body (to escape
+    // ancestor stacking contexts from Dashboard's fadeInStyle transform),
+    // so the backdrop is NOT in the RTL-returned container. Find it at the
+    // role=dialog's grandparent (dialog → modal-box → backdrop).
+    const dialog = screen.getByRole("dialog");
+    const backdrop = dialog.parentElement as HTMLElement;
     fireEvent.click(backdrop);
     expect(onClose).toHaveBeenCalled();
   });
@@ -236,6 +240,62 @@ describe("ResourceModal", () => {
     await waitFor(() => {
       expect(mockApi.analyzeStream).toHaveBeenCalled();
     });
+  });
+
+  // ── Action bar tests ─────────────────────────────────────────────────
+
+  it("shows Copy, AI Diagnose action buttons in header", () => {
+    render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={vi.fn()} />);
+    expect(screen.getByLabelText("Copy resource name")).toBeInTheDocument();
+    expect(screen.getByLabelText("AI Diagnose")).toBeInTheDocument();
+  });
+
+  it("copies resource name to clipboard on Copy click", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText("Copy resource name"));
+    expect(writeText).toHaveBeenCalledWith("web-1");
+  });
+
+  it("switches to AI tab when AI Diagnose action is clicked", async () => {
+    mockAnalyzeAndSSE("diagnosis result");
+
+    render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={vi.fn()} />);
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("AI Diagnose"));
+    });
+    await waitFor(() => {
+      expect(mockApi.analyzeStream).toHaveBeenCalled();
+    });
+  });
+
+  it("shows Stream Logs action for pods when onStreamLogs is provided", () => {
+    const onStream = vi.fn();
+    render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={vi.fn()} onStreamLogs={onStream} />);
+    expect(screen.getByLabelText("Stream Logs")).toBeInTheDocument();
+  });
+
+  it("calls onStreamLogs and closes modal on Stream Logs click", () => {
+    const onStream = vi.fn();
+    const onClose = vi.fn();
+    render(<ResourceModal resource={RESOURCE} loading={false} targetId="t1" onClose={onClose} onStreamLogs={onStream} />);
+    fireEvent.click(screen.getByLabelText("Stream Logs"));
+    expect(onStream).toHaveBeenCalledWith("web-1", "default");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("does not show Stream Logs action for non-pod resources", () => {
+    const nodeResource = { ...RESOURCE, kind: "node" };
+    render(<ResourceModal resource={nodeResource} loading={false} targetId="t1" onClose={vi.fn()} onStreamLogs={vi.fn()} />);
+    expect(screen.queryByLabelText("Stream Logs")).not.toBeInTheDocument();
+  });
+
+  it("hides action buttons when loading", () => {
+    render(<ResourceModal resource={null} loading={true} targetId="t1" onClose={vi.fn()} />);
+    expect(screen.queryByLabelText("Copy resource name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("AI Diagnose")).not.toBeInTheDocument();
   });
 });
 

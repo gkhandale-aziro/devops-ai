@@ -30,12 +30,12 @@ export const LEVEL_LABELS: Record<TriageLevel, string> = {
 };
 
 export const LEVEL_COLORS: Record<string, { border: string; bg: string; text: string }> = {
-  SEV1: { border: "#f43f5e", bg: "#2a0011", text: "#fb7185" },
-  SEV2: { border: "#f59e0b", bg: "#2a1a00", text: "#fbbf24" },
-  SEV3: { border: "#06b6d4", bg: "#0c2233", text: "#22d3ee" },
+  SEV1: { border: "var(--c-sev1)", bg: "var(--c-sev1-bg)", text: "var(--c-sev1)" },
+  SEV2: { border: "var(--c-sev2)", bg: "var(--c-sev2-bg)", text: "var(--c-sev2)" },
+  SEV3: { border: "var(--c-sev3)", bg: "var(--c-sev3-bg)", text: "var(--c-sev3)" },
 };
 
-const _FALLBACK_COLOR = { border: "#64748b", bg: "#1e293b", text: "#94a3b8" };
+const _FALLBACK_COLOR = { border: "var(--c-text-muted)", bg: "var(--c-bg-overlay)", text: "var(--c-text-secondary)" };
 
 /** Safe accessor — returns fallback for unknown levels (e.g. legacy 'L2' data). */
 export function levelColor(level: string) {
@@ -183,8 +183,8 @@ export type PodStatus =
 // ── Tab commands ──────────────────────────────────────────────────────────────
 
 export type TabId =
-  | "overview" | "kubernetes" | "logs" | "network" | "storage"  // ssh/local
-  | "nodes" | "pods" | "deployments" | "services" | "events"    // kubernetes
+  | "overview" | "services" | "processes" | "logs" | "network" | "storage" | "security"  // ssh/local
+  | "nodes" | "pods" | "deployments" | "events"                 // kubernetes
   | "workloads" | "k8s_storage" | "ingress"                     // kubernetes extra
   | "__chat" | "__topology"                                      // virtual tabs
   | "containers" | "images" | "networks" | "volumes" | "stats"  // docker
@@ -198,20 +198,51 @@ export interface Tab {
   label: string;
 }
 
+// ── Workload Health Summary ─────────────────────────────────────────────────
+
+export interface HealthPods {
+  running: number; pending: number; failed: number; succeeded: number; total: number;
+}
+
+export interface HealthCountPair {
+  ready: number; total: number;
+}
+
+export interface HealthContainers {
+  running: number; stopped: number; total: number;
+}
+
+export interface HealthServices {
+  active: number; failed: number; total: number;
+}
+
+/** Shape varies by target type — K8s returns pods/deployments/nodes, Docker returns containers, SSH returns services */
+export interface HealthSummary {
+  pods?:        HealthPods;
+  deployments?: HealthCountPair;
+  nodes?:       HealthCountPair;
+  containers?:  HealthContainers;
+  services?:    HealthServices;
+}
+
 export const TABS_BY_TYPE: Record<TargetType, Tab[]> = {
   ssh: [
     { id: "overview",   label: "Overview"   },
-    { id: "kubernetes", label: "Kubernetes" },
+    { id: "services",   label: "Services"   },
+    { id: "processes",  label: "Processes"  },
     { id: "logs",       label: "Logs"       },
     { id: "network",    label: "Network"    },
     { id: "storage",    label: "Storage"    },
+    { id: "security",   label: "Security"   },
   ],
   local: [
     { id: "overview",   label: "Overview"   },
-    { id: "kubernetes", label: "Kubernetes" },
+    { id: "services",   label: "Services"   },
+    { id: "processes",  label: "Processes"  },
     { id: "logs",       label: "Logs"       },
     { id: "network",    label: "Network"    },
     { id: "storage",    label: "Storage"    },
+    { id: "security",   label: "Security"   },
   ],
   kubernetes: [
     { id: "workloads",    label: "Workloads"   },

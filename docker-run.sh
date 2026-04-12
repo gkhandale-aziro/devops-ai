@@ -19,7 +19,7 @@ set -e
 IMAGE="aziro-ops"
 NAME="aziro-ops"
 
-if [[ "$1" == "--rebuild" ]]; then
+if [[ "$1" == "--rebuild" ]] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo "Building image..."
     DOCKER_BUILDKIT=1 docker build -t "$IMAGE" .
 fi

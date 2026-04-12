@@ -5,6 +5,11 @@ import { api }           from "../api/client";
 import { useMonitorSSE } from "../hooks/useSSE";
 import { AlertCard }     from "../components/AlertCard";
 import { AIDrawer }      from "../components/AIDrawer";
+import { EmptyState }    from "../components/ui/empty-state";
+import { Bell }          from "lucide-react";
+import { Breadcrumb }    from "../components/ui/breadcrumb";
+import { toast }         from "../utils/toast";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 
 interface Props {
   targets:         Target[];
@@ -12,7 +17,7 @@ interface Props {
   onMonitorChange: (active: boolean) => void;
 }
 
-type AlertEntry = MonitorAlert & { ts: string; id: number };
+type AlertEntry = MonitorAlert & { ts: string; id: number; acknowledged?: boolean };
 
 const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 
@@ -67,6 +72,11 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
     onMonitorChange(false);
   }
 
+  function ackAlert(id: number) {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
+    toast.success("Alert acknowledged");
+  }
+
   function openAIForAlert(a: AlertEntry) {
     const prompt =
       `You are a Kubernetes SRE. Explain this live alert clearly and suggest what to do next.\n\n` +
@@ -82,45 +92,53 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)", margin: -1 }}>Live Alerts</h1>
 
       {/* ── Top bar ────────────────────────────────────────────────────── */}
       <div style={{
         padding: "12px 20px",
-        borderBottom: "1px solid #1e2235",
+        borderBottom: "1px solid var(--c-border)",
         display: "flex",
         alignItems: "center",
-        gap: 14,
+        gap: SPACE.md,
         flexShrink: 0,
-        background: "#0f1219",
+        flexWrap: "wrap",
+        background: "var(--c-bg-raised)",
       }}>
+        <Breadcrumb items={[
+          { label: "Home", href: "/" },
+          { label: "Live Alerts", icon: <Bell size={14} /> },
+        ]} />
+
         <span style={{
           width: 8, height: 8, borderRadius: "50%",
-          background: monitorActive ? "#ef4444" : "#64748b",
+          background: monitorActive ? C.status.danger : C.text.muted,
           display: "inline-block",
           animation: monitorActive ? "pulse 1.5s infinite" : "none",
           flexShrink: 0,
-        }} />
-        <strong style={{ fontSize: 15 }}>Live Alerts</strong>
+        }}
+        aria-label={monitorActive ? "Monitor is active" : "Monitor is inactive"}
+        role="status" />
 
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {/* Severity counters */}
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: SPACE.sm }}>
             {LEVELS.map(l => {
               const c = LEVEL_COLORS[l];
               return (
                 <div key={l} style={{
                   background: c.bg, border: `1px solid ${c.border}`,
-                  borderRadius: 8, padding: "4px 10px", textAlign: "center",
-                  display: "flex", alignItems: "center", gap: 6, minWidth: 56,
+                  borderRadius: RADIUS.lg, padding: `${SPACE.xs}px ${SPACE.sm}px`, textAlign: "center",
+                  display: "flex", alignItems: "center", gap: SPACE.sm, minWidth: 56,
                 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: c.text }}>{counts[l]}</span>
-                  <span style={{ fontSize: 10, color: "#64748b" }}>{l}</span>
+                  <span style={{ fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: c.text }}>{counts[l]}</span>
+                  <span style={{ fontSize: FONT_SIZE.xs, color: C.text.muted }}>{l}</span>
                 </div>
               );
             })}
           </div>
 
-          <div style={{ width: 1, height: 20, background: "#2d3148", flexShrink: 0 }} />
+          <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
 
           {/* Filter pills */}
           <div style={{ display: "flex", gap: 4 }}>
@@ -129,30 +147,31 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
                 key={f}
                 onClick={() => setFilter(f)}
                 style={{
-                  padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: "pointer",
-                  background: filter === f ? (f === "all" ? "#1e2240" : LEVEL_COLORS[f].bg) : "transparent",
-                  border: `1px solid ${filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].border) : "#2d3148"}`,
-                  color: filter === f ? (f === "all" ? "#7c8cf8" : LEVEL_COLORS[f].text) : "#64748b",
+                  padding: `${SPACE.xs}px ${SPACE.sm}px`, borderRadius: RADIUS.xl, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
+                  background: filter === f ? (f === "all" ? "var(--c-bg-active)" : LEVEL_COLORS[f].bg) : "transparent",
+                  border: `1px solid ${filter === f ? (f === "all" ? "var(--c-accent-hover)" : LEVEL_COLORS[f].border) : "var(--c-border-strong)"}`,
+                  color: filter === f ? (f === "all" ? "var(--c-accent-hover)" : LEVEL_COLORS[f].text) : "var(--c-text-muted)",
                   transition: "background 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out",
                 }}
               >{f === "all" ? "All" : f}</button>
             ))}
           </div>
 
-          <div style={{ width: 1, height: 20, background: "#2d3148", flexShrink: 0 }} />
+          <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
 
           {/* Target selector + start/stop */}
           <select
             value={selectedTid}
             onChange={e => { setSelectedTid(e.target.value); localStorage.setItem("alerts_selectedTid", e.target.value); }}
             disabled={monitorActive}
+            aria-label="Select target to monitor"
             style={{
-              background: "#161a26",
-              border: "1px solid #2d3148",
-              color: "#e2e8f0",
-              borderRadius: 6,
-              padding: "5px 10px",
-              fontSize: 12,
+              background: "var(--c-bg-surface)",
+              border: "1px solid var(--c-border-strong)",
+              color: "var(--c-text-primary)",
+              borderRadius: RADIUS.md,
+              padding: `${SPACE.xs}px ${SPACE.sm}px`,
+              fontSize: FONT_SIZE.sm,
               outline: "none",
               minWidth: 140,
             }}
@@ -168,8 +187,8 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
               onClick={startMonitor}
               disabled={!selectedTid || starting}
               style={{
-                background: "#16a34a", border: "none", color: "#fff",
-                borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+                background: C.status.success, border: "none", color: "#fff",
+                borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
                 cursor: selectedTid ? "pointer" : "not-allowed",
                 opacity: selectedTid ? 1 : 0.5,
               }}
@@ -178,8 +197,8 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
             <button
               onClick={stopMonitor}
               style={{
-                background: "#b91c1c", border: "none", color: "#fff",
-                borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+                background: C.status.danger, border: "none", color: "#fff",
+                borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
                 cursor: "pointer",
               }}
             >Stop</button>
@@ -188,28 +207,31 @@ export function Alerts({ targets, monitorActive, onMonitorChange }: Props) {
           {alerts.length > 0 && (
             <button
               onClick={() => setAlerts([])}
-              style={{ background: "none", border: "1px solid #2d3148", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+              style={{ background: "none", border: `1px solid ${C.border.strong}`, color: C.text.muted, borderRadius: RADIUS.md, padding: `${SPACE.xs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, cursor: "pointer" }}
             >Clear</button>
           )}
         </div>
       </div>
 
       {/* ── Alert feed ─────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div
+        role="feed"
+        aria-busy={monitorActive}
+        aria-live="polite"
+        aria-label="Live alerts feed"
+        style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}
+      >
         {visible.length === 0 && (
-          <div style={{ textAlign: "center", color: "#64748b", fontSize: 13, paddingTop: 80 }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2d3148" strokeWidth="1.2" style={{ marginBottom: 12 }}>
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            <div>
-              {monitorActive
-                ? "No alerts yet. Waiting for events…"
-                : "Start monitoring a target to see live alerts here."}
-            </div>
-          </div>
+          <EmptyState
+            icon={<Bell size={32} />}
+            title={monitorActive ? "No alerts yet" : "Monitor not active"}
+            description={monitorActive
+              ? "Waiting for events from the monitored target."
+              : "Start monitoring a target to see live alerts here."}
+          />
         )}
         {visible.map(a => (
-          <AlertCard key={a.id} alert={a} onClick={() => openAIForAlert(a)} />
+          <AlertCard key={a.id} alert={a} onClick={() => openAIForAlert(a)} onAck={() => ackAlert(a.id)} />
         ))}
       </div>
 

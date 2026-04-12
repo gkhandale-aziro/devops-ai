@@ -1,9 +1,18 @@
 import type {
   Target, TargetType, StoredEvent, Stats, ChatSession, TriageLevel,
-  TopologyResponse, SearchResponse,
+  TopologyResponse, SearchResponse, HealthSummary,
 } from "../types";
 
 const BASE = "";  // same origin — Vite proxy handles /api in dev
+
+export interface ModelHealthStatus {
+  status: "healthy" | "degraded" | "fallback" | "unavailable";
+  primary_tool: string;
+  primary_answer: string;
+  fallback_model: string;
+  error_message: string;
+  since: number;
+}
 
 /**
  * Auth header helper — reads AZIRO_API_KEY injected by the backend into
@@ -49,6 +58,12 @@ export const api = {
       }),
     remove: (id: string) =>
       req<{ ok: boolean }>(`/api/v1/targets/${id}`, { method: "DELETE" }),
+    update: (id: string, name: string, config: Record<string, string>) =>
+      req<Target>(`/api/v1/targets/${id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ name, config }),
+      }),
     test: (id: string) =>
       req<{ status: string; message: string }>(`/api/v1/targets/${id}/test`),
   },
@@ -69,7 +84,13 @@ export const api = {
 
   // ── Server info ───────────────────────────────────────────────────────────
 
-  info: () => req<{ tool_model: string; answer_model: string }>("/api/v1/info"),
+  info: () => req<{
+    tool_model: string;
+    answer_model: string;
+    model_health: ModelHealthStatus;
+  }>("/api/v1/info"),
+
+  modelHealth: () => req<ModelHealthStatus>("/api/v1/models/health"),
 
   // ── Tab data ───────────────────────────────────────────────────────────────
 
@@ -93,22 +114,31 @@ export const api = {
   // ── Chat (target-scoped) ───────────────────────────────────────────────────
 
   /** Returns a ReadableStream of SSE data — caller reads chunks */
-  chatStream: (targetId: string, message: string, signal?: AbortSignal) =>
-    fetch(`/api/v1/chat/${targetId}/stream`, {
+  chatStream: (targetId: string, message: string, signal?: AbortSignal) => {
+    // useChat.ts manages its own timed abort; this is a safety net
+    return fetch(`/api/v1/chat/${targetId}/stream`, {
       method:  "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body:    JSON.stringify({ message }),
       signal,
-    }),
+    });
+  },
 
   // ── AI analysis ───────────────────────────────────────────────────────────
 
-  analyzeStream: (prompt: string) =>
-    fetch("/api/v1/analyze/stream", {
+  analyzeStream: (prompt: string, signal?: AbortSignal) => {
+    // 90s timeout — covers backend AI call (30s) + tool execution + streaming
+    const timeout = AbortSignal.timeout(90_000);
+    const combined = signal
+      ? AbortSignal.any([signal, timeout])
+      : timeout;
+    return fetch("/api/v1/analyze/stream", {
       method:  "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body:    JSON.stringify({ prompt }),
-    }),
+      signal:  combined,
+    });
+  },
 
   // ── General chat sessions ──────────────────────────────────────────────────
 
@@ -132,6 +162,22 @@ export const api = {
         signal,
       }),
   },
+
+  // ── Metrics ──────────────────────────────────────────────────────────────
+  metrics: (targetId: string, params?: { metric?: string; range?: string }) => {
+    const qs = params ? "?" + new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined))
+    ) : "";
+    return req<Record<string, { t: string; v: number }[]>>(`/api/v1/metrics/${targetId}${qs}`);
+  },
+
+  // ── Feedback ─────────────────────────────────────────────────────────────
+  feedback: (targetId: string, message: string, rating: "up" | "down") =>
+    req<{ ok: boolean }>("/api/v1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_id: targetId, message, rating }),
+    }),
 
   // ── Monitor ───────────────────────────────────────────────────────────────
 
@@ -165,10 +211,33 @@ export const api = {
 
   stats: () => req<Stats>("/api/v1/stats"),
 
+  // ── Health summary ────────────────────────────────────────────────────────
+  health: (targetId: string) => req<HealthSummary>(`/api/v1/health/${targetId}`),
+
   // ── Topology ──────────────────────────────────────────────────────────────
   topology: (targetId: string, namespace?: string) => {
     const qs = namespace ? `?namespace=${encodeURIComponent(namespace)}` : "";
     return req<TopologyResponse>(`/api/v1/topology/${targetId}${qs}`);
+  },
+
+  // ── Models ────────────────────────────────────────────────────────────────
+  models: {
+    list: () =>
+      req<{ ollama: string[]; cloud: string[]; current: { tool_model: string; answer_model: string }; ollama_url: string; health: string }>("/api/v1/models"),
+    update: (body: { tool_model?: string; answer_model?: string; ai_model?: string; validate?: boolean }) =>
+      req<{ tool_model: string; answer_model: string }>("/api/v1/models", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    ollamaUrl: {
+      get: () => req<{ url: string }>("/api/v1/models/ollama-url"),
+      set: (url: string) => req<{ ok: boolean; error: string; models: number; url: string }>("/api/v1/models/ollama-url", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      }),
+    },
   },
 
   // ── Search ────────────────────────────────────────────────────────────────

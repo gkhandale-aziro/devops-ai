@@ -5,6 +5,8 @@ import { TARGET_META } from "../utils/targetIcons";
 import type { Target, StoredEvent, TriageLevel } from "../types";
 import { LEVEL_COLORS } from "../types";
 import { api } from "../api/client";
+import { HealthSummaryBar } from "../components/ui/health-summary";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOW } from "../utils/theme";
 
 interface Props {
   targets:       Target[];
@@ -78,38 +80,38 @@ export function Home({ targets, monitorActive }: Props) {
   const warnings  = counts.SEV2 ?? 0;
 
   return (
-    <div id="main" style={{ flex: 1, overflowY: "auto", background: "var(--c-bg-base)" }}>
-      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "36px 28px" }}>
+    <div id="main" style={{ flex: 1, overflowY: "auto", background: C.bg.base }}>
+      <div style={{ maxWidth: 1600, margin: "0 auto", padding: `${SPACE.xxl + SPACE.md}px ${SPACE.xxl + SPACE.sm}px` }}>
 
         {/* ── Page header ───────────────────────────────────────────────── */}
-        <div style={{ marginBottom: 36, animation: "slideUp .3s ease-out" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 6 }}>
+        <div style={{ marginBottom: SPACE.xxl + SPACE.md, animation: "slideUp .3s ease-out" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: SPACE.md + SPACE.xxs, marginBottom: SPACE.md / 2 }}>
             <div style={{
-              width: 40, height: 40, borderRadius: 11,
-              background: "linear-gradient(135deg,#6366f1 0%,#818cf8 100%)",
+              width: 40, height: 40, borderRadius: RADIUS.xl,
+              background: `linear-gradient(135deg,${C.accent.primary} 0%,${C.accent.light} 100%)`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 0 24px #6366f144, 0 4px 12px #6366f133",
+              boxShadow: SHADOW.glow,
               flexShrink: 0,
             }}>
               <Zap size={20} fill="white" stroke="white" />
             </div>
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--c-text-primary)", letterSpacing: "-.5px", lineHeight: 1.2 }}>
+              <h1 style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.black, color: C.text.primary, letterSpacing: "-.5px", lineHeight: 1.2 }}>
                 AziroOps
               </h1>
-              <div style={{ fontSize: 12, color: "var(--c-text-muted)", marginTop: 2, fontWeight: 500 }}>
+              <div style={{ fontSize: FONT_SIZE.sm + 1, color: C.text.muted, marginTop: SPACE.xxs, fontWeight: FONT_WEIGHT.medium }}>
                 AI-powered DevOps command center
               </div>
             </div>
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: SPACE.md / 2 }}>
               <span style={{
                 width: 7, height: 7, borderRadius: "50%",
-                background: online > 0 ? "#22c55e" : "#64748b",
-                boxShadow: online > 0 ? "0 0 8px #22c55e88" : "none",
+                background: online > 0 ? C.status.success : C.text.muted,
+                boxShadow: online > 0 ? `0 0 8px ${C.status.success}88` : "none",
                 animation: online > 0 ? "pulse 2s infinite" : "none",
                 display: "inline-block",
               }} />
-              <span style={{ fontSize: 12, color: online > 0 ? "#22c55e" : "var(--c-text-muted)", fontWeight: 600 }}>
+              <span style={{ fontSize: FONT_SIZE.sm + 1, color: online > 0 ? C.status.success : C.text.muted, fontWeight: FONT_WEIGHT.semibold }}>
                 {online > 0 ? `${online} online` : "No connections"}
               </span>
             </div>
@@ -117,12 +119,12 @@ export function Home({ targets, monitorActive }: Props) {
         </div>
 
         {/* ── Stat cards ────────────────────────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: SPACE.md + SPACE.xxs, marginBottom: SPACE.xxl + SPACE.sm }}>
           <StatCard
             label="Connections"
             value={targets.length}
             sub={online > 0 ? `${online} online` : "none online"}
-            color="#6366f1"
+            color={C.accent.primary}
 
             warn={offline > 0 ? `${offline} offline` : undefined}
             loading={loading}
@@ -134,7 +136,7 @@ export function Home({ targets, monitorActive }: Props) {
             label="Critical (SEV1)"
             value={loading ? "—" : criticals}
             sub="requiring action"
-            color={criticals > 0 ? "#f43f5e" : "#22c55e"}
+            color={criticals > 0 ? C.error.border : C.status.success}
 
             pulse={criticals > 0}
             loading={loading}
@@ -146,7 +148,7 @@ export function Home({ targets, monitorActive }: Props) {
             label="Warnings (SEV2)"
             value={loading ? "—" : warnings}
             sub="needs investigation"
-            color={warnings > 0 ? "#f59e0b" : "#22c55e"}
+            color={warnings > 0 ? C.status.warning : C.status.success}
 
             loading={loading}
             icon={
@@ -157,7 +159,7 @@ export function Home({ targets, monitorActive }: Props) {
             label="Monitor"
             value={monitorActive ? "Active" : "Idle"}
             sub={monitorActive ? "Watching live events" : "Start to capture events"}
-            color={monitorActive ? "#22c55e" : "#64748b"}
+            color={monitorActive ? C.status.success : C.text.muted}
 
             pulse={monitorActive}
             loading={false}
@@ -169,12 +171,12 @@ export function Home({ targets, monitorActive }: Props) {
 
         {/* ── Quick actions ─────────────────────────────────────────────── */}
         <Section label="Quick Actions">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: SPACE.md + SPACE.xxs }}>
             <ActionCard
               to="/alerts"
               label="Live Alerts"
               desc="Monitor infrastructure in real-time and get notified instantly"
-              accent="#f43f5e"
+              accent={C.error.border}
               icon={
                 <Bell size={22} strokeWidth={1.8} />
               }
@@ -183,7 +185,7 @@ export function Home({ targets, monitorActive }: Props) {
               to="/dashboard"
               label="Dashboard"
               desc="Inspect pods, nodes, deployments and resource details"
-              accent="#6366f1"
+              accent={C.accent.primary}
               icon={
                 <LayoutGrid size={22} strokeWidth={1.8} />
               }
@@ -192,7 +194,7 @@ export function Home({ targets, monitorActive }: Props) {
               to="/chat"
               label="AI Chat"
               desc="Ask your AI assistant about infrastructure, incidents or DevOps"
-              accent="#818cf8"
+              accent={C.accent.light}
               icon={
                 <MessageSquare size={22} strokeWidth={1.8} />
               }
@@ -203,29 +205,29 @@ export function Home({ targets, monitorActive }: Props) {
         {/* ── Recent activity ───────────────────────────────────────────── */}
         <Section label="Recent Incidents">
           <div style={{
-            background: "var(--c-bg-surface)",
-            border: "1px solid var(--c-border)",
-            borderRadius: 12, overflow: "hidden",
-            boxShadow: "var(--shadow-md)",
+            background: C.bg.card,
+            border: `1px solid ${C.border.muted}`,
+            borderRadius: RADIUS.xl, overflow: "hidden",
+            boxShadow: SHADOW.md,
           }}>
             {loading ? (
-              <div style={{ padding: "20px 18px" }}>
+              <div style={{ padding: `${SPACE.xl}px ${SPACE.xl - SPACE.xxs}px` }}>
                 {[85, 60, 75, 55, 70].map((w, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                    <div className="skeleton" style={{ width: 36, height: 18, borderRadius: 4, flexShrink: 0 }} />
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: SPACE.md, marginBottom: SPACE.md + SPACE.xxs }}>
+                    <div className="skeleton" style={{ width: 36, height: 18, borderRadius: RADIUS.sm, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
-                      <div className="skeleton" style={{ height: 13, width: `${w}%`, marginBottom: 6 }} />
-                      <div className="skeleton" style={{ height: 10, width: `${w - 20}%` }} />
+                      <div className="skeleton" style={{ height: FONT_SIZE.md, width: `${w}%`, marginBottom: SPACE.md / 2 }} />
+                      <div className="skeleton" style={{ height: FONT_SIZE.xs, width: `${w - 20}%` }} />
                     </div>
-                    <div className="skeleton" style={{ width: 40, height: 10 }} />
+                    <div className="skeleton" style={{ width: 40, height: FONT_SIZE.xs }} />
                   </div>
                 ))}
               </div>
             ) : recent.length === 0 ? (
-              <div style={{ padding: "48px 18px", textAlign: "center" }}>
-                <Clock size={44} stroke="#263050" strokeWidth={1.2} style={{ marginBottom: 12 }} />
-                <div style={{ fontSize: 14, color: "var(--c-text-secondary)", fontWeight: 600, marginBottom: 4 }}>No incidents recorded yet</div>
-                <div style={{ fontSize: 12, color: "var(--c-text-muted)" }}>Start monitoring a target to capture events.</div>
+              <div style={{ padding: `48px ${SPACE.xl - SPACE.xxs}px`, textAlign: "center" }}>
+                <Clock size={44} stroke={C.border.strong} strokeWidth={1.2} style={{ marginBottom: SPACE.md }} />
+                <div style={{ fontSize: FONT_SIZE.md + 1, color: C.text.secondary, fontWeight: FONT_WEIGHT.semibold, marginBottom: SPACE.xs }}>No incidents recorded yet</div>
+                <div style={{ fontSize: FONT_SIZE.sm + 1, color: C.text.muted }}>Start monitoring a target to capture events.</div>
               </div>
             ) : (
               recent.map((evt, i) => {
@@ -234,44 +236,43 @@ export function Home({ targets, monitorActive }: Props) {
                   <Link
                     key={evt.id}
                     to="/history"
+                    className="hover-bg-raised"
                     style={{
-                      display: "flex", alignItems: "center", gap: 14,
-                      padding: "12px 18px", textDecoration: "none",
-                      borderBottom: i < recent.length - 1 ? "1px solid var(--c-border)" : "none",
-                      borderLeft: `3px solid ${c?.border ?? "#263050"}`,
+                      display: "flex", alignItems: "center", gap: SPACE.md + SPACE.xxs,
+                      padding: `${SPACE.md}px ${SPACE.xl - SPACE.xxs}px`, textDecoration: "none",
+                      borderBottom: i < recent.length - 1 ? `1px solid ${C.border.muted}` : "none",
+                      borderLeft: `3px solid ${c?.border ?? C.border.strong}`,
                       transition: "background .15s",
                       cursor: "pointer",
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "var(--c-bg-raised)")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                   >
                     <span style={{
-                      fontSize: 9, fontWeight: 800, padding: "3px 7px", borderRadius: 5,
-                      color: c?.text ?? "var(--c-text-primary)",
+                      fontSize: 9, fontWeight: FONT_WEIGHT.black, padding: `3px 7px`, borderRadius: RADIUS.sm + 1,
+                      color: c?.text ?? C.text.primary,
                       background: c?.bg ?? "var(--c-bg-overlay)",
-                      border: `1px solid ${c?.border ?? "#263050"}`,
+                      border: `1px solid ${c?.border ?? C.border.strong}`,
                       flexShrink: 0, letterSpacing: ".4px", textTransform: "uppercase",
                     }}>
                       {evt.level}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, color: "var(--c-text-primary)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {evt.reason} <span style={{ color: "var(--c-text-secondary)", fontWeight: 400 }}>— {evt.object}</span>
+                      <div style={{ fontSize: FONT_SIZE.md, color: C.text.primary, fontWeight: FONT_WEIGHT.semibold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {evt.reason} <span style={{ color: C.text.secondary, fontWeight: FONT_WEIGHT.normal }}>— {evt.object}</span>
                       </div>
                       {evt.message && (
-                        <div style={{ fontSize: 11, color: "var(--c-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+                        <div style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: SPACE.xxs }}>
                           {evt.message}
                         </div>
                       )}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
-                      <span style={{ fontSize: 11, color: "var(--c-text-faint)" }}>{relativeTime(evt.timestamp)}</span>
+                      <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint }}>{relativeTime(evt.timestamp)}</span>
                       <span style={{
-                        fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                        fontSize: 9, fontWeight: FONT_WEIGHT.bold, padding: `${SPACE.xxs}px ${SPACE.md / 2}px`, borderRadius: RADIUS.sm,
                         textTransform: "uppercase", letterSpacing: ".3px",
-                        color:       evt.status === "resolved" ? "#22c55e" : evt.status === "acknowledged" ? "#f59e0b" : "#f43f5e",
-                        background:  evt.status === "resolved" ? "#052e16" : evt.status === "acknowledged" ? "#2a1a00" : "#2a0011",
-                        border: `1px solid ${evt.status === "resolved" ? "#22c55e44" : evt.status === "acknowledged" ? "#f59e0b44" : "#f43f5e44"}`,
+                        color:       evt.status === "resolved" ? C.status.success : evt.status === "acknowledged" ? C.status.warning : "var(--c-sev1)",
+                        background:  evt.status === "resolved" ? "var(--c-green-bg)" : evt.status === "acknowledged" ? "var(--c-sev2-bg)" : "var(--c-sev1-bg)",
+                        border: `1px solid ${evt.status === "resolved" ? `${C.status.success}44` : evt.status === "acknowledged" ? `${C.status.warning}44` : `${C.error.border}44`}`,
                       }}>
                         {(evt.status ?? "open")}
                       </span>
@@ -281,16 +282,13 @@ export function Home({ targets, monitorActive }: Props) {
               })
             )}
             {recent.length > 0 && (
-              <Link to="/history" style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "11px 18px", textAlign: "center",
-                fontSize: 12, color: "var(--c-accent)", textDecoration: "none",
-                borderTop: "1px solid var(--c-border)", fontWeight: 600,
+              <Link to="/history" className="hover-bg-accent-dim" style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: SPACE.md / 2,
+                padding: `${SPACE.sm + 3}px ${SPACE.xl - SPACE.xxs}px`, textAlign: "center",
+                fontSize: FONT_SIZE.sm + 1, color: "var(--c-accent)", textDecoration: "none",
+                borderTop: `1px solid ${C.border.muted}`, fontWeight: FONT_WEIGHT.semibold,
                 transition: "background .15s",
-              }}
-                onMouseEnter={e => (e.currentTarget.style.background = "#6366f10a")}
-                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-              >
+              }}>
                 View all incidents
                 <ArrowRight size={12} strokeWidth={2.5} />
               </Link>
@@ -298,45 +296,52 @@ export function Home({ targets, monitorActive }: Props) {
           </div>
         </Section>
 
+        {/* ── Workload health per online target ────────────────────────── */}
+        {targets.filter(t => t.status === "online").length > 0 && (
+          <Section label="Workload Health">
+            <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+              {targets.filter(t => t.status === "online").map(t => (
+                <div key={t.id} style={{ display: "flex", flexDirection: "column", gap: SPACE.xxs }}>
+                  <span style={{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: C.text.muted }}>{t.name}</span>
+                  <HealthSummaryBar targetId={t.id} />
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
         {/* ── Connections overview ──────────────────────────────────────── */}
         {targets.length > 0 && (
           <Section label="Connections">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: SPACE.sm + SPACE.xxs }}>
               {targets.map(t => {
-                const dotColor  = t.status === "online" ? "#22c55e" : t.status === "offline" ? "#ef4444" : "#64748b";
+                const dotColor  = t.status === "online" ? C.status.success : t.status === "offline" ? C.status.danger : C.text.muted;
                 const meta = TARGET_META[t.type as keyof typeof TARGET_META];
-                const tc = meta?.color ?? "#64748b";
+                const tc = meta?.color ?? C.text.muted;
                 const TypeIcon = meta?.icon;
                 return (
                   <Link
                     key={t.id}
                     to="/dashboard"
+                    className="card-interactive"
                     style={{
-                      background: "var(--c-bg-surface)",
-                      border: "1px solid var(--c-border)",
-                      borderRadius: 10, padding: "13px 15px", textDecoration: "none",
-                      display: "flex", alignItems: "center", gap: 10,
+                      background: C.bg.card,
+                      border: `1px solid ${C.border.muted}`,
+                      borderRadius: RADIUS.lg + SPACE.xxs, padding: `${SPACE.md + 1}px ${SPACE.lg - 1}px`, textDecoration: "none",
+                      display: "flex", alignItems: "center", gap: SPACE.sm + SPACE.xxs,
                       transition: "border-color .2s, box-shadow .2s",
                       cursor: "pointer",
                     }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.borderColor = tc + "77";
-                      e.currentTarget.style.boxShadow = `0 0 16px ${tc}22`;
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.borderColor = "var(--c-border)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
                   >
                     <span style={{
-                      width: 8, height: 8, borderRadius: "50%",
+                      width: SPACE.sm, height: SPACE.sm, borderRadius: "50%",
                       background: dotColor,
                       boxShadow: t.status === "online" ? `0 0 6px ${dotColor}` : "none",
                       flexShrink: 0,
                     }} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                      <div style={{ fontSize: 10, color: tc, marginTop: 1, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                      <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                      <div style={{ fontSize: FONT_SIZE.xs, color: tc, marginTop: 1, fontWeight: FONT_WEIGHT.semibold, display: "flex", alignItems: "center", gap: SPACE.xs }}>
                         {TypeIcon && <TypeIcon size={10} />}
                         {t.type}
                       </div>
@@ -362,41 +367,32 @@ function StatCard({ label, value, sub, color, icon, sparkData, warn, pulse, load
   warn?: string; pulse?: boolean; loading?: boolean;
 }) {
   return (
-    <div style={{
-      background: "var(--c-bg-surface)",
-      border: "1px solid var(--c-border)",
-      borderRadius: 12,
-      padding: "18px 18px 14px",
+    <div className="card-interactive" style={{
+      background: C.bg.card,
+      border: `1px solid ${C.border.muted}`,
+      borderRadius: RADIUS.xl,
+      padding: `${SPACE.xl - SPACE.xxs}px ${SPACE.xl - SPACE.xxs}px ${SPACE.md + SPACE.xxs}px`,
       display: "flex", flexDirection: "column", gap: 0,
       position: "relative", overflow: "hidden",
       transition: "box-shadow .2s, border-color .2s",
       animation: "slideUp .3s ease-out",
-    }}
-      onMouseEnter={e => {
-        (e.currentTarget as HTMLElement).style.borderColor = color + "55";
-        (e.currentTarget as HTMLElement).style.boxShadow = `0 0 20px ${color}1a`;
-      }}
-      onMouseLeave={e => {
-        (e.currentTarget as HTMLElement).style.borderColor = "var(--c-border)";
-        (e.currentTarget as HTMLElement).style.boxShadow = "none";
-      }}
-    >
+    }}>
       {/* Top accent bar */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${color},${color}44)` }} />
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: SPACE.xxs, background: `linear-gradient(90deg,${color},${color}44)` }} />
 
       {/* Header row */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <span style={{ fontSize: 10, color: "var(--c-text-muted)", textTransform: "uppercase", letterSpacing: ".7px", fontWeight: 700 }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: SPACE.md + SPACE.xxs }}>
+        <span style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".7px", fontWeight: FONT_WEIGHT.bold }}>{label}</span>
         <span style={{ color, opacity: 0.75 }}>{icon}</span>
       </div>
 
       {/* Value + sparkline row */}
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: SPACE.sm + SPACE.xxs }}>
         {loading ? (
-          <div className="skeleton" style={{ width: 52, height: 32, borderRadius: 6 }} />
+          <div className="skeleton" style={{ width: 52, height: FONT_SIZE.hero, borderRadius: RADIUS.md }} />
         ) : (
           <span style={{
-            fontSize: 32, fontWeight: 800, color, letterSpacing: "-1.5px", lineHeight: 1,
+            fontSize: FONT_SIZE.hero, fontWeight: FONT_WEIGHT.black, color, letterSpacing: "-1.5px", lineHeight: 1,
             animation: pulse ? "pulse 2s infinite" : "none",
             textShadow: pulse ? `0 0 20px ${color}66` : "none",
           }}>
@@ -413,11 +409,11 @@ function StatCard({ label, value, sub, color, icon, sparkData, warn, pulse, load
       {/* Sub-label row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         {loading ? (
-          <div className="skeleton" style={{ width: 80, height: 10 }} />
+          <div className="skeleton" style={{ width: 80, height: FONT_SIZE.xs }} />
         ) : (
-          <span style={{ fontSize: 11, color: "var(--c-text-muted)", fontWeight: 500 }}>{sub}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, fontWeight: FONT_WEIGHT.medium }}>{sub}</span>
         )}
-        {warn && <span style={{ fontSize: 10, color: "#ef4444", fontWeight: 700 }}>{warn}</span>}
+        {warn && <span style={{ fontSize: FONT_SIZE.xs, color: C.status.danger, fontWeight: FONT_WEIGHT.bold }}>{warn}</span>}
       </div>
     </div>
   );
@@ -430,29 +426,18 @@ function ActionCard({ to, label, desc, accent, icon }: {
   return (
     <Link
       to={to}
+      className="card-interactive"
       style={{
-        background: "var(--c-bg-surface)",
-        border: "1px solid var(--c-border)",
-        borderRadius: 12, padding: "20px 20px",
-        textDecoration: "none", color: "var(--c-text-primary)",
-        display: "flex", flexDirection: "column", gap: 14,
+        background: C.bg.card,
+        border: `1px solid ${C.border.muted}`,
+        borderRadius: RADIUS.xl, padding: `${SPACE.xl}px ${SPACE.xl}px`,
+        textDecoration: "none", color: C.text.primary,
+        display: "flex", flexDirection: "column", gap: SPACE.md + SPACE.xxs,
         transition: "all .2s", cursor: "pointer",
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.borderColor = accent + "88";
-        e.currentTarget.style.background  = "var(--c-bg-raised)";
-        e.currentTarget.style.boxShadow   = `0 0 24px ${accent}22`;
-        e.currentTarget.style.transform   = "translateY(-1px)";
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = "var(--c-border)";
-        e.currentTarget.style.background  = "var(--c-bg-surface)";
-        e.currentTarget.style.boxShadow   = "none";
-        e.currentTarget.style.transform   = "translateY(0)";
       }}
     >
       <div style={{
-        width: 44, height: 44, borderRadius: 11,
+        width: 44, height: 44, borderRadius: RADIUS.xl,
         background: accent + "18", border: `1px solid ${accent}33`,
         display: "flex", alignItems: "center", justifyContent: "center",
         color: accent, flexShrink: 0,
@@ -460,10 +445,10 @@ function ActionCard({ to, label, desc, accent, icon }: {
         {icon}
       </div>
       <div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--c-text-primary)", marginBottom: 6, letterSpacing: "-.2px" }}>{label}</div>
-        <div style={{ fontSize: 12, color: "var(--c-text-muted)", lineHeight: 1.6 }}>{desc}</div>
+        <div style={{ fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: C.text.primary, marginBottom: SPACE.md / 2, letterSpacing: "-.2px" }}>{label}</div>
+        <div style={{ fontSize: FONT_SIZE.sm + 1, color: C.text.muted, lineHeight: 1.6 }}>{desc}</div>
       </div>
-      <div style={{ fontSize: 12, color: accent, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, marginTop: "auto" }}>
+      <div style={{ fontSize: FONT_SIZE.sm + 1, color: accent, fontWeight: FONT_WEIGHT.bold, display: "flex", alignItems: "center", gap: SPACE.xs + 1, marginTop: "auto" }}>
         Open
         <ArrowRight size={12} strokeWidth={2.5} />
       </div>
@@ -473,15 +458,15 @@ function ActionCard({ to, label, desc, accent, icon }: {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 32 }}>
+    <div style={{ marginBottom: SPACE.xxl + SPACE.sm }}>
       <div style={{
-        fontSize: 10, fontWeight: 800, color: "var(--c-text-muted)",
-        textTransform: "uppercase", letterSpacing: ".9px", marginBottom: 14,
-        display: "flex", alignItems: "center", gap: 8,
+        fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.black, color: C.text.muted,
+        textTransform: "uppercase", letterSpacing: ".9px", marginBottom: SPACE.md + SPACE.xxs,
+        display: "flex", alignItems: "center", gap: SPACE.sm,
       }}>
-        <span style={{ flex: 1, height: 1, background: "var(--c-border)", display: "block" }} />
+        <span style={{ flex: 1, height: 1, background: C.border.muted, display: "block" }} />
         {label}
-        <span style={{ flex: 1, height: 1, background: "var(--c-border)", display: "block" }} />
+        <span style={{ flex: 1, height: 1, background: C.border.muted, display: "block" }} />
       </div>
       {children}
     </div>

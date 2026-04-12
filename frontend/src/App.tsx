@@ -1,20 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import type { Target } from "./types";
-import { api }        from "./api/client";
+import { api, type ModelHealthStatus } from "./api/client";
 import { Sidebar }    from "./components/Sidebar";
 import { Home }       from "./pages/Home";
 import { Dashboard }  from "./pages/Dashboard";
 import { Alerts }     from "./pages/Alerts";
 import { History }    from "./pages/History";
 import { Chat }       from "./pages/Chat";
+import { Settings }   from "./pages/Settings";
 import { AddTargetModal } from "./components/AddTargetModal";
-import { CommandPalette } from "./components/CommandPalette";
+import { CommandPalette, SearchBar } from "./components/CommandPalette";
+import { KeyboardHelp } from "./components/KeyboardHelp";
+import { GlobalResourceDetail } from "./components/GlobalResourceDetail";
 import { ThemeProvider }  from "./components/ThemeContext";
+import { ConfirmDialog } from "./components/confirm-dialog";
 import { GLOBAL_KEYFRAMES } from "./utils/animations";
 import { Toaster } from "sonner";
 import { toast } from "./utils/toast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ModelStatusBanner } from "./components/ModelStatusBanner";
+import { AlertBanner } from "./components/AlertBanner";
+import { OnboardingTour } from "./components/OnboardingTour";
 
 export default function App() {
   const [targets,       setTargets]       = useState<Target[]>([]);
@@ -22,15 +29,36 @@ export default function App() {
   const [monitorActive, setMonitorActive] = useState(false);
   const [showAdd,       setShowAdd]       = useState(false);
   const [aiModel,       setAiModel]       = useState("");
+  const [health,        setHealth]        = useState<ModelHealthStatus | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [editTarget,    setEditTarget]    = useState<Target | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("sidebar-collapsed") === "true"
+  );
+
+  const pollHealth = useCallback(() => {
+    api.modelHealth().then(h => {
+      setHealth(h);
+      // Show the model actually being used right now
+      if (h.status === "fallback" && h.fallback_model) {
+        setAiModel(h.fallback_model.split(" / ")[0]); // show tool model
+      } else if (h.primary_answer) {
+        setAiModel(h.primary_answer);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     loadTargets();
     api.monitor.status().then(s => setMonitorActive(s.active))
       .catch(e => console.warn("[App] monitor.status failed:", (e as Error)?.message));
+    // Initial load + poll health every 30s
     api.info().then(i => setAiModel(i.answer_model))
       .catch(e => console.warn("[App] info failed:", (e as Error)?.message));
-  }, []);
+    pollHealth();
+    const t = setInterval(pollHealth, 30_000);
+    return () => clearInterval(t);
+  }, [pollHealth]);
 
   async function loadTargets() {
     try {
@@ -55,6 +83,18 @@ export default function App() {
     if (activeTarget?.id === id) setActiveTarget(null);
     await loadTargets();
     toast.info(`Removed ${name}`);
+  }
+
+  async function handleUpdate(id: string, name: string, config: Record<string, string>) {
+    await api.targets.update(id, name, config);
+    const test = await api.targets.test(id);
+    if (test.status !== "online") {
+      toast.error(`Connection failed: ${test.message?.split("\n")[0] ?? "unreachable"}`);
+      throw new Error(`Connection failed: ${test.message?.split("\n")[0] ?? "unreachable"}`);
+    }
+    setEditTarget(null);
+    await loadTargets();
+    toast.success(`Updated ${name}`);
   }
 
   async function handleAdd(name: string, type: Target["type"], config: Record<string, string>) {
@@ -88,18 +128,40 @@ export default function App() {
           },
         }}
       />
-      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--c-bg-base, #0d1117)", color: "var(--c-text-primary, #e2e8f0)" }}>
+      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--c-bg-base)", color: "var(--c-text-primary)" }}>
         <Sidebar
           targets={targets}
           activeId={activeTarget?.id ?? null}
           onSelect={setActiveTarget}
           onRemove={handleRemove}
+          onEdit={setEditTarget}
           onAddClick={() => setShowAdd(true)}
           monitorActive={monitorActive}
           aiModel={aiModel}
+          onModelChange={(m) => { setAiModel(m); pollHealth(); }}
+          modelStatus={health?.status ?? "healthy"}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(prev => {
+            const next = !prev;
+            localStorage.setItem("sidebar-collapsed", String(next));
+            return next;
+          })}
         />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <ModelStatusBanner onModelChange={() => { window.location.href = "/settings"; }} />
+          <AlertBanner monitorActive={monitorActive} />
+
+          {/* Top bar — search */}
+          <header style={{
+            padding: "8px 20px", borderBottom: "1px solid var(--c-border)",
+            display: "flex", alignItems: "center", justifyContent: "flex-end",
+            flexShrink: 0, background: "var(--c-bg-raised)",
+          }}>
+            <SearchBar />
+          </header>
+
+          <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Routes>
             <Route path="/"          element={<ErrorBoundary><Home targets={targets} monitorActive={monitorActive} /></ErrorBoundary>} />
             <Route path="/dashboard" element={<ErrorBoundary><Dashboard target={activeTarget} /></ErrorBoundary>} />
@@ -112,13 +174,15 @@ export default function App() {
             } />
             <Route path="/history" element={<ErrorBoundary><History /></ErrorBoundary>} />
             <Route path="/chat"    element={<ErrorBoundary><Chat targets={targets} activeTarget={activeTarget} /></ErrorBoundary>} />
+            <Route path="/settings" element={<ErrorBoundary><Settings targetCount={targets.length} /></ErrorBoundary>} />
             <Route path="*"        element={
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "#64748b" }}>
-                <div style={{ fontSize: 48, color: "#2d3148" }}>404</div>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "var(--c-text-muted)" }}>
+                <div style={{ fontSize: 48, color: "var(--c-border)" }}>404</div>
                 <div style={{ fontSize: 14 }}>Page not found</div>
               </div>
             } />
           </Routes>
+          </main>
         </div>
 
         {showAdd && (
@@ -128,31 +192,25 @@ export default function App() {
           />
         )}
 
-        {/* Inline confirm dialog — replaces window.confirm() */}
-        {confirmRemove && (
-          <div style={{ position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ background: "#1a1d27", border: "1px solid #2d3148", borderRadius: 12, padding: 24, width: 340, display: "flex", flexDirection: "column", gap: 16, boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)" }}>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>Remove connection?</div>
-              <div style={{ fontSize: 13, color: "#94a3b8" }}>
-                Remove <strong style={{ color: "#e2e8f0" }}>{targetName}</strong>? This cannot be undone.
-              </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button
-                  onClick={() => setConfirmRemove(null)}
-                  style={{ background: "#1e2240", border: "1px solid #2d3148", color: "#94a3b8", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer" }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={doRemove}
-                  style={{ background: "#b91c1c", border: "none", color: "#fff", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
-          </div>
+        {editTarget && (
+          <AddTargetModal
+            onClose={() => setEditTarget(null)}
+            onAdd={handleAdd}
+            editTarget={editTarget}
+            onUpdate={handleUpdate}
+          />
         )}
+
+        <ConfirmDialog
+          open={!!confirmRemove}
+          onOpenChange={(open) => { if (!open) setConfirmRemove(null); }}
+          title="Remove connection?"
+          description={`Remove ${targetName}? This cannot be undone.`}
+          confirmLabel="Remove"
+          cancelLabel="Cancel"
+          onConfirm={doRemove}
+          variant="destructive"
+        />
 
         {/* Cmd+K Command Palette */}
         <CommandPalette
@@ -160,6 +218,15 @@ export default function App() {
           activeTarget={activeTarget}
           onSelectTarget={setActiveTarget}
         />
+
+        {/* ? Keyboard shortcut cheat sheet */}
+        <KeyboardHelp />
+
+        {/* Global resource-detail modal (driven by resourceDetailStore) */}
+        <GlobalResourceDetail />
+
+        {/* First-run guided tour — auto-runs once, replayable from Settings */}
+        <OnboardingTour />
       </div>
     </BrowserRouter>
     </ThemeProvider>

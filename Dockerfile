@@ -151,6 +151,7 @@ ENV HOME=/home/aziro
 
 ENV AZIRO_DATA_DIR=/app/data
 ENV AZIRO_KEY_FILE=/app/data/.aziro_key
+ENV PYTHONUNBUFFERED=1
 
 USER aziro
 

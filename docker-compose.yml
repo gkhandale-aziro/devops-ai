@@ -39,6 +39,8 @@ services:
       - AWS_CONFIG_FILE=/home/aziro/.host-aws/config
       - CLOUDSDK_CONFIG=/home/aziro/.host-gcloud
       - AZURE_CONFIG_DIR=/home/aziro/.host-azure
+      # Ollama on host — reachable via host.docker.internal
+      - OLLAMA_API_BASE=http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
     deploy:

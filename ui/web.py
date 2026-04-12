@@ -29,6 +29,7 @@ from targets   import TargetManager
 from agent     import needs_tools, AgentSession, Agent
 from monitor   import EventWatcher, Triage
 from store     import EventStore
+from store.metrics import MetricCollector
 from sandbox.redact import StreamRedactor
 from tools.kubectl  import setup_kubeconfig, check_cloud_auth
 
@@ -37,12 +38,14 @@ from tools.kubectl  import setup_kubeconfig, check_cloud_auth
 # Mirrors kubectl-ai's top-level struct fields in cmd/main.go.
 
 _llm      = LLMClient()
+_llm.start_health_monitor()
 _tools    = ToolExecutor()
 _sessions = SessionManager()
 _targets  = TargetManager()
 _agent    = Agent(_llm, _tools)
 _session  = AgentSession()
 _store    = EventStore()
+_metric_collector = MetricCollector(_store)
 
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
@@ -169,6 +172,25 @@ def _trim(messages):
     return system + history[-MAX_HISTORY:]
 
 
+def _generate_session_title(user_msg, ai_response):
+    """Generate a short title from the first chat exchange using the AI model."""
+    try:
+        prompt = [
+            {"role": "system", "content": "Generate a very short title (3-6 words, no quotes) summarizing this conversation. Just output the title, nothing else."},
+            {"role": "user", "content": f"User: {user_msg[:200]}\nAssistant: {ai_response[:300]}"},
+        ]
+        title = ""
+        for chunk in _llm.chat_stream(prompt, use_tools=False):
+            title += chunk
+        title = title.strip().strip('"').strip("'")
+        if title:
+            return title[:50]
+    except Exception as e:
+        print(f"  [Chat] title generation failed: {e}")
+    # Fallback: use first user message
+    return user_msg[:50] + ("..." if len(user_msg) > 50 else "")
+
+
 _CMD_TIMEOUT = 30  # seconds per command
 
 def _run_many(target, cmds):
@@ -195,22 +217,42 @@ def api_info():
     return jsonify({
         "tool_model":   _llm.tool_model,
         "answer_model": _llm.answer_model,
+        "model_health": _llm.health.to_dict(),
     })
+
+
+@app.route("/api/v1/models/health", methods=["GET"])
+def api_model_health():
+    """Current model health state — healthy / fallback / unavailable."""
+    return jsonify(_llm.health.to_dict())
 
 
 @app.route("/api/v1/models", methods=["GET"])
 def api_models():
-    """List available Ollama models (if Ollama is reachable)."""
-    from tools.base import run_command
-    out = run_command("ollama list 2>&1", timeout=10)
-    models = []
-    for line in out.strip().split("\n")[1:]:  # skip header
-        parts = line.split()
-        if parts:
-            models.append(parts[0])
-    return jsonify({"ollama": models, "current": {
-        "tool_model": _llm.tool_model, "answer_model": _llm.answer_model,
-    }})
+    """List available models — Ollama + cloud models based on API keys.
+    Excludes exhausted cloud models when circuit breaker is active."""
+    from providers.client import _discover_ollama_models, discover_cloud_models
+    ollama_models = _discover_ollama_models()
+    cloud_models  = discover_cloud_models()
+
+    # Filter out exhausted cloud models — if primary is quota-limited,
+    # hide models from the same provider so user doesn't pick a broken one
+    h = _llm.health
+    if h.status in ("fallback", "unavailable") and h.error_message:
+        exhausted_provider = _llm.tool_model.split("/")[0]  # e.g. "gemini"
+        cloud_models = [m for m in cloud_models
+                        if not m.startswith(f"{exhausted_provider}/")]
+
+    return jsonify({
+        "ollama": ollama_models,
+        "cloud":  cloud_models,
+        "current": {
+            "tool_model": _llm.tool_model,
+            "answer_model": _llm.answer_model,
+        },
+        "ollama_url": _llm.get_ollama_url(),
+        "health": h.status,
+    })
 
 
 _MODEL_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_./:@-]{0,127}$")
@@ -218,7 +260,7 @@ _MODEL_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_./:@-]{0,127}$")
 
 @app.route("/api/v1/models", methods=["PUT"])
 def api_set_models():
-    """Change AI models at runtime (no restart needed)."""
+    """Change AI models at runtime. Resets circuit breaker, persists to disk."""
     d = request.json or {}
 
     def _valid_model(v):
@@ -228,17 +270,38 @@ def api_set_models():
         if key in d and not _valid_model(d[key]):
             return jsonify({"error": f"invalid model string for '{key}'"}), 400
 
-    if "tool_model" in d:
-        _llm.tool_model = d["tool_model"]
-    if "answer_model" in d:
-        _llm.answer_model = d["answer_model"]
-    if "ai_model" in d:
-        _llm.tool_model = d["ai_model"]
-        _llm.answer_model = d["ai_model"]
-    return jsonify({
-        "tool_model":   _llm.tool_model,
-        "answer_model": _llm.answer_model,
-    })
+    # Validate model is reachable (optional — skip if validate=false)
+    if d.get("validate", True):
+        test_model = d.get("ai_model") or d.get("tool_model") or d.get("answer_model")
+        if test_model:
+            result = _llm.test_model(test_model)
+            if not result["ok"]:
+                return jsonify({"error": f"Model unreachable: {result['error']}"}), 400
+
+    return jsonify(_llm.switch_model(
+        tool_model=d.get("tool_model"),
+        answer_model=d.get("answer_model"),
+        ai_model=d.get("ai_model"),
+    ))
+
+
+@app.route("/api/v1/models/ollama-url", methods=["GET"])
+def api_ollama_url_get():
+    """Get current Ollama API base URL."""
+    return jsonify({"url": _llm.get_ollama_url()})
+
+
+@app.route("/api/v1/models/ollama-url", methods=["PUT"])
+def api_ollama_url_set():
+    """Set Ollama API base URL. Tests connection before saving."""
+    d = request.json or {}
+    url = d.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+    result = _llm.set_ollama_url(url)
+    if not result["ok"]:
+        return jsonify({"error": result["error"]}), 400
+    return jsonify(result)
 
 
 # ── static ────────────────────────────────────────────────────────────────────
@@ -329,6 +392,22 @@ def api_add():
     return jsonify(target)
 
 
+@app.route("/api/v1/targets/<tid>", methods=["PATCH"])
+def api_update(tid):
+    if not _targets.get(tid):
+        return jsonify({"error": "not found"}), 404
+    d = request.json or {}
+    name = d.get("name")
+    config = d.get("config")
+    if config:
+        _persist_inline_content(tid, config)
+    target = _targets.update(tid, name=name, config=config)
+    if not target:
+        return jsonify({"error": "update failed"}), 500
+    target["config"] = _targets.mask_config(target.get("config", {}))
+    return jsonify(target)
+
+
 @app.route("/api/v1/targets/<tid>", methods=["DELETE"])
 def api_delete(tid):
     if not _targets.get(tid):
@@ -414,11 +493,18 @@ TAB_COMMANDS = {
                        "failed_svc": "systemctl list-units --failed --no-legend 2>/dev/null",
                        "top_procs": "ps aux --sort=-%cpu | head -6",
                        "hostname": "hostname -f 2>/dev/null || hostname"},
-        "kubernetes": {"nodes": "kubectl get nodes -o wide",
-                       "pods": "kubectl get pods -A -o wide",
-                       "deployments": "kubectl get deployments -A",
-                       "services": "kubectl get svc -A",
-                       "events": "kubectl get events -A --sort-by=.lastTimestamp 2>&1"},
+        "services":   {"all": "systemctl list-units --type=service --no-pager",
+                       "failed": "systemctl list-units --type=service --state=failed --no-pager --no-legend",
+                       "timers": "systemctl list-timers --all --no-pager",
+                       "enabled": "systemctl list-unit-files --type=service --state=enabled --no-pager --no-legend | wc -l"},
+        "processes":  {"top_cpu": "ps aux --sort=-%cpu | head -16",
+                       "top_mem": "ps aux --sort=-%mem | head -16",
+                       "load": "uptime",
+                       "count": "ps aux --no-headers | wc -l"},
+        "security":   {"last_logins": "last -10 -w",
+                       "failed_logins": "journalctl _COMM=sshd --no-pager -n 30 2>/dev/null | grep -i 'failed\\|invalid' | tail -15",
+                       "firewall": "ufw status verbose 2>/dev/null || iptables -L -n --line-numbers 2>/dev/null || echo 'No firewall detected'",
+                       "active_users": "w -h"},
         "logs":       {"logs": "journalctl -n 100 --no-pager 2>/dev/null"},
         "network":    {"ports": "ss -tlnp", "routes": "ip route show",
                        "dns": "cat /etc/resolv.conf",
@@ -530,6 +616,8 @@ _SAFE_KINDS   = {
     "pod", "node", "deployment", "service", "ingress", "replicaset",
     "statefulset", "daemonset", "configmap", "namespace", "event",
     "persistentvolumeclaim", "persistentvolume", "job", "cronjob",
+    "storageclass", "ingressclass", "networkpolicy", "endpoints",
+    "pvc", "pv",  # aliases — resolved below
 }
 _SAFE_NAME_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.\-]*$')
 
@@ -543,6 +631,37 @@ def api_resource(tid):
     kind = request.args.get("kind", "pod").lower()
     name = request.args.get("name", "").strip()
     ns   = request.args.get("ns", "").strip()
+
+    ttype = target.get("type", "ssh")
+
+    # SSH/local targets — systemd service detail
+    if ttype in ("ssh", "local"):
+        if kind == "service" and name and _SAFE_NAME_RE.match(name):
+            result = _run_many(target, {
+                "describe": f"systemctl status {name} --no-pager 2>&1",
+                "logs":     f"journalctl -u {name} -n 80 --no-pager 2>&1",
+            })
+            return jsonify(result)
+        return jsonify({"error": "unsupported kind"}), 400
+
+    # Docker targets — use docker inspect/logs instead of kubectl
+    if ttype == "docker":
+        _DOCKER_KINDS = {"container", "image", "volume", "network"}
+        dkind = kind if kind in _DOCKER_KINDS else "container"
+        if not name or not _SAFE_NAME_RE.match(name):
+            return jsonify({"error": "invalid name"}), 400
+        if dkind == "container":
+            result = _run_many(target, {
+                "describe": f"docker inspect {name} 2>&1",
+                "logs":     f"docker logs {name} --tail 150 2>&1",
+            })
+        else:
+            result = {"describe": _tools.execute(target, f"docker {dkind} inspect {name} 2>&1")}
+        return jsonify(result)
+
+    # Resolve short aliases to full kubectl resource names
+    _KIND_ALIASES = {"pvc": "persistentvolumeclaim", "pv": "persistentvolume"}
+    kind = _KIND_ALIASES.get(kind, kind)
 
     if kind not in _SAFE_KINDS:                   return jsonify({"error": "invalid kind"}), 400
     if not name or not _SAFE_NAME_RE.match(name): return jsonify({"error": "invalid name"}), 400
@@ -658,6 +777,8 @@ def api_chat_stream(tid):
 
     def generate():
         try:
+            # Send thinking event immediately so frontend knows we're alive
+            yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
             if not needs_tools(user_msg):
                 full = ""
                 for chunk in _llm.chat_stream(messages, use_tools=False):
@@ -669,7 +790,23 @@ def api_chat_stream(tid):
             else:
                 yield from _agent.run(messages, target, _session, tid)
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            print(f"  [Chat] target stream error: {str(e)[:200]}")
+            # Retry with fallback if available
+            if _llm.health.status == "fallback":
+                try:
+                    full = ""
+                    for chunk in _llm.chat_stream(messages, use_tools=False):
+                        full += chunk
+                        yield f"data: {json.dumps({'t': chunk})}\n\n"
+                    if full:
+                        messages.append({"role": "assistant", "content": full})
+                        _session.set(tid, messages)
+                    yield "data: [DONE]\n\n"
+                    return
+                except Exception as e2:
+                    yield f"data: {json.dumps({'error': str(e2)})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
             yield "data: [DONE]\n\n"
 
     redactor = StreamRedactor()
@@ -680,9 +817,21 @@ def api_chat_stream(tid):
 # ── AI analysis ───────────────────────────────────────────────────────────────
 
 _ANALYSIS_SYSTEM = (
-    "You are a Kubernetes and DevOps expert. "
-    "Analyze the provided data and give clear, actionable recommendations. "
-    "Use markdown formatting."
+    "You are a senior DevOps and infrastructure expert. "
+    "Analyze the provided data and respond using this exact markdown structure:\n\n"
+    "## Status\n"
+    "One of: **Healthy**, **Warning**, or **Critical** — followed by a one-line reason.\n\n"
+    "## Summary\n"
+    "2-3 sentence plain-English overview of the current state.\n\n"
+    "## Issues Found\n"
+    "Bulleted list. Each bullet starts with a severity tag in bold: "
+    "**Critical**, **Warning**, or **Info**. Include what the issue is, "
+    "its impact, and evidence from the data. If no issues, write 'No issues detected.'\n\n"
+    "## Recommendations\n"
+    "Numbered list of specific, actionable steps ordered by urgency. "
+    "Include exact commands when applicable.\n\n"
+    "Be concise (under 400 words). Use markdown formatting. "
+    "Do not add sections beyond the four above."
 )
 
 
@@ -795,6 +944,7 @@ def api_monitor_start(tid):
         watcher.on_event(lambda e: _store.save_event(e, _web_classify(e)) if e.get("type") == "Warning" else None)
         watcher.watch()
         _web_watchers[tid] = watcher
+        _metric_collector.start(tid, target, executor)
 
     return jsonify({"ok": True, "monitoring": tid})
 
@@ -808,7 +958,9 @@ def api_monitor_stop():
             w = _web_watchers.pop(tid, None)
             if w:
                 w.stop()
+            _metric_collector.stop(tid)
         else:
+            _metric_collector.stop_all()
             for w in _web_watchers.values():
                 w.stop()
             _web_watchers.clear()
@@ -821,6 +973,7 @@ def api_monitor_status():
         return jsonify({
             "active": len(_web_watchers) > 0,
             "targets": list(_web_watchers.keys()),
+            "metrics_active": list(_metric_collector._threads.keys()),
         })
 
 
@@ -847,6 +1000,26 @@ def api_monitor_stream():
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/v1/metrics/<tid>")
+def api_metrics(tid):
+    """Query stored metric snapshots for a target.
+    ?metric=cpu_pct,mem_pct  (comma-separated, default: all)
+    ?range=1h|6h|24h|7d     (default: 1h)
+    """
+    import datetime
+
+    range_str = request.args.get("range", "1h").strip()
+    metric = request.args.get("metric", "").strip() or None
+
+    # Parse range to since timestamp
+    range_map = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
+    hours = range_map.get(range_str, 1)
+    since = (datetime.datetime.now() - datetime.timedelta(hours=hours)).isoformat()
+
+    data = _store.get_metrics(tid, metric=metric, since=since)
+    return jsonify(data)
 
 
 # ── general chat sessions ─────────────────────────────────────────────────────
@@ -889,14 +1062,45 @@ def api_sessions_chat_stream(sid):
     msgs.append({"role": "user", "content": user_msg})
     msgs[:] = _trim(msgs)
     _sessions.update_title(sid, user_msg)
+    # Persist user message immediately so it survives navigation/abort
+    _sessions.set_messages(sid, msgs)
+
+    # Check if this is the first user message (title still "New Chat")
+    is_first_msg = any(s["id"] == sid and s["title"] == "New Chat" for s in _sessions.load())
 
     def generate():
         full = ""
-        for chunk in _llm.chat_stream(msgs, use_tools=False):
-            full += chunk
-            yield f"data: {json.dumps({'t': chunk})}\n\n"
-        msgs.append({"role": "assistant", "content": full})
+        try:
+            # Send thinking event immediately so frontend knows we're alive
+            yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
+            for chunk in _llm.chat_stream(msgs, use_tools=False):
+                full += chunk
+                yield f"data: {json.dumps({'t': chunk})}\n\n"
+        except Exception as e:
+            err_msg = str(e)[:200]
+            print(f"  [Chat] stream error: {err_msg}")
+            # If fallback was activated, retry with fallback model
+            if _llm.health.status == "fallback" and not full:
+                print(f"  [Chat] Retrying with fallback model...")
+                try:
+                    for chunk in _llm.chat_stream(msgs, use_tools=False):
+                        full += chunk
+                        yield f"data: {json.dumps({'t': chunk})}\n\n"
+                except Exception as e2:
+                    print(f"  [Chat] Fallback also failed: {e2}")
+                    yield f"data: {json.dumps({'error': f'AI model error: {str(e2)[:200]}'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': f'AI model error: {err_msg}'})}\n\n"
+        if full:
+            msgs.append({"role": "assistant", "content": full})
         _sessions.set_messages(sid, msgs)
+
+        # Auto-generate session title from first exchange
+        if is_first_msg and full:
+            title = _generate_session_title(user_msg, full)
+            _sessions.update_title(sid, title)
+            yield f"data: {json.dumps({'title': title})}\n\n"
+
         yield "data: [DONE]\n\n"
 
     redactor = StreamRedactor()
@@ -953,6 +1157,21 @@ def api_events_by_object(name):
     except (ValueError, TypeError):
         limit = 20
     return jsonify(_store.get_object_history(name, limit=limit))
+
+
+@app.route("/api/v1/feedback", methods=["POST"])
+def api_feedback():
+    """Save user feedback (thumbs up/down) for an AI response."""
+    body = request.json or {}
+    target_id = body.get("target_id", "").strip()
+    message = body.get("message", "").strip()
+    rating = body.get("rating", "").strip()
+    if rating not in ("up", "down"):
+        return jsonify({"error": "rating must be 'up' or 'down'"}), 400
+    if not message:
+        return jsonify({"error": "message required"}), 400
+    _store.save_feedback(target_id, message, rating, body.get("comment", ""))
+    return jsonify({"ok": True})
 
 
 @app.route("/api/v1/stats", methods=["GET"])
@@ -1020,6 +1239,118 @@ def api_topology(tid):
             "services":    svcs[:30],
             "ingresses":   ings[:20],
         })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Workload Health Summary ───────────────────────────────────────────────────
+
+@app.route("/api/v1/health/<tid>", methods=["GET"])
+def api_health(tid):
+    """
+    Lightweight workload counts for dashboard health bars.
+    Returns pod/deployment/node (or container/service) counts by status.
+    """
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
+
+    ttype = target.get("type", "kubernetes")
+
+    try:
+        if ttype == "kubernetes":
+            raw = _run_many(target, {
+                "pods":        "kubectl get pods -A --no-headers 2>/dev/null",
+                "deployments": "kubectl get deployments -A --no-headers 2>/dev/null",
+                "nodes":       "kubectl get nodes --no-headers 2>/dev/null",
+            })
+
+            # Parse pods: NS NAME READY STATUS RESTARTS AGE
+            pod_counts = {"running": 0, "pending": 0, "failed": 0, "succeeded": 0, "total": 0}
+            for line in (raw.get("pods", "") or "").strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    pod_counts["total"] += 1
+                    status = parts[3].lower()
+                    if status == "running":
+                        pod_counts["running"] += 1
+                    elif status == "pending" or status == "containercreating":
+                        pod_counts["pending"] += 1
+                    elif status == "succeeded" or status == "completed":
+                        pod_counts["succeeded"] += 1
+                    else:
+                        pod_counts["failed"] += 1
+
+            # Parse deployments: NS NAME READY UP-TO-DATE AVAILABLE AGE
+            dep_ready, dep_total = 0, 0
+            for line in (raw.get("deployments", "") or "").strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 3:
+                    dep_total += 1
+                    ready_str = parts[2]  # e.g. "3/3"
+                    try:
+                        cur, desired = ready_str.split("/")
+                        if cur == desired:
+                            dep_ready += 1
+                    except ValueError:
+                        pass
+
+            # Parse nodes: NAME STATUS ROLES AGE VERSION
+            node_ready, node_total = 0, 0
+            for line in (raw.get("nodes", "") or "").strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    node_total += 1
+                    if "ready" in parts[1].lower() and "notready" not in parts[1].lower():
+                        node_ready += 1
+
+            return jsonify({
+                "pods":        pod_counts,
+                "deployments": {"ready": dep_ready, "total": dep_total},
+                "nodes":       {"ready": node_ready, "total": node_total},
+            })
+
+        elif ttype == "docker":
+            raw = _run_many(target, {
+                "containers": "docker ps -a --format '{{.Status}}' 2>/dev/null",
+            })
+            running, stopped, total = 0, 0, 0
+            for line in (raw.get("containers", "") or "").strip().split("\n"):
+                if not line.strip():
+                    continue
+                total += 1
+                if line.lower().startswith("up"):
+                    running += 1
+                else:
+                    stopped += 1
+
+            return jsonify({
+                "containers": {"running": running, "stopped": stopped, "total": total},
+            })
+
+        elif ttype in ("ssh", "local"):
+            raw = _run_many(target, {
+                "failed": "systemctl list-units --state=failed --no-legend 2>/dev/null | wc -l",
+                "active": "systemctl list-units --state=active --no-legend 2>/dev/null | wc -l",
+            })
+            failed = 0
+            active = 0
+            try:
+                failed = int((raw.get("failed", "") or "0").strip())
+            except ValueError:
+                pass
+            try:
+                active = int((raw.get("active", "") or "0").strip())
+            except ValueError:
+                pass
+
+            return jsonify({
+                "services": {"active": active, "failed": failed, "total": active + failed},
+            })
+
+        else:
+            return jsonify({"error": f"unsupported target type: {ttype}"}), 400
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1107,16 +1438,35 @@ def api_search(tid):
             "nodes": f"kubectl get nodes --no-headers 2>/dev/null | grep -i -- {safe_q} | head -5",
             "deps":  f"kubectl get deployments -A --no-headers 2>/dev/null | grep -i -- {safe_q} | head -5",
         })
+
+        # run_command substitutes "[Exit code: N]" for any command that
+        # produces no stdout — which happens every time grep finds zero
+        # matches (grep exits 1). Treat those sentinels as empty, otherwise
+        # they get split into fake "[Exit / code: / N]" rows.
+        def _clean(out: str) -> str:
+            if not out:
+                return ""
+            s = out.strip()
+            if s.startswith("[Exit code:") or s.startswith("[TIMEOUT]"):
+                return ""
+            return s
+
         results = []
-        for line in (raw.get("pods") or "").strip().split("\n"):
+        for line in _clean(raw.get("pods", "")).split("\n"):
+            if not line:
+                continue
             parts = line.split()
             if len(parts) >= 4:
                 results.append({"kind": "pod", "namespace": parts[0], "name": parts[1], "status": parts[3]})
-        for line in (raw.get("nodes") or "").strip().split("\n"):
+        for line in _clean(raw.get("nodes", "")).split("\n"):
+            if not line:
+                continue
             parts = line.split()
             if len(parts) >= 2:
                 results.append({"kind": "node", "namespace": "", "name": parts[0], "status": parts[1]})
-        for line in (raw.get("deps") or "").strip().split("\n"):
+        for line in _clean(raw.get("deps", "")).split("\n"):
+            if not line:
+                continue
             parts = line.split()
             if len(parts) >= 4:
                 results.append({"kind": "deployment", "namespace": parts[0], "name": parts[1], "status": parts[2]})

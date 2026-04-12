@@ -107,15 +107,30 @@ AI_MODEL=ollama/llama3.1:8b
 # No API key needed
 ```
 
-**In Docker:** Ollama runs on the host, not in the container. You **must** set `OLLAMA_API_BASE` in `.env`:
+**In Docker:** Ollama runs on the host, not in the container. Two things must be correct:
 
+**1.** Set `OLLAMA_API_BASE` in `.env`:
 ```bash
 # .env
 AI_MODEL=ollama/llama3.1:8b
 OLLAMA_API_BASE=http://host.docker.internal:11434
 ```
 
-The launcher script (`docker-run.sh`) adds `--add-host=host.docker.internal:host-gateway` automatically for Linux.
+**2. Linux only — rebind Ollama to all interfaces.** By default on Linux, `ollama serve` binds to `127.0.0.1:11434`, which is only reachable from the host itself. Docker containers hitting `host.docker.internal:11434` get "connection refused". Fix:
+
+- **systemd install:** edit `/etc/systemd/system/ollama.service`, add under `[Service]`:
+  ```
+  Environment="OLLAMA_HOST=0.0.0.0:11434"
+  ```
+  then `sudo systemctl daemon-reload && sudo systemctl restart ollama`
+- **Manual start** (Codespace, WSL, dev):
+  ```bash
+  OLLAMA_HOST=0.0.0.0:11434 ollama serve &
+  ```
+
+macOS Ollama already binds to `0.0.0.0` — no change needed.
+
+The launcher script (`docker-run.sh`) adds `--add-host=host.docker.internal:host-gateway` automatically for Linux, so DNS resolution works out of the box. The bind issue is the only remaining gotcha.
 
 Without `OLLAMA_API_BASE`, the container tries to reach Ollama at `localhost:11434` inside itself — which doesn't exist.
 
@@ -263,26 +278,66 @@ AZIRO_API_KEY=<generated-key>
 1. **Paste in UI** — paste the kubeconfig YAML content directly in the "Kubeconfig content" textarea. The backend writes it to `/app/data/creds/<id>/kubeconfig` on the data volume. No host mounts needed.
 2. **Host mount** — the launcher script pre-mounts `~/.kube` read-only. Host kubeconfig changes are reflected instantly.
 
-**Local clusters (kind, minikube, kubeadm, k3s) in Docker:**
+**Local clusters (kind, minikube, kubeadm, k3s, Docker Desktop) in Docker:**
 
-These listen on `127.0.0.1` which is unreachable from inside Docker. The simplest fix is to rewrite the server URL to `host.docker.internal` and skip TLS verification (the cert won't include that hostname):
+Local clusters bind their API server to `127.0.0.1:<random-port>` on the host, which is unreachable from inside the Aziro container because the container's own loopback is separate. Two working approaches depending on the cluster:
+
+**Approach A — kind (preferred):** kind runs its control plane as a Docker container on a dedicated `kind` network. Connect the Aziro container to that network and use kind's built-in `--internal` kubeconfig, which resolves to the control-plane container's hostname (`<cluster>-control-plane:6443`) instead of host loopback.
 
 ```bash
-# Run once on the host — persists in ~/.kube/config
-kubectl config set-cluster <cluster-name> --server=https://host.docker.internal:6443 --insecure-skip-tls-verify=true
+# 1. Attach Aziro to the kind network (per container, not persistent)
+docker network connect kind aziro-ops
+
+# 2. Merge host-facing + internal-facing kubeconfigs under two context names
+kind get kubeconfig --name <cluster> > /tmp/kube-host.yaml
+kind get kubeconfig --name <cluster> --internal > /tmp/kube-internal.yaml
+sed -i 's/kind-<cluster>/kind-<cluster>-internal/g' /tmp/kube-internal.yaml
+KUBECONFIG=/tmp/kube-host.yaml:/tmp/kube-internal.yaml \
+  kubectl config view --flatten > ~/.kube/config
+chmod 644 ~/.kube/config
+
+# 3. Verify both work
+kubectl get nodes                                             # uses kind-<cluster>
+docker exec aziro-ops kubectl --context=kind-<cluster>-internal get nodes
 ```
 
-Replace `<cluster-name>` with your cluster name (run `kubectl config get-clusters` to check). No container restart needed — kubeconfig is a live bind mount.
+Replace `<cluster>` with your kind cluster name. In the Aziro UI use context **`kind-<cluster>-internal`** (the in-network one). Your host shell keeps using `kind-<cluster>` for normal `kubectl`.
 
-Then add the target in the UI with just the **Context** field filled in.
+To make the network attach persistent across rebuilds, add once the `kind` network exists:
 
-**Kubeconfig permissions:** The container runs as a non-root `aziro` user. If your `~/.kube/config` has `600` permissions, the container can't read it. Fix:
+```yaml
+# docker-compose.yml
+services:
+  aziro:
+    networks:
+      - default
+      - kind
+networks:
+  kind:
+    external: true
+```
+
+**Approach B — rewrite server URL (minikube, Docker Desktop, or kind recreated with a fixed port):** Works when the API server is bound to `0.0.0.0` or a predictable port. Point the cluster entry at `host.docker.internal` and skip TLS verification (the cert won't include that hostname):
+
+```bash
+kubectl config set-cluster <cluster-name> \
+  --server=https://host.docker.internal:6443 \
+  --insecure-skip-tls-verify=true
+```
+
+No container restart needed — kubeconfig is a live bind mount. Add the target in the UI with just the **Context** field filled in.
+
+**Kubeconfig permissions:** The container runs as a non-root `aziro` user. Local kubeconfigs are usually `600`, so the container's read-only mount gets "permission denied". Fix:
 
 ```bash
 chmod 644 ~/.kube/config
 ```
 
-**Alternative — paste in UI:** Instead of fixing host permissions, paste the kubeconfig YAML directly in the UI's **Kubeconfig content** field. Run `kubectl config view --minify --raw --flatten` to get it. Remember to change `127.0.0.1` to `host.docker.internal` in the pasted YAML.
+Safe on ephemeral dev environments (Codespaces, kind VMs). On a shared machine, scope it to an `aziro` group instead — see the [security note in the troubleshooting section](#permission-denied-on-kubeconfig).
+
+**Alternative — paste in UI:** Skip host mounts entirely and paste kubeconfig YAML directly into the **Kubeconfig content** field. Run `kubectl config view --minify --raw --flatten --context=<ctx>` to get a standalone kubeconfig. Remember to rewrite the server URL to something the container can reach.
+
+**GitHub Codespaces:** kind works great in Codespaces (Docker-in-Docker is already available). Follow Approach A above exactly — the `docker network connect kind` step is the key. For Codespaces-specific Ollama setup, see the Ollama section.
 
 #### Amazon EKS
 
@@ -584,7 +639,8 @@ These are written to `/app/data/creds/<target-id>/` on the volume and encrypted 
 
 | Target | Mount approach | Inline approach (no mount) |
 | ------ | -------------- | -------------------------- |
-| K8s (local cluster) | `--network kind` + rewrite kubeconfig | Paste kubeconfig with internal hostname |
+| K8s (kind) | `docker network connect kind` + `--internal` kubeconfig | Paste kubeconfig with internal hostname |
+| K8s (minikube/Docker Desktop) | Rewrite server URL to `host.docker.internal` | Paste kubeconfig with `host.docker.internal` |
 | K8s (EKS) | Pre-mounted `~/.aws` | Enter access key + secret in UI |
 | K8s (GKE) | Pre-mounted `~/.config/gcloud` | Paste SA key JSON in UI |
 | K8s (AKS) | Pre-mounted `~/.azure` | Service principal creds |
@@ -617,13 +673,23 @@ The `aws` CLI is missing. In Docker, it's baked into the image via multi-stage b
 
 ### "connection refused" (local cluster from Docker)
 
-Local clusters listen on `127.0.0.1` which is the container's loopback, not the host's. Fix:
+Local clusters listen on `127.0.0.1` which is the container's loopback, not the host's. Two fixes depending on the cluster type:
+
+**For kind** (API server bound to a random host port — verify with `docker port <cluster>-control-plane 6443/tcp`):
+
+```bash
+docker network connect kind aziro-ops
+kind get kubeconfig --name <cluster> --internal > ~/.kube/config
+chmod 644 ~/.kube/config
+```
+
+**For minikube / Docker Desktop / kind with a fixed 6443 binding:**
 
 ```bash
 kubectl config set-cluster <cluster-name> --server=https://host.docker.internal:6443 --insecure-skip-tls-verify=true
 ```
 
-No container restart needed. See [Local kubeconfig](#local-kubeconfig-kind-minikube-docker-desktop) for details.
+No container restart needed. See [Local kubeconfig](#local-kubeconfig-kind-minikube-docker-desktop) for the full walk-through including the two-context merge so your host `kubectl` keeps working.
 
 ### "tls: failed to verify certificate: x509: certificate is valid for ... not host.docker.internal"
 
@@ -640,6 +706,8 @@ The container runs as non-root user `aziro`. If `~/.kube/config` has `600` permi
 ```bash
 chmod 644 ~/.kube/config
 ```
+
+**Safe on ephemeral dev environments** (Codespaces, a kind VM, a personal laptop you control). On a shared machine where others have host access, scope the loosening to an `aziro` group instead — or skip host mounts entirely and paste the kubeconfig YAML into the UI's **Kubeconfig content** field.
 
 ### "Ollama is not running"
 

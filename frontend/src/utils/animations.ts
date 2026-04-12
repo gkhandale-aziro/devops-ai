@@ -56,8 +56,8 @@ export const TAB_TRANSITION =
 
 /** Tab hover style for inactive tabs */
 export const tabHoverStyle = {
-  color: "#94a3b8",
-  background: "rgba(99,102,241,0.06)",
+  color: "var(--c-text-secondary)",
+  background: "var(--c-accent-dim)",
 };
 
 /** Global keyframes CSS — inject once via <style> tag */
@@ -95,7 +95,7 @@ export const GLOBAL_KEYFRAMES = `
    that doesn't already set its own outline. Mouse clicks don't trigger this,
    so it only appears for tab/arrow-key navigation. */
 :focus-visible {
-  outline: 2px solid #818cf8 !important;
+  outline: 2px solid var(--c-accent-hover) !important;
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -113,7 +113,7 @@ export const statusPulseStyle = {
 
 /** Skeleton shimmer gradient for loading placeholders */
 export const skeletonStyle = {
-  background: "linear-gradient(90deg, #1a1d27 25%, #2d3148 50%, #1a1d27 75%)",
+  background: "linear-gradient(90deg, var(--c-bg-raised) 25%, var(--c-bg-overlay) 50%, var(--c-bg-raised) 75%)",
   backgroundSize: "200% 100%",
   animation: "shimmer 1.5s ease-in-out infinite",
   borderRadius: 6,

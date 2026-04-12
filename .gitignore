@@ -18,6 +18,9 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/.playwright/
 
+# Test coverage reports
+frontend/coverage/
+
 # Editor / tooling
 .vscode/
 .idea/

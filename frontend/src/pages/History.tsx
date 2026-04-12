@@ -1,19 +1,126 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
-import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
+import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight, Clock } from "lucide-react";
+import { Breadcrumb } from "../components/ui/breadcrumb";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { StoredEvent, TriageLevel, Snapshot, Analysis, IncidentStatus } from "../types";
-import { LEVEL_COLORS, LEVEL_LABELS, levelColor } from "../types";
+import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
 import { api } from "../api/client";
 import { LevelBadge }   from "../components/LevelBadge";
 import { AIDrawer }      from "../components/AIDrawer";
 import { skeletonStyle } from "../utils/animations";
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACE } from "../utils/theme";
+import { DataTable }     from "@/components/ui/data-table";
+import { Badge }         from "@/components/ui/badge";
+import { EmptyState }    from "@/components/ui/empty-state";
 
 const LEVELS: TriageLevel[] = ["SEV1", "SEV2", "SEV3"];
 
 const STATUS_STYLES: Record<IncidentStatus, { color: string; bg: string; label: string }> = {
-  open:         { color: "#fb7185", bg: "#2a0011",  label: "Open"         },
-  acknowledged: { color: "#fbbf24", bg: "#2a1a00",  label: "Acknowledged" },
-  resolved:     { color: "#22c55e", bg: "#0a2a1a",  label: "Resolved"     },
+  open:         { color: "var(--c-sev1)",  bg: "var(--c-sev1-bg)",  label: "Open"         },
+  acknowledged: { color: "var(--c-sev2)",  bg: "var(--c-sev2-bg)",  label: "Acknowledged" },
+  resolved:     { color: "var(--c-green)", bg: "var(--c-green-bg)", label: "Resolved"     },
 };
+
+/**
+ * Builds column definitions for the incident history DataTable.
+ * Accepts closures so cell renderers can access per-render state without
+ * prop-drilling through DataTable internals (same pattern as PodTable).
+ */
+function buildIncidentColumns(opts: {
+  openAIForEvent: (ev: StoredEvent) => void;
+}): ColumnDef<StoredEvent, unknown>[] {
+  const { openAIForEvent } = opts;
+  return [
+    {
+      accessorKey: "level",
+      header: "Severity",
+      cell: ({ row }) => <LevelBadge level={row.original.level} />,
+    },
+    {
+      accessorKey: "timestamp",
+      header: "Time",
+      cell: ({ row }) => (
+        <span
+          title={row.original.timestamp}
+          className="text-xs text-muted-foreground whitespace-nowrap"
+        >
+          {relativeTime(row.original.timestamp)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "reason",
+      header: "Reason",
+      cell: ({ row }) => {
+        const e = row.original;
+        return (
+          <div>
+            <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium }}>{e.reason}</div>
+            {e.last_diagnosis && (
+              <div style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)", marginTop: SPACE.xxs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
+                <Sparkles size={9} style={{ display: "inline", marginRight: 3 }} />
+                {e.last_diagnosis.slice(0, 80)}{e.last_diagnosis.length > 80 ? "…" : ""}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "object",
+      header: "Object / Source",
+      cell: ({ row }) => {
+        const e = row.original;
+        return (
+          <div style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium }}>{e.object}</div>
+            <div style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)" }}>
+              {e.source}{e.namespace ? ` / ${e.namespace}` : ""}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const ss = STATUS_STYLES[row.original.status ?? "open"];
+        return (
+          <Badge
+            className="text-[10px] font-semibold"
+            style={{ color: ss.color, background: ss.bg, borderColor: ss.color + "44" }}
+          >
+            {ss.label}
+          </Badge>
+        );
+      },
+    },
+    {
+      id: "ai_action",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <button
+          onClick={(ev) => { ev.stopPropagation(); openAIForEvent(row.original); }}
+          title="Ask AI about this incident"
+          style={{
+            background: "var(--c-accent-dim)",
+            border: "1px solid var(--c-border)",
+            color: "var(--c-accent-hover)",
+            borderRadius: RADIUS.md,
+            padding: "4px 10px",
+            fontSize: FONT_SIZE.sm,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <Sparkles size={10} style={{ marginRight: 3, display: "inline" }} /> AI
+        </button>
+      ),
+    },
+  ];
+}
 
 function relativeTime(ts: string): string {
   const ms = new Date(ts).getTime();
@@ -31,6 +138,7 @@ export function History() {
   const [loading,       setLoading]       = useState(true);
   const [loadError,     setLoadError]     = useState("");
   const [level,         setLevel]         = useState<TriageLevel | "">("");
+  const [nsFilter,      setNsFilter]      = useState("");
   const [objFilter,     setObjFilter]     = useState("");
   const [objInput,      setObjInput]      = useState("");
   const [selectedId,    setSelectedId]    = useState<number | null>(null);
@@ -81,7 +189,7 @@ export function History() {
     }
   }
 
-  function openAIForEvent(ev: StoredEvent) {
+  const openAIForEvent = useCallback((ev: StoredEvent) => {
     const snaps = (ev.snapshots ?? [])
       .map(s => `\n── ${s.kind} ──\n${s.content?.slice(0, 1500)}`)
       .join("\n");
@@ -93,7 +201,20 @@ export function History() {
     setAiContext(prompt);
     setAiTitle(`AI: ${ev.reason} — ${ev.object}`);
     setAiDrawerOpen(true);
-  }
+  }, []);
+
+  /** Column defs are rebuilt only when openAIForEvent changes (stable ref). */
+  const incidentColumns = useMemo(
+    () => buildIncidentColumns({ openAIForEvent }),
+    [openAIForEvent]
+  );
+
+  /** Highlight selected row + add severity left-border accent via CSS classes. */
+  const getRowClassName = useCallback((e: StoredEvent): string => {
+    const parts: string[] = [];
+    if (e.id === selectedId) parts.push("bg-[var(--c-bg-active)]");
+    return parts.join(" ");
+  }, [selectedId]);
 
   async function updateStatus(ev: StoredEvent, status: IncidentStatus) {
     await api.events.updateStatus(ev.id, status);
@@ -101,26 +222,48 @@ export function History() {
     setEvents((prev: StoredEvent[]) => prev.map((e: StoredEvent) => e.id === ev.id ? { ...e, status } : e));
   }
 
-  const sevColor = (lv: string) => levelColor(lv).border;
-  const hasFilters = level !== "" || objInput !== "";
+  const namespaces = useMemo(() => {
+    const s = new Set(events.map(e => e.namespace).filter(Boolean));
+    return Array.from(s).sort();
+  }, [events]);
+
+  const filtered = useMemo(() => {
+    const base = nsFilter ? events.filter(e => e.namespace === nsFilter) : events;
+    // Deduplicate: group by object + reason, keep latest (first in list), add count to message
+    const seen: Record<string, { event: StoredEvent; count: number }> = {};
+    for (const e of base) {
+      const key = `${e.object}|${e.reason}`;
+      if (seen[key]) {
+        seen[key].count++;
+      } else {
+        seen[key] = { event: e, count: 1 };
+      }
+    }
+    return Object.values(seen).map(({ event, count }) =>
+      count > 1 ? { ...event, message: `(×${count}) ${event.message}` } : event
+    );
+  }, [events, nsFilter]);
+
+  const hasFilters = level !== "" || objInput !== "" || nsFilter !== "";
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)", margin: -1 }}>Incident History</h1>
 
       {/* ── Page header + filters (top bar) ─────────────────────────────── */}
       <div style={{
         padding: "12px 20px",
-        borderBottom: "1px solid #1e2235",
+        borderBottom: "1px solid var(--c-border)",
         display: "flex",
         alignItems: "center",
         gap: 14,
         flexShrink: 0,
-        background: "#0f1219",
+        background: "var(--c-bg-raised)",
       }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c8cf8" strokeWidth="2">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
-        <strong style={{ fontSize: 15 }}>Incident History</strong>
+        <Breadcrumb items={[
+          { label: "Home", href: "/" },
+          { label: "Incident History", icon: <Clock size={14} /> },
+        ]} />
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {/* Severity filter pills */}
@@ -128,24 +271,45 @@ export function History() {
             <button
               onClick={() => setLevel("")}
               style={{
-                padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: "pointer",
-                background: level === "" ? "#1e2240" : "transparent",
-                border: `1px solid ${level === "" ? "#7c8cf8" : "#2d3148"}`,
-                color: level === "" ? "#7c8cf8" : "#64748b",
+                padding: "4px 10px", borderRadius: RADIUS.xl, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
+                background: level === "" ? "var(--c-bg-active)" : "transparent",
+                border: `1px solid ${level === "" ? "var(--c-accent-hover)" : "var(--c-border-strong)"}`,
+                color: level === "" ? "var(--c-accent-hover)" : "var(--c-text-muted)",
               }}
             >All</button>
             {LEVELS.map(l => {
               const c = LEVEL_COLORS[l];
               return (
                 <button key={l} onClick={() => setLevel(l)} style={{
-                  padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  padding: "4px 10px", borderRadius: RADIUS.xl, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
                   background: level === l ? c.bg : "transparent",
-                  border: `1px solid ${level === l ? c.border : "#2d3148"}`,
-                  color: level === l ? c.text : "#64748b",
+                  border: `1px solid ${level === l ? c.border : "var(--c-border-strong)"}`,
+                  color: level === l ? c.text : "var(--c-text-muted)",
                 }}>{l}</button>
               );
             })}
           </div>
+
+          {/* Namespace filter */}
+          <select
+            value={nsFilter}
+            onChange={e => setNsFilter(e.target.value)}
+            aria-label="Filter by namespace"
+            style={{
+              background: "var(--c-bg-surface)",
+              border: `1px solid ${nsFilter ? "var(--c-accent-hover)" : "var(--c-border-strong)"}`,
+              color: nsFilter ? "var(--c-accent-hover)" : "var(--c-text-muted)",
+              borderRadius: RADIUS.md,
+              padding: "5px 8px",
+              fontSize: FONT_SIZE.sm,
+              fontWeight: FONT_WEIGHT.semibold,
+              outline: "none",
+              cursor: "pointer",
+            }}
+          >
+            <option value="">All Namespaces</option>
+            {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
+          </select>
 
           {/* Object search */}
           <div style={{ position: "relative" }}>
@@ -154,17 +318,17 @@ export function History() {
               onChange={e => handleObjInput(e.target.value)}
               placeholder="Search object…"
               style={{
-                background: "#161a26",
-                border: "1px solid #2d3148",
-                color: "#e2e8f0",
-                borderRadius: 6,
+                background: "var(--c-bg-surface)",
+                border: "1px solid var(--c-border-strong)",
+                color: "var(--c-text-primary)",
+                borderRadius: RADIUS.md,
                 padding: "5px 10px 5px 30px",
-                fontSize: 12,
+                fontSize: FONT_SIZE.sm,
                 outline: "none",
                 width: 180,
               }}
             />
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-muted)" strokeWidth="2"
               style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)" }}>
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
@@ -172,19 +336,19 @@ export function History() {
 
           {hasFilters && (
             <button
-              onClick={() => { setLevel(""); setObjInput(""); setObjFilter(""); }}
-              style={{ background: "none", border: "none", color: "#64748b", fontSize: 11, cursor: "pointer", padding: "2px 6px" }}
+              onClick={() => { setLevel(""); setObjInput(""); setObjFilter(""); setNsFilter(""); }}
+              style={{ background: "none", border: "none", color: "var(--c-text-muted)", fontSize: FONT_SIZE.sm, cursor: "pointer", padding: "2px 6px" }}
             >Clear</button>
           )}
 
-          <div style={{ width: 1, height: 20, background: "#2d3148", flexShrink: 0 }} />
-          <span style={{ fontSize: 12, color: "#64748b" }}>
-            {loading ? "Loading…" : `${events.length} event${events.length !== 1 ? "s" : ""}`}
+          <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
+          <span style={{ fontSize: FONT_SIZE.sm, color: "var(--c-text-muted)" }}>
+            {loading ? "Loading…" : `${filtered.length} event${filtered.length !== 1 ? "s" : ""}`}
           </span>
           <button
             onClick={load}
             title="Refresh"
-            style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}
+            style={{ background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="23 4 23 10 17 10"/>
@@ -201,7 +365,7 @@ export function History() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
           <div style={{ flex: 1, overflowY: "auto" }}>
             {loadError && (
-              <div style={{ margin: 16, padding: "10px 14px", background: "#2a0011", border: "1px solid #f43f5e", borderRadius: 8, fontSize: 12, color: "#fb7185" }}>
+              <div style={{ margin: SPACE.lg, padding: "10px 14px", background: "var(--c-sev1-bg)", border: "1px solid var(--c-sev1)", borderRadius: RADIUS.lg, fontSize: FONT_SIZE.sm, color: "var(--c-sev1)" }}>
                 {loadError}
               </div>
             )}
@@ -209,98 +373,32 @@ export function History() {
             {loading && !loadError && (
               <div style={{ padding: "8px 0" }}>
                 {[...Array(6)].map((_, i) => (
-                  <div key={i} style={{ display: "flex", gap: 12, padding: "10px 20px", borderBottom: "1px solid #1e2130" }}>
-                    <div style={{ width: 60, height: 18, background: "#1a1d27", borderRadius: 4, animation: "pulse 1.5s infinite" }} />
-                    <div style={{ width: 80, height: 18, background: "#1a1d27", borderRadius: 4, animation: "pulse 1.5s infinite" }} />
-                    <div style={{ flex: 1, height: 18, background: "#1a1d27", borderRadius: 4, animation: "pulse 1.5s infinite" }} />
+                  <div key={i} style={{ display: "flex", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--c-border)" }}>
+                    <div style={{ width: 60, height: 18, background: "var(--c-bg-card)", borderRadius: 4, animation: "pulse 1.5s infinite" }} />
+                    <div style={{ width: 80, height: 18, background: "var(--c-bg-card)", borderRadius: 4, animation: "pulse 1.5s infinite" }} />
+                    <div style={{ flex: 1, height: 18, background: "var(--c-bg-card)", borderRadius: 4, animation: "pulse 1.5s infinite" }} />
                   </div>
                 ))}
               </div>
             )}
 
-            {!loading && !loadError && events.length === 0 && (
-              <div style={{ textAlign: "center", color: "#64748b", fontSize: 13, paddingTop: 80 }}>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2d3148" strokeWidth="1.2" style={{ marginBottom: 12 }}>
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-                <div>No incidents recorded yet.</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>Start monitoring a target to capture events.</div>
-              </div>
+            {!loading && !loadError && filtered.length === 0 && (
+              <EmptyState
+                icon={<Clock size={32} />}
+                title="No incidents recorded yet"
+                description="Start monitoring a target to capture events."
+              />
             )}
 
-            {events.length > 0 && (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#0d1117", position: "sticky", top: 0, zIndex: 1 }}>
-                    {["", "Severity", "Time", "Reason", "Object / Source", "Status", ""].map((h, i) => (
-                      <th key={i} style={{ padding: "9px 14px", textAlign: "left", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", borderBottom: "1px solid #2d3148" }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.map(e => {
-                    const isSelected = e.id === selectedId;
-                    const ss = STATUS_STYLES[e.status ?? "open"];
-                    return (
-                      <tr
-                        key={e.id}
-                        onClick={() => openDetail(e.id)}
-                        style={{
-                          borderBottom: "1px solid #1e2130",
-                          cursor: "pointer",
-                          background: isSelected ? "#1a2040" : "transparent",
-                          transition: "background .1s",
-                        }}
-                        onMouseEnter={ev => { if (!isSelected) ev.currentTarget.style.background = "#14172266"; }}
-                        onMouseLeave={ev => { if (!isSelected) ev.currentTarget.style.background = "transparent"; }}
-                      >
-                        <td style={{ width: 3, padding: 0, background: sevColor(e.level) }} />
-                        <td style={{ padding: "9px 14px" }}><LevelBadge level={e.level} /></td>
-                        <td style={{ padding: "9px 14px", fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>
-                          <span title={e.timestamp}>{relativeTime(e.timestamp)}</span>
-                        </td>
-                        <td style={{ padding: "9px 14px" }}>
-                          <div style={{ fontSize: 13, fontWeight: 500 }}>{e.reason}</div>
-                          {e.last_diagnosis && (
-                            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
-                              <Sparkles size={9} style={{ display: "inline", marginRight: 3 }} /> {e.last_diagnosis.slice(0, 80)}{e.last_diagnosis.length > 80 ? "…" : ""}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: "9px 14px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          <div style={{ fontSize: 13, fontWeight: 500 }}>{e.object}</div>
-                          <div style={{ fontSize: 10, color: "#64748b" }}>{e.source}{e.namespace ? ` / ${e.namespace}` : ""}</div>
-                        </td>
-                        <td style={{ padding: "9px 14px" }}>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: ss.color, background: ss.bg, border: `1px solid ${ss.color}44`, borderRadius: 4, padding: "2px 7px" }}>
-                            {ss.label}
-                          </span>
-                        </td>
-                        <td style={{ padding: "9px 14px" }}>
-                          <button
-                            onClick={(ev) => { ev.stopPropagation(); openAIForEvent(e); }}
-                            title="Ask AI about this incident"
-                            style={{
-                              background: "#7c8cf811",
-                              border: "1px solid #7c8cf833",
-                              color: "#7c8cf8",
-                              borderRadius: 6,
-                              padding: "4px 10px",
-                              fontSize: 11,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            <Sparkles size={10} style={{ marginRight: 3 }} /> AI
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            {filtered.length > 0 && (
+              <DataTable<StoredEvent>
+                columns={incidentColumns}
+                data={filtered}
+                onRowClick={(e) => openDetail(e.id)}
+                getRowClassName={getRowClassName}
+                emptyMessage="No incidents recorded yet."
+                keyboardNav
+              />
             )}
           </div>
         </div>
@@ -309,20 +407,20 @@ export function History() {
         {(detail || detailLoading) && (
           <div style={{
             width: 420,
-            background: "#13161f",
-            borderLeft: "1px solid #2d3148",
+            background: "var(--c-bg-panel)",
+            borderLeft: "1px solid var(--c-border-strong)",
             display: "flex",
             flexDirection: "column",
             flexShrink: 0,
             animation: "slideInRight .2s ease-out",
           }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid #2d3148", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-strong)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
               {detail && <LevelBadge level={detail.level} showLabel />}
-              <strong style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <strong style={{ fontSize: FONT_SIZE.md, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {detail?.reason ?? "Loading…"}
               </strong>
               <button onClick={() => { setDetail(null); setSelectedId(null); }}
-                style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center" }}><X size={16} /></button>
+                style={{ background: "none", border: "none", color: "var(--c-text-muted)", cursor: "pointer", display: "flex", alignItems: "center" }}><X size={16} /></button>
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
@@ -331,7 +429,7 @@ export function History() {
               {detail && (
                 <>
                   {/* meta grid */}
-                  <div style={{ background: "#0f1219", border: "1px solid #2d3148", borderRadius: 8, padding: 12, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
+                  <div style={{ background: "var(--c-bg-raised)", border: "1px solid var(--c-border-strong)", borderRadius: RADIUS.lg, padding: SPACE.md, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: SPACE.sm, fontSize: FONT_SIZE.sm }}>
                     <MetaRow label="Object"    value={detail.object} />
                     <MetaRow label="Namespace" value={detail.namespace || "—"} />
                     <MetaRow label="Source"    value={detail.source} />
@@ -350,10 +448,10 @@ export function History() {
                             key={s}
                             onClick={() => updateStatus(detail, s)}
                             style={{
-                              flex: 1, padding: "6px 8px", fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: "pointer",
-                              background: active ? ss.bg : "#0f1219",
-                              border: `1px solid ${active ? ss.color : "#2d3148"}`,
-                              color: active ? ss.color : "#64748b",
+                              flex: 1, padding: "6px 8px", fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, borderRadius: RADIUS.md, cursor: "pointer",
+                              background: active ? ss.bg : "var(--c-bg-raised)",
+                              border: `1px solid ${active ? ss.color : "var(--c-border-strong)"}`,
+                              color: active ? ss.color : "var(--c-text-muted)",
                               transition: "all .15s",
                             }}
                           >{ss.label}</button>
@@ -364,7 +462,7 @@ export function History() {
 
                   {detail.message && (
                     <Section label="Event Message">
-                      <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>{detail.message}</div>
+                      <div style={{ fontSize: FONT_SIZE.sm, color: "var(--c-text-secondary)", lineHeight: 1.6 }}>{detail.message}</div>
                     </Section>
                   )}
 
@@ -374,12 +472,12 @@ export function History() {
                     style={{
                       width: "100%",
                       padding: "10px 14px",
-                      background: "#7c8cf811",
-                      border: "1px solid #7c8cf833",
-                      color: "#7c8cf8",
-                      borderRadius: 8,
-                      fontSize: 13,
-                      fontWeight: 600,
+                      background: "var(--c-accent-dim)",
+                      border: "1px solid var(--c-border)",
+                      color: "var(--c-accent-hover)",
+                      borderRadius: RADIUS.lg,
+                      fontSize: FONT_SIZE.md,
+                      fontWeight: FONT_WEIGHT.semibold,
                       cursor: "pointer",
                       marginBottom: 14,
                       display: "flex",
@@ -401,7 +499,7 @@ export function History() {
                     };
                     return (
                       <CollapsibleSection key={kind} label={labels[kind]}>
-                        <pre style={{ background: "#0d1117", color: "#c9d1d9", borderRadius: 6, padding: 10, fontSize: 11, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", margin: 0 }}>
+                        <pre style={{ background: "var(--c-bg-overlay)", color: "var(--c-text-secondary)", borderRadius: RADIUS.md, padding: 10, fontSize: FONT_SIZE.sm, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", margin: 0 }}>
                           {snap.content}
                         </pre>
                       </CollapsibleSection>
@@ -410,16 +508,16 @@ export function History() {
 
                   {(detail.analyses ?? []).slice(-1).map((a: Analysis) => a.remediation ? (
                     <Section key={a.id} label="Proposed Remediation">
-                      <div style={{ background: "#0f1219", border: "1px solid #f59e0b44", borderRadius: 6, padding: 12, fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "#fbbf24" }}>
+                      <div style={{ background: "var(--c-bg-raised)", border: "1px solid var(--c-sev2-bg)", borderRadius: RADIUS.md, padding: SPACE.md, fontSize: FONT_SIZE.sm, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--c-sev2)" }}>
                         {a.remediation}
                       </div>
                     </Section>
                   ) : null)}
 
-                  <div style={{ display: "flex", gap: 10, marginTop: 8, paddingTop: 12, borderTop: "1px solid #2d3148" }}>
+                  <div style={{ display: "flex", gap: 10, marginTop: 8, paddingTop: 12, borderTop: "1px solid var(--c-border-strong)" }}>
                     <button
                       onClick={() => { setObjInput(detail.object); setObjFilter(detail.object); setDetail(null); setSelectedId(null); }}
-                      style={{ background: "none", border: "none", color: "#7c8cf8", fontSize: 12, cursor: "pointer", padding: 0 }}
+                      style={{ background: "none", border: "none", color: "var(--c-accent-hover)", fontSize: FONT_SIZE.sm, cursor: "pointer", padding: 0 }}
                     >
                       View all for {detail.object} <ArrowRight size={11} style={{ marginLeft: 3 }} />
                     </button>
@@ -441,14 +539,14 @@ export function History() {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function FieldLabel({ children }: { children: ReactNode }) {
-  return <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".8px", color: "#64748b", marginBottom: 4 }}>{children}</div>;
+  return <div style={{ fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, textTransform: "uppercase", letterSpacing: ".8px", color: "var(--c-text-muted)", marginBottom: SPACE.xs }}>{children}</div>;
 }
 
 function MetaRow({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px" }}>{label}</div>
-      <div style={{ fontSize: 12, color: "#e2e8f0", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={title}>{value}</div>
+      <div style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)", textTransform: "uppercase", letterSpacing: ".5px" }}>{label}</div>
+      <div style={{ fontSize: FONT_SIZE.sm, color: "var(--c-text-primary)", marginTop: SPACE.xxs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={title}>{value}</div>
     </div>
   );
 }
@@ -456,7 +554,7 @@ function MetaRow({ label, value, title }: { label: string; value: string; title?
 function Section({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, textTransform: "uppercase", color: "#64748b", letterSpacing: ".5px", marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: FONT_SIZE.sm, textTransform: "uppercase", color: "var(--c-text-muted)", letterSpacing: ".5px", marginBottom: 5 }}>{label}</div>
       {children}
     </div>
   );
@@ -470,8 +568,8 @@ function CollapsibleSection({ label, children }: { label: string; children: Reac
         onClick={() => setOpen(o => !o)}
         style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "5px 0", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
       >
-        <span style={{ color: "#64748b", display: "flex", alignItems: "center" }}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
-        <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".5px", color: "#64748b" }}>{label}</span>
+        <span style={{ color: "var(--c-text-muted)", display: "flex", alignItems: "center" }}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+        <span style={{ fontSize: FONT_SIZE.sm, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--c-text-muted)" }}>{label}</span>
       </button>
       {open && children}
     </div>
