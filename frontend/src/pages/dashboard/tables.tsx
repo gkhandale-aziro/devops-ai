@@ -153,7 +153,7 @@ export function NodeTable({ raw, target }: { raw: string; target: Target }) {
   if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 overflow-auto">
       <DataTable<NodeRowData>
         columns={NODE_COLUMNS}
         data={parsedRows}
@@ -455,7 +455,7 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
   if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 overflow-auto">
       {podCounts.total > 0 && <PodSummaryBar counts={podCounts} />}
 
       <DataTable<PodRowData>
