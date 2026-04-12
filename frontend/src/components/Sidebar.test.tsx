@@ -60,7 +60,7 @@ const defaultProps = {
   monitorActive: false,
   aiModel: "gemini/gemini-2.0-flash",
   onModelChange: vi.fn(),
-  modelStatus: "healthy" as const,
+  modelStatus: "healthy" as "healthy" | "degraded" | "fallback" | "unavailable",
   collapsed: false,
   onToggle: vi.fn(),
 };
@@ -246,5 +246,83 @@ describe("Sidebar", () => {
   it("renders ThemeToggle in footer", () => {
     renderSidebar();
     expect(screen.getByTestId("theme-toggle")).toBeInTheDocument();
+  });
+
+  // ── Additional coverage tests ─────────────────────────────────────────────
+
+  it("renders collapsed connection icons when collapsed with targets", () => {
+    renderSidebar({ collapsed: true, targets: [k8sTarget, sshTarget] });
+    // Should show type icons but not target names as text
+    expect(screen.queryByText("prod-cluster")).not.toBeInTheDocument();
+    expect(screen.queryByText("bastion-host")).not.toBeInTheDocument();
+    // Icons should still be rendered
+    expect(screen.getByText("K8sIcon")).toBeInTheDocument();
+    expect(screen.getByText("SSHIcon")).toBeInTheDocument();
+  });
+
+  it("shows collapsed connections header with online count", () => {
+    renderSidebar({ collapsed: true, targets: [k8sTarget, sshTarget] });
+    // Collapsed header shows count like "1/2"
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    // Should NOT show the "Connections" label text
+    expect(screen.queryByText("Connections")).not.toBeInTheDocument();
+  });
+
+  it("renders Add Connection as icon-only button when collapsed", () => {
+    const onAddClick = vi.fn();
+    renderSidebar({ collapsed: true, onAddClick });
+    // No "Add Connection" text in collapsed mode
+    expect(screen.queryByText("Add Connection")).not.toBeInTheDocument();
+    // The data-tour attribute should still exist on the button
+    const addBtn = document.querySelector("[data-tour='add-connection']") as HTMLElement;
+    expect(addBtn).not.toBeNull();
+    fireEvent.click(addBtn);
+    expect(onAddClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders Restore tips button in expanded mode", () => {
+    renderSidebar();
+    expect(screen.getByText("Restore tips")).toBeInTheDocument();
+  });
+
+  it("does not render Restore tips in collapsed mode", () => {
+    renderSidebar({ collapsed: true });
+    expect(screen.queryByText("Restore tips")).not.toBeInTheDocument();
+  });
+
+  it("shows active connection with highlighted styling", () => {
+    renderSidebar({ targets: [k8sTarget], activeId: "t1" });
+    // The connection row for the active target should exist
+    expect(screen.getByText("prod-cluster")).toBeInTheDocument();
+  });
+
+  it("highlights Settings nav item when on /settings route", () => {
+    renderSidebar({}, "/settings");
+    const settingsLink = screen.getByText("Settings").closest("a")!;
+    expect(settingsLink).toHaveAttribute("data-active", "true");
+  });
+
+  it("highlights Home nav item when on / route", () => {
+    renderSidebar({}, "/");
+    const homeLink = screen.getByText("Home").closest("a")!;
+    expect(homeLink).toHaveAttribute("data-active", "true");
+  });
+
+  it("renders model status dot in footer", () => {
+    renderSidebar({ modelStatus: "degraded" });
+    // The model button should be present with a status indicator
+    const modelButton = screen.getByTitle("Click to change AI model");
+    expect(modelButton).toBeInTheDocument();
+  });
+
+  it("displays AziroOps brand name in expanded mode", () => {
+    renderSidebar();
+    expect(screen.getByText(/Aziro/)).toBeInTheDocument();
+    expect(screen.getByText("DevOps AI Platform")).toBeInTheDocument();
+  });
+
+  it("hides brand text in collapsed mode", () => {
+    renderSidebar({ collapsed: true });
+    expect(screen.queryByText("DevOps AI Platform")).not.toBeInTheDocument();
   });
 });
