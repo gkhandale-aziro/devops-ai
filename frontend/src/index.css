@@ -192,6 +192,8 @@ body {
 .hover-text-primary:hover  { color: var(--c-text-primary) !important; }
 .hover-text-accent:hover   { color: var(--c-accent) !important; }
 .hover-opacity-full:hover  { opacity: 1 !important; }
+.hover-text-danger:hover   { color: var(--c-status-danger, #ef4444) !important; }
+.hover-glow-accent:hover   { box-shadow: 0 0 12px var(--c-accent-dim) !important; }
 
 /* Nav item — Sidebar navigation links */
 .nav-item {

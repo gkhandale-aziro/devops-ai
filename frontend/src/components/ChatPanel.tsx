@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Check, X as XIcon, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown, RotateCcw, Pencil } from "lucide-react";
 import type { ChatMsg, ToolCall } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
-import { C } from "../utils/theme";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 import { api } from "../api/client";
 
 interface Props {
@@ -64,10 +64,10 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
         aria-live="polite"
         aria-busy={loading}
         aria-label="Chat messages"
-        style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}
+        style={{ flex: 1, overflowY: "auto", padding: `${SPACE.xl}px ${SPACE.xxl}px`, display: "flex", flexDirection: "column", gap: SPACE.lg }}
       >
         {visibleMessages.length === 0 && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, color: "var(--c-text-muted)", paddingTop: 40 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, color: C.text.muted, paddingTop: 40 }}>
             <div style={{
               width: 52, height: 52, borderRadius: 14,
               background: `${C.accent.primary}18`, border: `1px solid ${C.accent.primary}33`,
@@ -78,8 +78,8 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
               </svg>
             </div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 14, color: "var(--c-text-secondary)", fontWeight: 600, marginBottom: 4 }}>AI Assistant</div>
-              <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+              <div style={{ fontSize: FONT_SIZE.md, color: C.text.secondary, fontWeight: FONT_WEIGHT.semibold, marginBottom: SPACE.xs }}>AI Assistant</div>
+              <div style={{ fontSize: FONT_SIZE.sm, lineHeight: 1.6 }}>
                 {placeholder ?? "Ask anything about this target…"}
               </div>
             </div>
@@ -91,26 +91,26 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
           const isLast = i === visibleMessages.length - 1;
 
           return (
-            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4, animation: "fadeIn .2s ease-out" }}>
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: SPACE.xs, animation: "fadeIn .2s ease-out" }}>
               {/* Role label */}
-              <div style={{ fontSize: 10, color: C.text.faint, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 600, paddingLeft: isUser ? 0 : 4 }}>
+              <div style={{ fontSize: FONT_SIZE.xs, color: C.text.faint, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: FONT_WEIGHT.semibold, paddingLeft: isUser ? 0 : SPACE.xs }}>
                 {isUser ? "You" : "Aziro AI"}
               </div>
 
               {/* Bubble */}
               <div style={{
                 maxWidth: "82%",
-                background: isUser ? "linear-gradient(135deg,#6366f1,#818cf8)" : "var(--c-bg-surface)",
-                border: isUser ? "none" : "1px solid var(--c-border)",
-                borderRadius: isUser ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-                padding: "10px 14px",
-                fontSize: 13,
+                background: isUser ? `linear-gradient(135deg,${C.accent.primary},${C.accent.light})` : C.bg.elevated,
+                border: isUser ? "none" : `1px solid ${C.border.muted}`,
+                borderRadius: isUser ? `${RADIUS.xl}px ${RADIUS.xl}px ${SPACE.xxs}px ${RADIUS.xl}px` : `${RADIUS.xl}px ${RADIUS.xl}px ${RADIUS.xl}px ${SPACE.xxs}px`,
+                padding: `${SPACE.md}px 14px`,
+                fontSize: FONT_SIZE.md,
                 lineHeight: 1.65,
                 color: "var(--c-text-primary)",
                 position: "relative",
               }}>
                 {isUser && editingIdx === i ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: RADIUS.md }}>
                     <textarea
                       autoFocus
                       value={editText}
@@ -124,15 +124,15 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
                       }}
                       style={{
                         background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)",
-                        borderRadius: 6, padding: "6px 8px", color: "#fff",
-                        fontSize: 13, fontFamily: "inherit", resize: "none",
+                        borderRadius: RADIUS.md, padding: `${RADIUS.md}px ${SPACE.sm}px`, color: "var(--c-text-on-accent, #fff)",
+                        fontSize: FONT_SIZE.md, fontFamily: "inherit", resize: "none",
                         outline: "none", minHeight: 36, lineHeight: 1.5,
                       }}
                       rows={2}
                     />
-                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                      <button onClick={() => setEditingIdx(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", borderRadius: 4, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}>Cancel</button>
-                      <button onClick={() => { if (editText.trim() && onEdit) { onEdit(i, editText.trim()); setEditingIdx(null); } }} style={{ background: "#fff", border: "none", color: "#6366f1", borderRadius: 4, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Send</button>
+                    <div style={{ display: "flex", gap: RADIUS.md, justifyContent: "flex-end" }}>
+                      <button onClick={() => setEditingIdx(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "var(--c-text-on-accent, #fff)", borderRadius: RADIUS.sm, padding: `3px ${SPACE.md}px`, fontSize: FONT_SIZE.sm, cursor: "pointer" }}>Cancel</button>
+                      <button onClick={() => { if (editText.trim() && onEdit) { onEdit(i, editText.trim()); setEditingIdx(null); } }} style={{ background: "var(--c-text-on-accent, #fff)", border: "none", color: C.accent.primary, borderRadius: RADIUS.sm, padding: `3px ${SPACE.md}px`, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer" }}>Send</button>
                     </div>
                   </div>
                 ) : isUser ? (
@@ -146,17 +146,16 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
 
               {/* Edit & Retry buttons on user messages */}
               {isUser && editingIdx !== i && !loading && (
-                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: SPACE.xs, alignItems: "center" }}>
                   {onEdit && (
                     <button
                       onClick={() => { setEditingIdx(i); setEditText(m.content); }}
+                      className="hover-opacity-full"
                       style={{
                         background: "none", border: "none", cursor: "pointer",
-                        padding: 3, borderRadius: 4, display: "flex", alignItems: "center",
+                        padding: 3, borderRadius: RADIUS.sm, display: "flex", alignItems: "center",
                         opacity: 0.4, transition: "opacity 150ms",
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
-                      onMouseLeave={e => (e.currentTarget.style.opacity = "0.4")}
                       title="Edit & resend"
                     >
                       <Pencil size={12} color={C.text.muted} />
@@ -165,13 +164,12 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
                   {onRetry && isLast && (
                     <button
                       onClick={onRetry}
+                      className="hover-opacity-full"
                       style={{
                         background: "none", border: "none", cursor: "pointer",
-                        padding: 3, borderRadius: 4, display: "flex", alignItems: "center",
+                        padding: 3, borderRadius: RADIUS.sm, display: "flex", alignItems: "center",
                         opacity: 0.4, transition: "opacity 150ms",
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
-                      onMouseLeave={e => (e.currentTarget.style.opacity = "0.4")}
                       title="Retry"
                     >
                       <RotateCcw size={12} color={C.text.muted} />
@@ -184,15 +182,14 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
               {!isUser && m.content.startsWith("Error:") && !loading && onRetry && (
                 <button
                   onClick={onRetry}
+                  className="hover-border-accent hover-bg-accent-dim"
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
-                    background: "var(--c-bg-surface)", border: "1px solid var(--c-border)",
-                    borderRadius: 6, padding: "4px 10px", fontSize: 11,
+                    background: C.bg.elevated, border: `1px solid ${C.border.muted}`,
+                    borderRadius: RADIUS.md, padding: `${SPACE.xs}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm,
                     color: C.accent.primary, cursor: "pointer",
                     transition: "all 150ms",
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent.primary; e.currentTarget.style.background = `${C.accent.primary}11`; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--c-border)"; e.currentTarget.style.background = "var(--c-bg-surface)"; }}
                 >
                   <RotateCcw size={12} />
                   Retry
@@ -202,22 +199,22 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
               {/* Feedback bar — thumbs up/down on assistant messages */}
               {!isUser && m.content && !(loading && isLast) && (
                 <div style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  paddingLeft: 4, paddingTop: 2,
+                  display: "flex", alignItems: "center", gap: RADIUS.md,
+                  paddingLeft: SPACE.xs, paddingTop: SPACE.xxs,
                 }}>
                   <button
                     onClick={() => handleFeedback(i, m.content, "up")}
                     disabled={!!ratings[i]}
                     style={{
                       background: "none", border: "none", cursor: ratings[i] ? "default" : "pointer",
-                      padding: 4, borderRadius: 4, display: "flex", alignItems: "center",
+                      padding: SPACE.xs, borderRadius: RADIUS.sm, display: "flex", alignItems: "center",
                       opacity: ratings[i] === "down" ? 0.3 : ratings[i] === "up" ? 1 : 0.5,
                       transition: "opacity 150ms",
                     }}
                     aria-label="Thumbs up"
                   >
                     <ThumbsUp
-                      size={13}
+                      size={FONT_SIZE.md}
                       color={ratings[i] === "up" ? C.accent.primary : C.text.faint}
                       fill={ratings[i] === "up" ? C.accent.primary : "none"}
                       strokeWidth={1.8}
@@ -228,14 +225,14 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
                     disabled={!!ratings[i]}
                     style={{
                       background: "none", border: "none", cursor: ratings[i] ? "default" : "pointer",
-                      padding: 4, borderRadius: 4, display: "flex", alignItems: "center",
+                      padding: SPACE.xs, borderRadius: RADIUS.sm, display: "flex", alignItems: "center",
                       opacity: ratings[i] === "up" ? 0.3 : ratings[i] === "down" ? 1 : 0.5,
                       transition: "opacity 150ms",
                     }}
                     aria-label="Thumbs down"
                   >
                     <ThumbsDown
-                      size={13}
+                      size={FONT_SIZE.md}
                       color={ratings[i] === "down" ? C.status.danger : C.text.faint}
                       fill={ratings[i] === "down" ? C.status.danger : "none"}
                       strokeWidth={1.8}
@@ -247,31 +244,24 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
               {/* Follow-up suggestion chips — only on the most recent assistant message */}
               {!isUser && isLast && !loading && m.suggestions && m.suggestions.length > 0 && (
                 <div style={{
-                  display: "flex", flexWrap: "wrap", gap: 6,
-                  paddingLeft: 4, paddingTop: 6, maxWidth: "82%",
+                  display: "flex", flexWrap: "wrap", gap: RADIUS.md,
+                  paddingLeft: SPACE.xs, paddingTop: RADIUS.md, maxWidth: "82%",
                 }}>
                   {m.suggestions.map((s, si) => (
                     <button
                       key={si}
                       onClick={() => onSend(s)}
+                      className="hover-bg-accent-dim hover-border-accent"
                       style={{
-                        background: "var(--c-bg-surface)",
+                        background: C.bg.elevated,
                         border: `1px solid ${C.accent.primary}55`,
                         color: C.accent.light,
-                        borderRadius: 999,
-                        padding: "4px 12px",
-                        fontSize: 11,
+                        borderRadius: RADIUS.pill,
+                        padding: `${SPACE.xs}px ${SPACE.md}px`,
+                        fontSize: FONT_SIZE.sm,
                         cursor: "pointer",
                         transition: "all 150ms",
                         fontFamily: "inherit",
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.background = `${C.accent.primary}18`;
-                        e.currentTarget.style.borderColor = C.accent.primary;
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.background = "var(--c-bg-surface)";
-                        e.currentTarget.style.borderColor = `${C.accent.primary}55`;
                       }}
                     >
                       {s}
@@ -282,16 +272,16 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
 
               {/* Tool calls — expandable blocks */}
               {m.tools && m.tools.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: "82%" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xs, maxWidth: "82%" }}>
                   {m.tools.map((tool, ti) => <ToolCallBlock key={ti} tool={tool} />)}
                 </div>
               )}
               {/* Backward compat — old cmds without tool data */}
               {(!m.tools || m.tools.length === 0) && m.cmds && m.cmds.length > 0 && (
                 <div style={{
-                  background: "var(--c-bg-panel)", border: "1px solid var(--c-border)",
-                  borderRadius: 6, padding: "6px 10px",
-                  fontSize: 11, fontFamily: "'Cascadia Code','Consolas',monospace",
+                  background: C.bg.panel, border: `1px solid ${C.border.muted}`,
+                  borderRadius: RADIUS.md, padding: `${RADIUS.md}px ${SPACE.md}px`,
+                  fontSize: FONT_SIZE.sm, fontFamily: "'Cascadia Code','Consolas',monospace",
                   color: C.status.success, maxWidth: "82%",
                 }}>
                   {m.cmds.map((c, ci) => <div key={ci}>$ {c}</div>)}
@@ -304,16 +294,16 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
 
       {/* Input bar */}
       <div style={{
-        padding: "12px 16px 16px",
-        borderTop: "1px solid var(--c-border)",
-        background: "var(--c-bg-panel)",
+        padding: `${SPACE.md}px ${SPACE.lg}px ${SPACE.lg}px`,
+        borderTop: `1px solid ${C.border.muted}`,
+        background: C.bg.panel,
         flexShrink: 0,
       }}>
         <div style={{
-          display: "flex", gap: 10, alignItems: "flex-end",
-          background: "var(--c-bg-surface)",
-          border: `1px solid ${focused ? "var(--c-accent)" : "var(--c-border)"}`,
-          borderRadius: 10, padding: "10px 12px",
+          display: "flex", gap: SPACE.md, alignItems: "flex-end",
+          background: C.bg.elevated,
+          border: `1px solid ${focused ? "var(--c-accent)" : C.border.muted}`,
+          borderRadius: SPACE.md, padding: `${SPACE.md}px ${SPACE.md}px`,
           transition: "border-color .15s",
         }}>
           <textarea
@@ -328,7 +318,7 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
             placeholder={placeholder ?? "Ask anything… (Enter to send, Shift+Enter for new line)"}
             style={{
               flex: 1, background: "transparent", border: "none", outline: "none",
-              color: "var(--c-text-primary)", fontSize: 13, resize: "none",
+              color: C.text.primary, fontSize: FONT_SIZE.md, resize: "none",
               fontFamily: "inherit", lineHeight: 1.5,
               minHeight: 20, maxHeight: 120,
             }}
@@ -338,17 +328,17 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
             aria-label={loading ? "Sending message" : "Send message"}
             disabled={loading || !text.trim()}
             style={{
-              background: loading || !text.trim() ? "var(--c-border)" : "var(--c-accent)",
-              border: "none", borderRadius: 7,
+              background: loading || !text.trim() ? C.border.muted : "var(--c-accent)",
+              border: "none", borderRadius: RADIUS.lg,
               width: 32, height: 32, flexShrink: 0,
-              color: "#fff", fontWeight: 700,
+              color: "var(--c-text-on-accent, #fff)", fontWeight: FONT_WEIGHT.bold,
               cursor: loading || !text.trim() ? "default" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "background .15s",
             }}
           >
             {loading ? (
-              <span style={{ width: 13, height: 13, border: "2px solid var(--c-accent-dim)", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
+              <span style={{ width: FONT_SIZE.md, height: FONT_SIZE.md, border: "2px solid var(--c-accent-dim)", borderTopColor: "var(--c-text-on-accent, #fff)", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
             ) : (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
@@ -356,7 +346,7 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
             )}
           </button>
         </div>
-        <div style={{ fontSize: 10, color: C.text.dim, marginTop: 6, textAlign: "center" }}>
+        <div style={{ fontSize: FONT_SIZE.xs, color: C.text.dim, marginTop: RADIUS.md, textAlign: "center" }}>
           Enter to send · Shift+Enter for new line
         </div>
       </div>
@@ -379,7 +369,7 @@ function ToolCallBlock({ tool }: { tool: ToolCall }) {
     <div style={{
       background: C.bg.panel,
       border: `1px solid ${tool.status === "error" ? C.status.danger + "44" : C.border.subtle}`,
-      borderRadius: 6,
+      borderRadius: RADIUS.md,
       overflow: "hidden",
       ...(tool.status === "running" ? { animation: "glow-pulse 2s infinite" } : {}),
     }}>
@@ -390,10 +380,10 @@ function ToolCallBlock({ tool }: { tool: ToolCall }) {
         aria-expanded={tool.output ? expanded : undefined}
         aria-label={tool.output ? `${expanded ? "Collapse" : "Expand"} output for ${tool.cmd}` : tool.cmd}
         style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "6px 10px",
+          display: "flex", alignItems: "center", gap: SPACE.sm,
+          padding: `${RADIUS.md}px ${SPACE.md}px`,
           cursor: tool.output ? "pointer" : "default",
-          fontSize: 11,
+          fontSize: FONT_SIZE.sm,
           fontFamily: "'Cascadia Code','Consolas',monospace",
           // Neutralize default button chrome — the row renders as a strip, not a button.
           width: "100%",
@@ -410,14 +400,14 @@ function ToolCallBlock({ tool }: { tool: ToolCall }) {
         )}
         <span style={{ color: C.text.muted }}>$</span>
         <span style={{ color: C.status.success, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool.cmd}</span>
-        {durationStr && <span style={{ color: C.text.faint, fontSize: 10, flexShrink: 0 }}>{durationStr}</span>}
+        {durationStr && <span style={{ color: C.text.faint, fontSize: FONT_SIZE.xs, flexShrink: 0 }}>{durationStr}</span>}
         <span style={{ flexShrink: 0 }}>{statusIcon}</span>
       </button>
       {expanded && tool.output && (
         <div style={{
           borderTop: `1px solid ${C.border.subtle}`,
-          padding: "8px 10px",
-          fontSize: 11,
+          padding: `${SPACE.sm}px ${SPACE.md}px`,
+          fontSize: FONT_SIZE.sm,
           fontFamily: "'Cascadia Code','Consolas',monospace",
           color: C.text.secondary,
           whiteSpace: "pre-wrap",
@@ -434,10 +424,10 @@ function ToolCallBlock({ tool }: { tool: ToolCall }) {
 
 function ThinkingDots() {
   return (
-    <span style={{ display: "inline-flex", gap: 4, alignItems: "center", height: 16 }}>
+    <span style={{ display: "inline-flex", gap: SPACE.xs, alignItems: "center", height: SPACE.lg }}>
       {[0, 1, 2].map(i => (
         <span key={i} style={{
-          width: 6, height: 6, borderRadius: "50%",
+          width: RADIUS.md, height: RADIUS.md, borderRadius: "50%",
           background: C.accent.light, display: "inline-block",
           animation: `bounce 1.2s ${i * 0.2}s infinite`,
         }} />

@@ -8,8 +8,8 @@ import { useTargetChat } from "../hooks/useChat";
 import { ChatPanel } from "../components/ChatPanel";
 import { LogStream } from "../components/LogStream";
 import { ResourceGraph } from "../components/ResourceGraph";
-import { BTN_TRANSITION, btnHoverStyle, btnActiveStyle, TAB_TRANSITION, tabHoverStyle, fadeInStyle } from "../utils/animations";
-import { TIMING } from "../utils/theme";
+import { BTN_TRANSITION, TAB_TRANSITION, fadeInStyle } from "../utils/animations";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOW, Z_INDEX, TIMING } from "../utils/theme";
 import {
   NoTargetEmptyState, ContextualHint, SkeletonLoader,
 } from "./dashboard/primitives";
@@ -124,36 +124,36 @@ export function Dashboard({ target }: Props) {
 
       {/* Page header */}
       <div style={{
-        padding: "12px 20px",
-        borderBottom: "1px solid var(--c-border)",
+        padding: `${SPACE.md}px ${SPACE.xl}px`,
+        borderBottom: `1px solid ${C.border.muted}`,
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: SPACE.md,
         flexShrink: 0,
-        background: "var(--c-bg-raised)",
+        background: C.bg.elevated,
       }}>
         <LayoutGrid size={16} stroke="var(--c-accent-hover)" />
-        <span style={{ fontSize: 11, color: "var(--c-text-faint)", fontWeight: 500 }}>Dashboard</span>
+        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, fontWeight: FONT_WEIGHT.medium }}>Dashboard</span>
         <ChevronRight size={10} stroke="var(--c-border-strong)" />
-        <strong style={{ fontSize: 15, color: "var(--c-text-primary)" }}>{target.name}</strong>
-        <span style={{ fontSize: 12, color: "var(--c-text-muted)", background: "var(--c-bg-card)", padding: "2px 8px", borderRadius: 4, display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <strong style={{ fontSize: FONT_SIZE.lg, color: C.text.primary }}>{target.name}</strong>
+        <span style={{ fontSize: FONT_SIZE.md, color: C.text.muted, background: C.bg.card, padding: `${SPACE.xxs}px ${SPACE.sm}px`, borderRadius: RADIUS.sm, display: "inline-flex", alignItems: "center", gap: SPACE.xs }}>
           {(() => { const meta = TARGET_META[target.type as keyof typeof TARGET_META]; if (meta) { const Icon = meta.icon; return <Icon size={11} />; } return null; })()}
           {target.type}
         </span>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: SPACE.sm }}>
           {/* Namespace selector for K8s targets */}
           {isK8s && activeTab !== "__chat" && activeTab !== "__topology" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Grid3X3 size={12} stroke="var(--c-text-muted)" />
+            <div style={{ display: "flex", alignItems: "center", gap: SPACE.md }}>
+              <Grid3X3 size={12} stroke={C.text.muted} />
               <select
                 value={nsFilter}
                 onChange={e => setNsFilter(e.target.value)}
                 disabled={nsLoading}
                 aria-label="Filter by namespace"
                 style={{
-                  background: "var(--c-bg-base)", border: "1px solid var(--c-border)", color: nsFilter ? "var(--c-accent-hover)" : "var(--c-text-secondary)",
-                  borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer",
-                  minWidth: 140, fontWeight: nsFilter ? 600 : 400,
+                  background: C.bg.base, border: `1px solid ${C.border.muted}`, color: nsFilter ? "var(--c-accent-hover)" : C.text.secondary,
+                  borderRadius: RADIUS.sm, padding: `${SPACE.xs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, cursor: "pointer",
+                  minWidth: 140, fontWeight: nsFilter ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal,
                 }}
               >
                 <option value="">All namespaces</option>
@@ -162,7 +162,7 @@ export function Dashboard({ target }: Props) {
             </div>
           )}
           {lastRefreshed && (
-            <span style={{ fontSize: 11, color: "var(--c-text-faint)" }}>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint }}>
               Refreshed {Math.round((Date.now() - lastRefreshed.getTime()) / 60000) < 1
                 ? "just now"
                 : `${Math.round((Date.now() - lastRefreshed.getTime()) / 60000)}m ago`}
@@ -170,17 +170,14 @@ export function Dashboard({ target }: Props) {
           )}
           {activeTab && activeTab !== "__chat" && activeTab !== "__topology" && (
             <button onClick={reloadTab} disabled={tabLoading}
+            className="btn-interactive"
             aria-label={tabLoading ? "Refreshing tab data" : "Refresh tab data"}
             aria-busy={tabLoading}
             title={tabLoading ? "Refreshing…" : "Refresh"}
-            onMouseEnter={e => { if (!tabLoading) Object.assign(e.currentTarget.style, btnHoverStyle); }}
-            onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
-            onMouseDown={e => { if (!tabLoading) Object.assign(e.currentTarget.style, btnActiveStyle); }}
-            onMouseUp={e => { if (!tabLoading) Object.assign(e.currentTarget.style, btnHoverStyle); }}
             style={{
-              background: "none", border: "1px solid var(--c-border)", borderRadius: 5,
-              color: "var(--c-text-muted)", cursor: tabLoading ? "wait" : "pointer", display: "flex", alignItems: "center",
-              gap: 5, padding: "4px 8px", fontSize: 11, transition: BTN_TRANSITION,
+              background: "none", border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.sm,
+              color: C.text.muted, cursor: tabLoading ? "wait" : "pointer", display: "flex", alignItems: "center",
+              gap: SPACE.xs, padding: `${SPACE.xs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, transition: BTN_TRANSITION,
               opacity: tabLoading ? 0.6 : 1,
             }}>
               <RefreshCw size={11} style={tabLoading ? { animation: "spin 0.7s linear infinite" } : undefined} />
@@ -193,7 +190,7 @@ export function Dashboard({ target }: Props) {
       <ContextualHint id="cmd-k">Press Cmd+K (or Ctrl+K) to search across all resources instantly.</ContextualHint>
 
       {/* Tab bar */}
-      <div role="tablist" aria-label="Dashboard sections" style={{ display: "flex", background: "var(--c-bg-panel)", borderBottom: "1px solid var(--c-border)", flexShrink: 0, padding: "0 12px", overflowX: "auto" }}>
+      <div role="tablist" aria-label="Dashboard sections" style={{ display: "flex", background: C.bg.panel, borderBottom: `1px solid ${C.border.muted}`, flexShrink: 0, padding: `0 ${SPACE.md}px`, overflowX: "auto" }}>
         {tabs.map(t => {
           const active = activeTab === t.id;
           return (
@@ -201,14 +198,13 @@ export function Dashboard({ target }: Props) {
               key={t.id}
               role="tab"
               aria-selected={active}
+              className={active ? undefined : "hover-bg-accent-dim hover-text-primary"}
               onClick={() => setActiveTab(t.id)}
-              onMouseEnter={e => { if (!active) Object.assign(e.currentTarget.style, tabHoverStyle); }}
-              onMouseLeave={e => { if (!active) { e.currentTarget.style.color = "var(--c-text-muted)"; e.currentTarget.style.background = "transparent"; } }}
               style={{
-                padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
-                color: active ? "var(--c-accent-hover)" : "var(--c-text-muted)",
+                padding: `${SPACE.sm + 2}px ${SPACE.lg - 2}px`, fontSize: FONT_SIZE.md, border: "none", background: "transparent",
+                color: active ? "var(--c-accent-hover)" : C.text.muted,
                 borderBottom: active ? "2px solid var(--c-accent)" : "2px solid transparent",
-                cursor: "pointer", whiteSpace: "nowrap", fontWeight: active ? 600 : 400,
+                cursor: "pointer", whiteSpace: "nowrap", fontWeight: active ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal,
                 transition: TAB_TRANSITION,
               }}
             >
@@ -219,16 +215,15 @@ export function Dashboard({ target }: Props) {
         <button
           role="tab"
           aria-selected={activeTab === "__chat"}
+          className={activeTab === "__chat" ? undefined : "hover-bg-accent-dim hover-text-primary"}
           onClick={() => setActiveTab("__chat")}
-          onMouseEnter={e => { if (activeTab !== "__chat") Object.assign(e.currentTarget.style, tabHoverStyle); }}
-          onMouseLeave={e => { if (activeTab !== "__chat") { e.currentTarget.style.color = "var(--c-text-muted)"; e.currentTarget.style.background = "transparent"; } }}
           style={{
-            padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
-            color: activeTab === "__chat" ? "var(--c-accent-hover)" : "var(--c-text-muted)",
+            padding: `${SPACE.sm + 2}px ${SPACE.lg - 2}px`, fontSize: FONT_SIZE.md, border: "none", background: "transparent",
+            color: activeTab === "__chat" ? "var(--c-accent-hover)" : C.text.muted,
             borderBottom: activeTab === "__chat" ? "2px solid var(--c-accent)" : "2px solid transparent",
             cursor: "pointer", whiteSpace: "nowrap",
-            fontWeight: activeTab === "__chat" ? 600 : 400,
-            display: "flex", alignItems: "center", gap: 5,
+            fontWeight: activeTab === "__chat" ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal,
+            display: "flex", alignItems: "center", gap: SPACE.xs,
             transition: TAB_TRANSITION,
           }}
         >
@@ -239,16 +234,15 @@ export function Dashboard({ target }: Props) {
           <button
             role="tab"
             aria-selected={activeTab === "__topology"}
+            className={activeTab === "__topology" ? undefined : "hover-bg-accent-dim hover-text-primary"}
             onClick={() => setActiveTab("__topology")}
-            onMouseEnter={e => { if (activeTab !== "__topology") Object.assign(e.currentTarget.style, tabHoverStyle); }}
-            onMouseLeave={e => { if (activeTab !== "__topology") { e.currentTarget.style.color = "var(--c-text-muted)"; e.currentTarget.style.background = "transparent"; } }}
             style={{
-              padding: "10px 14px", fontSize: 12, border: "none", background: "transparent",
-              color: activeTab === "__topology" ? "var(--c-accent-hover)" : "var(--c-text-muted)",
+              padding: `${SPACE.sm + 2}px ${SPACE.lg - 2}px`, fontSize: FONT_SIZE.md, border: "none", background: "transparent",
+              color: activeTab === "__topology" ? "var(--c-accent-hover)" : C.text.muted,
               borderBottom: activeTab === "__topology" ? "2px solid var(--c-accent)" : "2px solid transparent",
               cursor: "pointer", whiteSpace: "nowrap",
-              fontWeight: activeTab === "__topology" ? 600 : 400,
-              display: "flex", alignItems: "center", gap: 5,
+              fontWeight: activeTab === "__topology" ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal,
+              display: "flex", alignItems: "center", gap: SPACE.xs,
               transition: TAB_TRANSITION,
             }}
           >
@@ -276,13 +270,13 @@ export function Dashboard({ target }: Props) {
             </div>
           ) : activeTab === "__topology" ? (
             <div key="__topology" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0, ...fadeInStyle }}>
-              <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--c-border)", display: "flex", alignItems: "center", gap: 8, background: "var(--c-bg-panel)", flexShrink: 0 }}>
-                <label style={{ fontSize: 11, color: "var(--c-text-muted)" }}>Namespace</label>
+              <div style={{ padding: `${SPACE.sm}px ${SPACE.lg}px`, borderBottom: `1px solid ${C.border.muted}`, display: "flex", alignItems: "center", gap: SPACE.sm, background: C.bg.panel, flexShrink: 0 }}>
+                <label style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Namespace</label>
                 <input
                   value={topoNamespace}
                   onChange={e => setTopoNamespace(e.target.value)}
                   placeholder="all namespaces"
-                  style={{ background: "var(--c-bg-surface)", border: "1px solid var(--c-border)", color: "var(--c-text-primary)", borderRadius: 5, padding: "3px 8px", fontSize: 11, width: 180 }}
+                  style={{ background: "var(--c-bg-surface)", border: `1px solid ${C.border.muted}`, color: C.text.primary, borderRadius: RADIUS.sm, padding: `3px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, width: 180 }}
                 />
               </div>
               <ContextualHint id="topology-click">Click any node to inspect its details, logs, and run an AI diagnosis.</ContextualHint>
@@ -308,12 +302,12 @@ export function Dashboard({ target }: Props) {
             role="alert"
             aria-live="assertive"
             style={{
-              position: "fixed", bottom: 20, right: 20, zIndex: 300,
-              background: "var(--c-sev1-bg)", border: "1px solid var(--c-sev1)",
-              borderRadius: 8, padding: "10px 14px", fontSize: 12,
+              position: "fixed", bottom: SPACE.xl, right: SPACE.xl, zIndex: Z_INDEX.toast,
+              background: C.error.bg, border: "1px solid var(--c-sev1)",
+              borderRadius: RADIUS.lg, padding: `${SPACE.sm + 2}px ${SPACE.lg - 2}px`, fontSize: FONT_SIZE.md,
               color: "var(--c-sev1)", maxWidth: 380,
-              boxShadow: "0 12px 32px rgba(0,0,0,.5)",
-              display: "flex", alignItems: "flex-start", gap: 10,
+              boxShadow: SHADOW.lg,
+              display: "flex", alignItems: "flex-start", gap: SPACE.sm + 2,
               animation: "fadeIn .25s ease-out",
             }}
           >
@@ -324,7 +318,7 @@ export function Dashboard({ target }: Props) {
             <button
               onClick={() => setErrorToast(null)}
               aria-label="Dismiss"
-              style={{ background: "none", border: "none", color: "var(--c-sev1)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+              style={{ background: "none", border: "none", color: "var(--c-sev1)", cursor: "pointer", fontSize: FONT_SIZE.lg, lineHeight: 1, padding: 0, flexShrink: 0 }}
             >×</button>
           </div>
         )}
@@ -380,21 +374,18 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
 
   if (data.error) {
     return (
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, ...fadeInStyle }}>
-        <div style={{ background: "var(--c-sev1-bg)", border: "1px solid var(--c-sev1)", borderRadius: 8, padding: "14px 20px", fontSize: 13, color: "var(--c-sev1)", maxWidth: 480, textAlign: "center" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: SPACE.md, ...fadeInStyle }}>
+        <div style={{ background: C.error.bg, border: "1px solid var(--c-sev1)", borderRadius: RADIUS.lg, padding: `${SPACE.lg - 2}px ${SPACE.xl}px`, fontSize: FONT_SIZE.md, color: "var(--c-sev1)", maxWidth: 480, textAlign: "center" }}>
           {data.error}
         </div>
         {onRetry && (
           <button onClick={onRetry}
-          onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-          onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
-          onMouseDown={e => Object.assign(e.currentTarget.style, btnActiveStyle)}
-          onMouseUp={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+          className="btn-interactive"
           style={{
-            display: "flex", alignItems: "center", gap: 6,
-            background: "var(--c-bg-card)", border: "1px solid var(--c-border)",
-            color: "var(--c-text-secondary)", borderRadius: 6, padding: "6px 14px",
-            fontSize: 12, cursor: "pointer", transition: BTN_TRANSITION,
+            display: "flex", alignItems: "center", gap: SPACE.md,
+            background: C.bg.card, border: `1px solid ${C.border.muted}`,
+            color: C.text.secondary, borderRadius: RADIUS.md, padding: `${SPACE.md}px ${SPACE.lg - 2}px`,
+            fontSize: FONT_SIZE.md, cursor: "pointer", transition: BTN_TRANSITION,
           }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
