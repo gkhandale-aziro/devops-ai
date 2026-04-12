@@ -21,7 +21,7 @@ import { api, readSSE } from "../../api/client";
 import { parseKubectl } from "../../utils/parseKubectl";
 import { Sparkles, Play, FileText } from "lucide-react";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
-import { C } from "../../utils/theme";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, Z_INDEX } from "../../utils/theme";
 import { DataTable } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Markdown } from "../../components/Markdown";
@@ -148,7 +148,7 @@ export function NodeTable({ raw, target }: { raw: string; target: Target }) {
   }, [openNode]);
 
   if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
-    return <div style={{ padding: 20, color: C.text.muted, fontSize: 13 }}>kubectl not available or no nodes found.</div>;
+    return <div style={{ padding: SPACE.xl, color: C.text.muted, fontSize: FONT_SIZE.md }}>kubectl not available or no nodes found.</div>;
   }
   if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
@@ -240,22 +240,22 @@ function buildPodColumns(opts: {
                 aria-label={`Diagnose pod ${name}`}
                 title="Get AI diagnosis for this pod"
                 style={{
-                  marginLeft: 6, background: `${C.accent.light}22`, border: `1px solid ${C.accent.light}44`,
-                  color: C.accent.light, borderRadius: 4, padding: "2px 7px",
-                  fontSize: 11, fontWeight: 600, cursor: "pointer", verticalAlign: "middle",
+                  marginLeft: SPACE.sm, background: `${C.accent.light}22`, border: `1px solid ${C.accent.light}44`,
+                  color: C.accent.light, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+                  fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer", verticalAlign: "middle",
                 }}
               >
                 <Sparkles size={10} style={{ marginRight: 3, display: "inline" }} /> Diagnose
               </button>
             )}
             {isBadgeLoading && (
-              <span style={{ marginLeft: 6, fontSize: 9, color: C.accent.light }}>analyzing…</span>
+              <span style={{ marginLeft: SPACE.sm, fontSize: FONT_SIZE.xs, color: C.accent.light }}>analyzing…</span>
             )}
             {aiBadge && (
               <div style={{
-                marginTop: 3, fontSize: 10, color: C.accent.light, lineHeight: 1.4,
+                marginTop: SPACE.xs, fontSize: FONT_SIZE.xs, color: C.accent.light, lineHeight: 1.4,
                 background: C.bg.active, border: `1px solid ${C.accent.primary}33`,
-                borderRadius: 4, padding: "3px 7px", maxWidth: 400,
+                borderRadius: RADIUS.sm, padding: `${SPACE.xs}px ${SPACE.sm}px`, maxWidth: 400,
               }}>
                 <Sparkles size={10} style={{ display: "inline", marginRight: 3 }} /> {aiBadge}
               </div>
@@ -316,8 +316,8 @@ function buildPodColumns(opts: {
             title="Stream live logs"
             style={{
               background: `${C.status.info}22`, border: `1px solid ${C.status.info}44`,
-              color: C.status.info, borderRadius: 4, padding: "2px 7px",
-              fontSize: 10, fontWeight: 600, cursor: "pointer",
+              color: C.status.info, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+              fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
             }}
           >
             <Play size={9} style={{ marginRight: 3, display: "inline" }} /> Logs
@@ -454,7 +454,7 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
   );
 
   if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
-    return <div style={{ padding: 20, color: C.text.muted, fontSize: 13 }}>kubectl not available or no pods found.</div>;
+    return <div style={{ padding: SPACE.xl, color: C.text.muted, fontSize: FONT_SIZE.md }}>kubectl not available or no pods found.</div>;
   }
   if (allLines.length < 2) return <Pre>{raw}</Pre>;
 
@@ -569,7 +569,7 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose,
   // `position: fixed` children contain to the tab content box instead of the
   // viewport — causing the modal to render below the top bar and break scroll.
   return createPortal(
-    <div style={{ position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(2px)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)", zIndex: Z_INDEX.modal, display: "flex", alignItems: "center", justifyContent: "center" }}
          onClick={e => e.target === e.currentTarget && onClose()}>
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="modal-title"
            onKeyDown={e => {
@@ -584,30 +584,30 @@ export function ResourceModal({ resource, loading, targetId: _targetId, onClose,
              if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
              else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
            }}
-           style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 12, width: "min(740px, 92vw)", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)", outline: "none" }}>
-        <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border.muted}`, display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ background: C.accent.primary + "33", color: C.accent.light, border: `1px solid ${C.accent.primary}`, borderRadius: 4, padding: "2px 7px", fontSize: 11 }}>
+           style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.xl, width: "min(740px, 92vw)", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4)", outline: "none" }}>
+        <div style={{ padding: `${SPACE.lg}px ${SPACE.xl}px`, borderBottom: `1px solid ${C.border.muted}`, display: "flex", alignItems: "center", gap: SPACE.md }}>
+          <span style={{ background: C.accent.primary + "33", color: C.accent.light, border: `1px solid ${C.accent.primary}`, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm }}>
             {loading ? "…" : resource?.kind}
           </span>
-          <strong id="modal-title" style={{ fontSize: 14 }}>{resource?.name}</strong>
-          {resource?.ns && <span style={{ fontSize: 12, color: C.text.muted }}>· {resource.ns}</span>}
-          <span style={{ marginLeft: "auto", fontSize: 10, color: C.text.faint }}>Esc to close</span>
-          <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: C.text.muted, cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
+          <strong id="modal-title" style={{ fontSize: FONT_SIZE.lg }}>{resource?.name}</strong>
+          {resource?.ns && <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>· {resource.ns}</span>}
+          <span style={{ marginLeft: "auto", fontSize: FONT_SIZE.xs, color: C.text.faint }}>Esc to close</span>
+          <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: C.text.muted, cursor: "pointer", display: "flex", alignItems: "center", padding: SPACE.xs }}>
             <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         {!loading && resource && (
           <>
-            <div style={{ display: "flex", borderBottom: `1px solid ${C.border.muted}`, padding: "0 16px" }}>
+            <div style={{ display: "flex", borderBottom: `1px solid ${C.border.muted}`, padding: `0 ${SPACE.lg}px` }}>
               {modalTabs.map(t => (
                 <button key={t} onClick={() => setTab(t as typeof tab)} style={{
-                  padding: "8px 14px", fontSize: 12, background: "none", border: "none",
+                  padding: `${SPACE.sm}px ${SPACE.lg}px`, fontSize: FONT_SIZE.sm, background: "none", border: "none",
                   color: tab === t ? C.accent.light : C.text.muted, borderBottom: tab === t ? `2px solid ${C.accent.light}` : "2px solid transparent",
                   cursor: "pointer", textTransform: "capitalize",
                 }}>{t === "previous" ? "Prev Logs" : t === "ai" ? "AI Analysis" : t === "describe" ? "Details" : t}</button>
               ))}
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: 16, minHeight: 0 }}>
+            <div style={{ flex: 1, overflow: "auto", padding: SPACE.lg, minHeight: 0 }}>
               {tab === "ai"
                 ? (aiLoading ? <LoadingSpinner /> : <Markdown>{aiText}</Markdown>)
                 : <Pre>{resource.data[tab === "previous" ? "previous" : tab] ?? "—"}</Pre>
@@ -648,7 +648,7 @@ export function LogsTab({ raw, target }: { raw: string; target: Target }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border.subtle}`, display: "flex", gap: 6, background: C.bg.panel }}>
+      <div style={{ padding: `${SPACE.sm}px ${SPACE.lg}px`, borderBottom: `1px solid ${C.border.subtle}`, display: "flex", gap: SPACE.sm, background: C.bg.panel }}>
         {filters.map(f => {
           const active = selected === f.key;
           return (
@@ -659,8 +659,8 @@ export function LogsTab({ raw, target }: { raw: string; target: Target }) {
                 background: active ? C.bg.active : "transparent",
                 border: `1px solid ${active ? C.accent.primary : C.border.subtle}`,
                 color: active ? C.accent.light : C.text.muted,
-                borderRadius: 5, padding: "4px 10px", fontSize: 11,
-                cursor: "pointer", fontWeight: active ? 600 : 400,
+                borderRadius: RADIUS.sm, padding: `${SPACE.xs}px ${SPACE.md}px`, fontSize: FONT_SIZE.sm,
+                cursor: "pointer", fontWeight: active ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal,
                 transition: "all .15s",
               }}
             >
@@ -669,7 +669,7 @@ export function LogsTab({ raw, target }: { raw: string; target: Target }) {
           );
         })}
       </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: SPACE.lg }}>
         {content ? <Pre>{content}</Pre> : (
           <EmptyState icon={<FileText size={32} />} title="No logs found" description="Select a filter above or check that the target is producing log output." />
         )}
@@ -742,18 +742,18 @@ export function KubectlTable({ raw, colorFn, onRowClick, emptyMessage = "No data
   const trimmed = raw?.trim() ?? "";
   const isError = /^\[?(TIMEOUT|ERROR|not found)/i.test(trimmed);
   const isEmpty = !trimmed || /^\[?No resources/i.test(trimmed);
-  if (isError) return <div style={{ padding: "20px 16px", color: C.status.warning, fontSize: 13 }}>{trimmed}</div>;
-  if (isEmpty) return <div style={{ padding: "20px 16px", color: C.text.faint, fontSize: 13 }}>{emptyMessage}</div>;
+  if (isError) return <div style={{ padding: `${SPACE.xl}px ${SPACE.lg}px`, color: C.status.warning, fontSize: FONT_SIZE.md }}>{trimmed}</div>;
+  if (isEmpty) return <div style={{ padding: `${SPACE.xl}px ${SPACE.lg}px`, color: C.text.faint, fontSize: FONT_SIZE.md }}>{emptyMessage}</div>;
 
   const { headers, rows } = parseKubectl(raw);
-  if (!headers.length) return <div style={{ padding: "20px 16px", color: C.text.faint, fontSize: 13 }}>{emptyMessage}</div>;
+  if (!headers.length) return <div style={{ padding: `${SPACE.xl}px ${SPACE.lg}px`, color: C.text.faint, fontSize: FONT_SIZE.md }}>{emptyMessage}</div>;
 
   return (
-    <table role="grid" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+    <table role="grid" style={{ width: "100%", borderCollapse: "collapse", fontSize: FONT_SIZE.sm }}>
       <thead>
         <tr style={{ background: C.bg.base }}>
           {headers.map(h => (
-            <th key={h} scope="col" style={{ padding: "7px 12px", textAlign: "left", fontSize: 11, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".4px", borderBottom: `1px solid ${C.border.muted}`, whiteSpace: "nowrap" }}>{h}</th>
+            <th key={h} scope="col" style={{ padding: `${SPACE.sm}px ${SPACE.md}px`, textAlign: "left", fontSize: FONT_SIZE.sm, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".4px", borderBottom: `1px solid ${C.border.muted}`, whiteSpace: "nowrap" }}>{h}</th>
           ))}
         </tr>
       </thead>
@@ -761,19 +761,18 @@ export function KubectlTable({ raw, colorFn, onRowClick, emptyMessage = "No data
         {rows.map((cols, i) => (
           <tr key={i}
             tabIndex={onRowClick ? 0 : undefined}
+            className={onRowClick ? "hover-bg-raised" : undefined}
             onClick={() => onRowClick?.(cols, headers)}
             onKeyDown={e => { if (onRowClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick(cols, headers); } }}
             style={{ cursor: onRowClick ? "pointer" : "default", background: i % 2 === 1 ? "var(--c-bg-surface)" : "transparent", transition: "background .1s" }}
-            onMouseEnter={ev => { if (onRowClick) ev.currentTarget.style.background = C.bg.card; }}
-            onMouseLeave={ev => { ev.currentTarget.style.background = i % 2 === 1 ? "var(--c-bg-surface)" : "transparent"; }}
           >
             {headers.map((h, j) => {
               const val = cols[j] ?? "—";
               const color = colorFn?.(val, h);
               return (
-                <td key={j} style={{ padding: "7px 12px", color: j === 0 ? C.text.primary : C.text.secondary, verticalAlign: "top" }}>
+                <td key={j} style={{ padding: `${SPACE.sm}px ${SPACE.md}px`, color: j === 0 ? C.text.primary : C.text.secondary, verticalAlign: "top" }}>
                   {color
-                    ? <span style={{ background: color + "22", color, border: `1px solid ${color}44`, borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 600 }}>{val}</span>
+                    ? <span style={{ background: color + "22", color, border: `1px solid ${color}44`, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold }}>{val}</span>
                     : val}
                 </td>
               );

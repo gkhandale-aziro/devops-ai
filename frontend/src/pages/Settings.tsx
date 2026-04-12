@@ -23,6 +23,7 @@ import { api, type ModelHealthStatus } from "../api/client";
 import { ThemeToggle } from "../components/ThemeContext";
 import { toast } from "../utils/toast";
 import { cn } from "@/lib/utils";
+import { C, FONT_SIZE, FONT_WEIGHT, RADIUS, SPACE } from "../utils/theme";
 
 interface Props {
   targetCount: number;
@@ -113,9 +114,9 @@ export function Settings({ targetCount }: Props) {
           />
           <h1
             style={{
-              fontSize: 22,
-              fontWeight: 700,
-              color: "var(--c-text-primary)",
+              fontSize: FONT_SIZE.xxl,
+              fontWeight: FONT_WEIGHT.bold,
+              color: C.text.primary,
               margin: 0,
             }}
           >
@@ -136,9 +137,9 @@ export function Settings({ targetCount }: Props) {
               {health && health.status !== "healthy" && (
                 <div style={{
                   padding: "8px 12px",
-                  borderRadius: 8,
-                  marginBottom: 12,
-                  fontSize: 12,
+                  borderRadius: RADIUS.lg,
+                  marginBottom: SPACE.md,
+                  fontSize: FONT_SIZE.sm,
                   lineHeight: 1.5,
                   background: health.status === "fallback" ? "var(--c-sev2-bg)" : "var(--c-sev1-bg)",
                   border: `1px solid ${health.status === "fallback" ? "var(--c-sev2)" : "var(--c-sev1)"}`,
@@ -160,12 +161,12 @@ export function Settings({ targetCount }: Props) {
               {health && health.status === "healthy" && (
                 <div style={{
                   padding: "6px 12px",
-                  borderRadius: 8,
-                  marginBottom: 12,
-                  fontSize: 12,
-                  background: "var(--c-green-bg, #22c55e18)",
-                  border: "1px solid var(--c-green, #22c55e)",
-                  color: "var(--c-green, #22c55e)",
+                  borderRadius: RADIUS.lg,
+                  marginBottom: SPACE.md,
+                  fontSize: FONT_SIZE.sm,
+                  background: "var(--c-green-bg)",
+                  border: `1px solid var(--c-green)`,
+                  color: "var(--c-green)",
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
@@ -175,7 +176,7 @@ export function Settings({ targetCount }: Props) {
                 </div>
               )}
               {loading ? (
-                <p style={{ fontSize: 13, color: "var(--c-text-muted)" }}>
+                <p style={{ fontSize: FONT_SIZE.md, color: C.text.muted }}>
                   Loading models…
                 </p>
               ) : (
@@ -190,16 +191,16 @@ export function Settings({ targetCount }: Props) {
                       <label
                         htmlFor={field}
                         style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: "var(--c-text-secondary)",
+                          fontSize: FONT_SIZE.sm,
+                          fontWeight: FONT_WEIGHT.semibold,
+                          color: C.text.secondary,
                           display: "block",
                           marginBottom: 4,
                         }}
                       >
                         {label}
                       </label>
-                      <p style={{ fontSize: 11, color: "var(--c-text-muted)", margin: "0 0 6px" }}>{hint}</p>
+                      <p style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, margin: "0 0 6px" }}>{hint}</p>
                       {ollamaModels.length > 0 ? (
                         <select
                           id={field}
@@ -208,11 +209,11 @@ export function Settings({ targetCount }: Props) {
                           style={{
                             width: "100%",
                             padding: "8px 12px",
-                            borderRadius: 8,
-                            border: "1px solid var(--c-border)",
-                            background: "var(--c-bg-base)",
-                            color: "var(--c-text-primary)",
-                            fontSize: 13,
+                            borderRadius: RADIUS.lg,
+                            border: `1px solid ${C.border.muted}`,
+                            background: C.bg.base,
+                            color: C.text.primary,
+                            fontSize: FONT_SIZE.md,
                             outline: "none",
                             cursor: "pointer",
                           }}
@@ -230,7 +231,7 @@ export function Settings({ targetCount }: Props) {
                       )}
                     </div>
                   ))}
-                  <p style={{ fontSize: 11, color: "var(--c-text-faint)", lineHeight: 1.5, margin: 0 }}>
+                  <p style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, lineHeight: 1.5, margin: 0 }}>
                     Supports any LiteLLM model: gemini/*, openai/*, ollama/*, anthropic/*, etc.
                   </p>
                 </div>
@@ -246,8 +247,8 @@ export function Settings({ targetCount }: Props) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p style={{ fontSize: 11, color: "var(--c-text-muted)", margin: "0 0 8px", lineHeight: 1.5 }}>
-                URL for Ollama API. Use <code style={{ fontSize: 10, padding: "1px 4px", borderRadius: 3, background: "var(--c-bg-base)", border: "1px solid var(--c-border)" }}>host.docker.internal:11434</code> when running in Docker.
+              <p style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, margin: "0 0 8px", lineHeight: 1.5 }}>
+                URL for Ollama API. Use <code style={{ fontSize: FONT_SIZE.xs, padding: "1px 4px", borderRadius: RADIUS.sm, background: C.bg.base, border: `1px solid ${C.border.muted}` }}>host.docker.internal:11434</code> when running in Docker.
               </p>
               <div style={{ display: "flex", gap: 8 }}>
                 <input
@@ -259,11 +260,11 @@ export function Settings({ targetCount }: Props) {
                   style={{
                     flex: 1,
                     padding: "8px 12px",
-                    borderRadius: 8,
-                    border: `1px solid ${ollamaUrlDraft.trim() !== ollamaUrl ? "var(--c-accent)" : "var(--c-border)"}`,
-                    background: "var(--c-bg-base)",
-                    color: "var(--c-text-primary)",
-                    fontSize: 13,
+                    borderRadius: RADIUS.lg,
+                    border: `1px solid ${ollamaUrlDraft.trim() !== ollamaUrl ? "var(--c-accent)" : C.border.muted}`,
+                    background: C.bg.base,
+                    color: C.text.primary,
+                    fontSize: FONT_SIZE.md,
                     outline: "none",
                   }}
                 />
@@ -272,12 +273,12 @@ export function Settings({ targetCount }: Props) {
                   disabled={ollamaUrlTesting || !ollamaUrlDraft.trim()}
                   style={{
                     padding: "8px 16px",
-                    borderRadius: 8,
+                    borderRadius: RADIUS.lg,
                     border: "none",
-                    background: ollamaUrlDraft.trim() ? "var(--c-accent)" : "var(--c-bg-raised)",
-                    color: ollamaUrlDraft.trim() ? "#fff" : "var(--c-text-faint)",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    background: ollamaUrlDraft.trim() ? "var(--c-accent)" : C.bg.elevated,
+                    color: ollamaUrlDraft.trim() ? "#fff" : C.text.faint,
+                    fontSize: FONT_SIZE.sm,
+                    fontWeight: FONT_WEIGHT.semibold,
                     cursor: ollamaUrlDraft.trim() && !ollamaUrlTesting ? "pointer" : "default",
                     transition: "all .15s",
                     display: "flex", alignItems: "center", gap: 6,
@@ -290,11 +291,11 @@ export function Settings({ targetCount }: Props) {
               </div>
               {ollamaUrlResult && (
                 <div style={{
-                  marginTop: 8, padding: "6px 10px", borderRadius: 6, fontSize: 12,
+                  marginTop: SPACE.sm, padding: "6px 10px", borderRadius: RADIUS.md, fontSize: FONT_SIZE.sm,
                   display: "flex", alignItems: "center", gap: 6,
-                  background: ollamaUrlResult.ok ? "var(--c-green-bg, #22c55e18)" : "var(--c-sev1-bg, #ef444418)",
-                  border: `1px solid ${ollamaUrlResult.ok ? "var(--c-green, #22c55e)" : "var(--c-sev1, #ef4444)"}`,
-                  color: ollamaUrlResult.ok ? "var(--c-green, #22c55e)" : "var(--c-sev1, #ef4444)",
+                  background: ollamaUrlResult.ok ? "var(--c-green-bg)" : "var(--c-sev1-bg)",
+                  border: `1px solid ${ollamaUrlResult.ok ? "var(--c-green)" : "var(--c-sev1)"}`,
+                  color: ollamaUrlResult.ok ? "var(--c-green)" : "var(--c-sev1)",
                 }}>
                   {ollamaUrlResult.ok
                     ? <><CheckCircle2 size={13} /> Connected — {ollamaUrlResult.models} model{ollamaUrlResult.models === 1 ? "" : "s"} available</>
@@ -316,8 +317,8 @@ export function Settings({ targetCount }: Props) {
               <div className={cn("flex items-center justify-between")}>
                 <span
                   style={{
-                    fontSize: 13,
-                    color: "var(--c-text-secondary)",
+                    fontSize: FONT_SIZE.md,
+                    color: C.text.secondary,
                   }}
                 >
                   Day / Night mode
@@ -343,21 +344,21 @@ export function Settings({ targetCount }: Props) {
                   >
                     <span
                       style={{
-                        fontSize: 13,
-                        color: "var(--c-text-secondary)",
+                        fontSize: FONT_SIZE.md,
+                        color: C.text.secondary,
                       }}
                     >
                       {s.description}
                     </span>
                     <kbd
                       style={{
-                        fontSize: 11,
+                        fontSize: FONT_SIZE.sm,
                         fontFamily: "monospace",
                         padding: "3px 8px",
-                        borderRadius: 5,
-                        border: "1px solid var(--c-border)",
-                        background: "var(--c-bg-base)",
-                        color: "var(--c-text-muted)",
+                        borderRadius: RADIUS.sm,
+                        border: `1px solid ${C.border.muted}`,
+                        background: C.bg.base,
+                        color: C.text.muted,
                         whiteSpace: "nowrap",
                       }}
                     >
@@ -382,17 +383,17 @@ export function Settings({ targetCount }: Props) {
                   <div>
                     <div
                       style={{
-                        fontSize: 13,
-                        color: "var(--c-text-secondary)",
+                        fontSize: FONT_SIZE.md,
+                        color: C.text.secondary,
                       }}
                     >
                       Onboarding tour
                     </div>
                     <div
                       style={{
-                        fontSize: 11,
-                        color: "var(--c-text-muted)",
-                        marginTop: 2,
+                        fontSize: FONT_SIZE.sm,
+                        color: C.text.muted,
+                        marginTop: SPACE.xxs,
                       }}
                     >
                       Replay the first-run walkthrough
@@ -403,29 +404,20 @@ export function Settings({ targetCount }: Props) {
                       replayOnboardingTour();
                       toast.info("Starting tour…");
                     }}
+                    className="hover-border-accent hover-bg-accent-dim"
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: 6,
-                      background: "var(--c-bg-base)",
-                      border: "1px solid var(--c-border)",
-                      borderRadius: 6,
-                      color: "var(--c-accent, #6366f1)",
-                      fontSize: 12,
-                      fontWeight: 600,
+                      background: C.bg.base,
+                      border: `1px solid ${C.border.muted}`,
+                      borderRadius: RADIUS.md,
+                      color: "var(--c-accent)",
+                      fontSize: FONT_SIZE.sm,
+                      fontWeight: FONT_WEIGHT.semibold,
                       padding: "6px 12px",
                       cursor: "pointer",
                       transition: "all .15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor =
-                        "var(--c-accent, #6366f1)";
-                      e.currentTarget.style.background =
-                        "var(--c-accent-dim, #6366f118)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "var(--c-border)";
-                      e.currentTarget.style.background = "var(--c-bg-base)";
                     }}
                   >
                     <PlayCircle size={13} />
@@ -447,23 +439,23 @@ export function Settings({ targetCount }: Props) {
               <div className={cn("flex flex-col gap-2")}>
                 <div
                   style={{
-                    fontSize: 13,
-                    color: "var(--c-text-secondary)",
+                    fontSize: FONT_SIZE.md,
+                    color: C.text.secondary,
                   }}
                 >
-                  <strong style={{ color: "var(--c-text-primary)" }}>
+                  <strong style={{ color: C.text.primary }}>
                     AziroOps
                   </strong>{" "}
                   — DevOps AI Platform
                 </div>
                 <div
                   style={{
-                    fontSize: 13,
-                    color: "var(--c-text-secondary)",
+                    fontSize: FONT_SIZE.md,
+                    color: C.text.secondary,
                   }}
                 >
                   Connected targets:{" "}
-                  <strong style={{ color: "var(--c-text-primary)" }}>
+                  <strong style={{ color: C.text.primary }}>
                     {targetCount}
                   </strong>
                 </div>
@@ -498,11 +490,11 @@ function ModelInput({ id, value, onSubmit }: { id: string; value: string; onSubm
         style={{
           flex: 1,
           padding: "8px 12px",
-          borderRadius: 8,
-          border: `1px solid ${changed ? "var(--c-accent)" : "var(--c-border)"}`,
-          background: "var(--c-bg-base)",
-          color: "var(--c-text-primary)",
-          fontSize: 13,
+          borderRadius: RADIUS.lg,
+          border: `1px solid ${changed ? "var(--c-accent)" : C.border.muted}`,
+          background: C.bg.base,
+          color: C.text.primary,
+          fontSize: FONT_SIZE.md,
           outline: "none",
         }}
       />
@@ -511,12 +503,12 @@ function ModelInput({ id, value, onSubmit }: { id: string; value: string; onSubm
         disabled={!changed}
         style={{
           padding: "8px 16px",
-          borderRadius: 8,
+          borderRadius: RADIUS.lg,
           border: "none",
-          background: changed ? "var(--c-accent)" : "var(--c-bg-raised)",
-          color: changed ? "#fff" : "var(--c-text-faint)",
-          fontSize: 12,
-          fontWeight: 600,
+          background: changed ? "var(--c-accent)" : C.bg.elevated,
+          color: changed ? "#fff" : C.text.faint,
+          fontSize: FONT_SIZE.sm,
+          fontWeight: FONT_WEIGHT.semibold,
           cursor: changed ? "pointer" : "default",
           transition: "all .15s",
         }}

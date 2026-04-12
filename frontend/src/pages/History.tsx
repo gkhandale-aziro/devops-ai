@@ -7,6 +7,7 @@ import { api } from "../api/client";
 import { LevelBadge }   from "../components/LevelBadge";
 import { AIDrawer }      from "../components/AIDrawer";
 import { skeletonStyle } from "../utils/animations";
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACE } from "../utils/theme";
 import { DataTable }     from "@/components/ui/data-table";
 import { Badge }         from "@/components/ui/badge";
 import { EmptyState }    from "@/components/ui/empty-state";
@@ -53,9 +54,9 @@ function buildIncidentColumns(opts: {
         const e = row.original;
         return (
           <div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>{e.reason}</div>
+            <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium }}>{e.reason}</div>
             {e.last_diagnosis && (
-              <div style={{ fontSize: 10, color: "var(--c-text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
+              <div style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)", marginTop: SPACE.xxs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
                 <Sparkles size={9} style={{ display: "inline", marginRight: 3 }} />
                 {e.last_diagnosis.slice(0, 80)}{e.last_diagnosis.length > 80 ? "…" : ""}
               </div>
@@ -71,8 +72,8 @@ function buildIncidentColumns(opts: {
         const e = row.original;
         return (
           <div style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>{e.object}</div>
-            <div style={{ fontSize: 10, color: "var(--c-text-muted)" }}>
+            <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium }}>{e.object}</div>
+            <div style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)" }}>
               {e.source}{e.namespace ? ` / ${e.namespace}` : ""}
             </div>
           </div>
@@ -106,9 +107,9 @@ function buildIncidentColumns(opts: {
             background: "var(--c-accent-dim)",
             border: "1px solid var(--c-border)",
             color: "var(--c-accent-hover)",
-            borderRadius: 6,
+            borderRadius: RADIUS.md,
             padding: "4px 10px",
-            fontSize: 11,
+            fontSize: FONT_SIZE.sm,
             cursor: "pointer",
             whiteSpace: "nowrap",
           }}
@@ -249,7 +250,7 @@ export function History() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent-hover)" strokeWidth="2">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
-        <strong style={{ fontSize: 15 }}>Incident History</strong>
+        <strong style={{ fontSize: FONT_SIZE.lg }}>Incident History</strong>
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {/* Severity filter pills */}
@@ -257,7 +258,7 @@ export function History() {
             <button
               onClick={() => setLevel("")}
               style={{
-                padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                padding: "4px 10px", borderRadius: RADIUS.xl, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
                 background: level === "" ? "var(--c-bg-active)" : "transparent",
                 border: `1px solid ${level === "" ? "var(--c-accent-hover)" : "var(--c-border-strong)"}`,
                 color: level === "" ? "var(--c-accent-hover)" : "var(--c-text-muted)",
@@ -267,7 +268,7 @@ export function History() {
               const c = LEVEL_COLORS[l];
               return (
                 <button key={l} onClick={() => setLevel(l)} style={{
-                  padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  padding: "4px 10px", borderRadius: RADIUS.xl, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
                   background: level === l ? c.bg : "transparent",
                   border: `1px solid ${level === l ? c.border : "var(--c-border-strong)"}`,
                   color: level === l ? c.text : "var(--c-text-muted)",
@@ -285,10 +286,10 @@ export function History() {
               background: "var(--c-bg-surface)",
               border: `1px solid ${nsFilter ? "var(--c-accent-hover)" : "var(--c-border-strong)"}`,
               color: nsFilter ? "var(--c-accent-hover)" : "var(--c-text-muted)",
-              borderRadius: 6,
+              borderRadius: RADIUS.md,
               padding: "5px 8px",
-              fontSize: 11,
-              fontWeight: 600,
+              fontSize: FONT_SIZE.sm,
+              fontWeight: FONT_WEIGHT.semibold,
               outline: "none",
               cursor: "pointer",
             }}
@@ -307,9 +308,9 @@ export function History() {
                 background: "var(--c-bg-surface)",
                 border: "1px solid var(--c-border-strong)",
                 color: "var(--c-text-primary)",
-                borderRadius: 6,
+                borderRadius: RADIUS.md,
                 padding: "5px 10px 5px 30px",
-                fontSize: 12,
+                fontSize: FONT_SIZE.sm,
                 outline: "none",
                 width: 180,
               }}
@@ -323,12 +324,12 @@ export function History() {
           {hasFilters && (
             <button
               onClick={() => { setLevel(""); setObjInput(""); setObjFilter(""); setNsFilter(""); }}
-              style={{ background: "none", border: "none", color: "var(--c-text-muted)", fontSize: 11, cursor: "pointer", padding: "2px 6px" }}
+              style={{ background: "none", border: "none", color: "var(--c-text-muted)", fontSize: FONT_SIZE.sm, cursor: "pointer", padding: "2px 6px" }}
             >Clear</button>
           )}
 
           <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
-          <span style={{ fontSize: 12, color: "var(--c-text-muted)" }}>
+          <span style={{ fontSize: FONT_SIZE.sm, color: "var(--c-text-muted)" }}>
             {loading ? "Loading…" : `${filtered.length} event${filtered.length !== 1 ? "s" : ""}`}
           </span>
           <button
@@ -351,7 +352,7 @@ export function History() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
           <div style={{ flex: 1, overflowY: "auto" }}>
             {loadError && (
-              <div style={{ margin: 16, padding: "10px 14px", background: "var(--c-sev1-bg)", border: "1px solid var(--c-sev1)", borderRadius: 8, fontSize: 12, color: "var(--c-sev1)" }}>
+              <div style={{ margin: SPACE.lg, padding: "10px 14px", background: "var(--c-sev1-bg)", border: "1px solid var(--c-sev1)", borderRadius: RADIUS.lg, fontSize: FONT_SIZE.sm, color: "var(--c-sev1)" }}>
                 {loadError}
               </div>
             )}
@@ -402,7 +403,7 @@ export function History() {
           }}>
             <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-strong)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
               {detail && <LevelBadge level={detail.level} showLabel />}
-              <strong style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <strong style={{ fontSize: FONT_SIZE.md, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {detail?.reason ?? "Loading…"}
               </strong>
               <button onClick={() => { setDetail(null); setSelectedId(null); }}
@@ -415,7 +416,7 @@ export function History() {
               {detail && (
                 <>
                   {/* meta grid */}
-                  <div style={{ background: "var(--c-bg-raised)", border: "1px solid var(--c-border-strong)", borderRadius: 8, padding: 12, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
+                  <div style={{ background: "var(--c-bg-raised)", border: "1px solid var(--c-border-strong)", borderRadius: RADIUS.lg, padding: SPACE.md, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: SPACE.sm, fontSize: FONT_SIZE.sm }}>
                     <MetaRow label="Object"    value={detail.object} />
                     <MetaRow label="Namespace" value={detail.namespace || "—"} />
                     <MetaRow label="Source"    value={detail.source} />
@@ -434,7 +435,7 @@ export function History() {
                             key={s}
                             onClick={() => updateStatus(detail, s)}
                             style={{
-                              flex: 1, padding: "6px 8px", fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: "pointer",
+                              flex: 1, padding: "6px 8px", fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, borderRadius: RADIUS.md, cursor: "pointer",
                               background: active ? ss.bg : "var(--c-bg-raised)",
                               border: `1px solid ${active ? ss.color : "var(--c-border-strong)"}`,
                               color: active ? ss.color : "var(--c-text-muted)",
@@ -448,7 +449,7 @@ export function History() {
 
                   {detail.message && (
                     <Section label="Event Message">
-                      <div style={{ fontSize: 12, color: "var(--c-text-secondary)", lineHeight: 1.6 }}>{detail.message}</div>
+                      <div style={{ fontSize: FONT_SIZE.sm, color: "var(--c-text-secondary)", lineHeight: 1.6 }}>{detail.message}</div>
                     </Section>
                   )}
 
@@ -461,9 +462,9 @@ export function History() {
                       background: "var(--c-accent-dim)",
                       border: "1px solid var(--c-border)",
                       color: "var(--c-accent-hover)",
-                      borderRadius: 8,
-                      fontSize: 13,
-                      fontWeight: 600,
+                      borderRadius: RADIUS.lg,
+                      fontSize: FONT_SIZE.md,
+                      fontWeight: FONT_WEIGHT.semibold,
                       cursor: "pointer",
                       marginBottom: 14,
                       display: "flex",
@@ -485,7 +486,7 @@ export function History() {
                     };
                     return (
                       <CollapsibleSection key={kind} label={labels[kind]}>
-                        <pre style={{ background: "var(--c-bg-overlay)", color: "var(--c-text-secondary)", borderRadius: 6, padding: 10, fontSize: 11, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", margin: 0 }}>
+                        <pre style={{ background: "var(--c-bg-overlay)", color: "var(--c-text-secondary)", borderRadius: RADIUS.md, padding: 10, fontSize: FONT_SIZE.sm, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", margin: 0 }}>
                           {snap.content}
                         </pre>
                       </CollapsibleSection>
@@ -494,7 +495,7 @@ export function History() {
 
                   {(detail.analyses ?? []).slice(-1).map((a: Analysis) => a.remediation ? (
                     <Section key={a.id} label="Proposed Remediation">
-                      <div style={{ background: "var(--c-bg-raised)", border: "1px solid var(--c-sev2-bg)", borderRadius: 6, padding: 12, fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--c-sev2)" }}>
+                      <div style={{ background: "var(--c-bg-raised)", border: "1px solid var(--c-sev2-bg)", borderRadius: RADIUS.md, padding: SPACE.md, fontSize: FONT_SIZE.sm, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--c-sev2)" }}>
                         {a.remediation}
                       </div>
                     </Section>
@@ -503,7 +504,7 @@ export function History() {
                   <div style={{ display: "flex", gap: 10, marginTop: 8, paddingTop: 12, borderTop: "1px solid var(--c-border-strong)" }}>
                     <button
                       onClick={() => { setObjInput(detail.object); setObjFilter(detail.object); setDetail(null); setSelectedId(null); }}
-                      style={{ background: "none", border: "none", color: "var(--c-accent-hover)", fontSize: 12, cursor: "pointer", padding: 0 }}
+                      style={{ background: "none", border: "none", color: "var(--c-accent-hover)", fontSize: FONT_SIZE.sm, cursor: "pointer", padding: 0 }}
                     >
                       View all for {detail.object} <ArrowRight size={11} style={{ marginLeft: 3 }} />
                     </button>
@@ -525,14 +526,14 @@ export function History() {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function FieldLabel({ children }: { children: ReactNode }) {
-  return <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".8px", color: "var(--c-text-muted)", marginBottom: 4 }}>{children}</div>;
+  return <div style={{ fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, textTransform: "uppercase", letterSpacing: ".8px", color: "var(--c-text-muted)", marginBottom: SPACE.xs }}>{children}</div>;
 }
 
 function MetaRow({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: "var(--c-text-muted)", textTransform: "uppercase", letterSpacing: ".5px" }}>{label}</div>
-      <div style={{ fontSize: 12, color: "var(--c-text-primary)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={title}>{value}</div>
+      <div style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)", textTransform: "uppercase", letterSpacing: ".5px" }}>{label}</div>
+      <div style={{ fontSize: FONT_SIZE.sm, color: "var(--c-text-primary)", marginTop: SPACE.xxs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={title}>{value}</div>
     </div>
   );
 }
@@ -540,7 +541,7 @@ function MetaRow({ label, value, title }: { label: string; value: string; title?
 function Section({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, textTransform: "uppercase", color: "var(--c-text-muted)", letterSpacing: ".5px", marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: FONT_SIZE.sm, textTransform: "uppercase", color: "var(--c-text-muted)", letterSpacing: ".5px", marginBottom: 5 }}>{label}</div>
       {children}
     </div>
   );
@@ -555,7 +556,7 @@ function CollapsibleSection({ label, children }: { label: string; children: Reac
         style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "5px 0", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
       >
         <span style={{ color: "var(--c-text-muted)", display: "flex", alignItems: "center" }}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
-        <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--c-text-muted)" }}>{label}</span>
+        <span style={{ fontSize: FONT_SIZE.sm, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--c-text-muted)" }}>{label}</span>
       </button>
       {open && children}
     </div>

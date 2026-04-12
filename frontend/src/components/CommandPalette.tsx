@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import type { Target } from "../types";
 import { api } from "../api/client";
 import { openResourceDetail } from "../stores/resourceDetailStore";
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOW, Z_INDEX } from "../utils/theme";
 
 interface Result {
   id:       string;
@@ -42,8 +43,8 @@ const PAGE_ICONS: Record<string, string> = {
 const ACTION_VERBS: Record<string, { tab: "describe" | "logs" | "ai"; label: string; iconKey: string; accent: string }> = {
   describe: { tab: "describe", label: "Describe",   iconKey: "describe", accent: "var(--c-accent)"       },
   details:  { tab: "describe", label: "Details",    iconKey: "describe", accent: "var(--c-accent)"       },
-  logs:     { tab: "logs",     label: "View logs",  iconKey: "logs",     accent: "#f59e0b"               },
-  log:      { tab: "logs",     label: "View logs",  iconKey: "logs",     accent: "#f59e0b"               },
+  logs:     { tab: "logs",     label: "View logs",  iconKey: "logs",     accent: C.status.warning         },
+  log:      { tab: "logs",     label: "View logs",  iconKey: "logs",     accent: C.status.warning         },
   ai:       { tab: "ai",       label: "AI analyze", iconKey: "ai",       accent: "var(--c-accent-hover)" },
   analyze:  { tab: "ai",       label: "AI analyze", iconKey: "ai",       accent: "var(--c-accent-hover)" },
 };
@@ -51,8 +52,8 @@ const ACTION_VERBS: Record<string, { tab: "describe" | "logs" | "ai"; label: str
 const PAGES: Array<{ label: string; path: string; iconKey: string; accent: string }> = [
   { label: "Home",        path: "/",          iconKey: "home",      accent: "var(--c-accent)" },
   { label: "Dashboard",   path: "/dashboard", iconKey: "dashboard", accent: "var(--c-accent-hover)" },
-  { label: "Live Alerts", path: "/alerts",    iconKey: "alerts",    accent: "#f43f5e" },
-  { label: "History",     path: "/history",   iconKey: "history",   accent: "#06b6d4" },
+  { label: "Live Alerts", path: "/alerts",    iconKey: "alerts",    accent: C.error.border },
+  { label: "History",     path: "/history",   iconKey: "history",   accent: C.status.info },
   { label: "AI Chat",     path: "/chat",      iconKey: "chat",      accent: "var(--c-accent-hover)" },
   { label: "Settings",    path: "/settings",  iconKey: "settings",  accent: "var(--c-text-secondary)" },
 ];
@@ -65,26 +66,25 @@ export function SearchBar() {
   return (
     <button
       data-tour="search"
+      className="hover-bg-raised"
       onClick={() => _openPalette?.()}
       style={{
-        display: "flex", alignItems: "center", gap: 8,
-        background: "var(--c-bg-surface)", border: "1px solid var(--c-border)",
-        borderRadius: 8, padding: "6px 14px",
-        fontSize: 12, color: "var(--c-text-muted)", cursor: "pointer",
+        display: "flex", alignItems: "center", gap: SPACE.sm,
+        background: "var(--c-bg-surface)", border: `1px solid ${C.border.muted}`,
+        borderRadius: RADIUS.lg, padding: `${SPACE.sm}px ${SPACE.lg}px`,
+        fontSize: FONT_SIZE.md, color: C.text.muted, cursor: "pointer",
         transition: "border-color .15s",
         minWidth: 220,
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--c-accent)"; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--c-border)"; }}
     >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
       Search…
       <kbd style={{
-        marginLeft: "auto", fontSize: 9, color: "var(--c-text-muted)",
-        background: "var(--c-bg-raised)", border: "1px solid var(--c-border)",
-        borderRadius: 3, padding: "1px 5px",
+        marginLeft: "auto", fontSize: FONT_SIZE.xs, color: C.text.muted,
+        background: C.bg.elevated, border: `1px solid ${C.border.muted}`,
+        borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.xs}px`,
       }}>
         {navigator.platform.includes("Mac") ? "\u2318K" : "Ctrl+K"}
       </kbd>
@@ -141,7 +141,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
       }));
       targets.forEach(t => res.push({
         id: t.id, icon: PAGE_ICONS.target, label: t.name,
-        sub: t.type, accent: "#22c55e",
+        sub: t.type, accent: C.status.success,
         action: () => { onSelectTarget(t); nav("/dashboard"); setOpen(false); },
       }));
       setResults(res);
@@ -161,7 +161,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
     targets.filter(t => t.name.toLowerCase().includes(ql) || t.type.includes(ql)).forEach(t =>
       res.push({
         id: t.id, icon: PAGE_ICONS.target, label: t.name,
-        sub: `${t.type} · ${t.status}`, accent: "#22c55e",
+        sub: `${t.type} · ${t.status}`, accent: C.status.success,
         action: () => { onSelectTarget(t); nav("/dashboard"); setOpen(false); },
       })
     );
@@ -201,7 +201,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
       try {
         const { results: kres } = await api.search(activeTarget.id, searchTerm);
         if (controller.signal.aborted) return;
-        const kindColors: Record<string, string> = { pod: "#22c55e", node: "var(--c-accent)", deployment: "#f59e0b" };
+        const kindColors: Record<string, string> = { pod: C.status.success, node: "var(--c-accent)", deployment: C.status.warning };
         // Pods/nodes get a primary row (Describe on Enter) plus two extra
         // action rows (Logs, AI analyze). Deployments get Describe only —
         // `kubectl logs` on a Deployment doesn't work without selecting a
@@ -232,7 +232,7 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
                 icon:   PAGE_ICONS.logs,
                 label:  `View logs — ${r.name}`,
                 sub:    `Tail last 150 lines${ns ? " · " + ns : ""}`,
-                accent: "#f59e0b",
+                accent: C.status.warning,
                 action: () => {
                   openResourceDetail(activeTarget.id, r.kind, r.name, ns, "logs");
                   setOpen(false);
@@ -280,23 +280,23 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
       {/* Backdrop */}
       <div
         onClick={() => setOpen(false)}
-        style={{ position: "fixed", inset: 0, background: "#000000aa", zIndex: 200, backdropFilter: "blur(4px)" }}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.67)", zIndex: Z_INDEX.modal, backdropFilter: "blur(4px)" }}
       />
 
       {/* Palette */}
       <div style={{
         position: "fixed", top: "18%", left: "50%", transform: "translateX(-50%)",
         width: 580, maxWidth: "90vw",
-        background: "var(--c-bg-raised)",
-        border: "1px solid var(--c-border)",
-        borderRadius: 12,
-        boxShadow: "0 24px 80px #00000088, 0 0 0 1px color-mix(in srgb, var(--c-accent) 3%, transparent)",
-        zIndex: 201,
+        background: C.bg.elevated,
+        border: `1px solid ${C.border.muted}`,
+        borderRadius: RADIUS.xl,
+        boxShadow: SHADOW.lg,
+        zIndex: Z_INDEX.modal + 1,
         overflow: "hidden",
         animation: "fadeIn .15s ease-out",
       }}>
         {/* Input */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--c-bg-active)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.lg}px ${SPACE.lg}px`, borderBottom: `1px solid ${C.bg.active}` }}>
           {loading ? (
             <span style={{ width: 16, height: 16, border: "2px solid var(--c-bg-active)", borderTopColor: "var(--c-accent)", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite", flexShrink: 0 }} />
           ) : (
@@ -312,16 +312,16 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
             placeholder={activeTarget ? "Search… or try 'describe nginx', 'logs api', 'ai postgres'" : "Search pages, targets, pods, nodes…"}
             style={{
               flex: 1, background: "transparent", border: "none", outline: "none",
-              color: "var(--c-text-primary)", fontSize: 15, fontFamily: "inherit",
+              color: C.text.primary, fontSize: FONT_SIZE.lg, fontFamily: "inherit",
             }}
           />
-          <kbd style={{ fontSize: 10, color: "var(--c-text-muted)", background: "var(--c-bg-surface)", border: "1px solid var(--c-border)", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>Esc</kbd>
+          <kbd style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, background: "var(--c-bg-surface)", border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`, flexShrink: 0 }}>Esc</kbd>
         </div>
 
         {/* Results */}
         <div style={{ maxHeight: 380, overflowY: "auto" }}>
           {results.length === 0 && (
-            <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--c-text-muted)", fontSize: 13 }}>No results</div>
+            <div style={{ padding: `${SPACE.xxl}px ${SPACE.lg}px`, textAlign: "center", color: C.text.muted, fontSize: FONT_SIZE.md }}>No results</div>
           )}
           {results.map((r, i) => (
             <div
@@ -329,27 +329,27 @@ export function CommandPalette({ targets, activeTarget, onSelectTarget }: Props)
               onClick={r.action}
               onMouseEnter={() => setActive(i)}
               style={{
-                display: "flex", alignItems: "center", gap: 12,
-                padding: "10px 16px", cursor: "pointer",
-                background: active === i ? "var(--c-bg-active)" : "transparent",
+                display: "flex", alignItems: "center", gap: SPACE.md,
+                padding: `${SPACE.sm + SPACE.xxs}px ${SPACE.lg}px`, cursor: "pointer",
+                background: active === i ? C.bg.active : "transparent",
                 borderLeft: active === i ? `2px solid ${r.accent ?? "var(--c-accent)"}` : "2px solid transparent",
                 transition: "background .08s",
               }}
             >
-              <span style={{ color: r.accent ?? "var(--c-text-muted)", width: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: r.icon }} />
+              <span style={{ color: r.accent ?? C.text.muted, width: SPACE.xl, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: r.icon }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
-                {r.sub && <div style={{ fontSize: 11, color: "var(--c-text-muted)", marginTop: 1 }}>{r.sub}</div>}
+                <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium, color: C.text.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
+                {r.sub && <div style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, marginTop: 1 }}>{r.sub}</div>}
               </div>
               {active === i && (
-                <kbd style={{ fontSize: 10, color: "var(--c-text-muted)", background: "var(--c-bg-raised)", border: "1px solid var(--c-border)", borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>↵</kbd>
+                <kbd style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, background: C.bg.elevated, border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.sm}px`, flexShrink: 0 }}>↵</kbd>
               )}
             </div>
           ))}
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "8px 16px", borderTop: "1px solid var(--c-bg-active)", display: "flex", gap: 16, fontSize: 10, color: "var(--c-text-muted)" }}>
+        <div style={{ padding: `${SPACE.sm}px ${SPACE.lg}px`, borderTop: `1px solid ${C.bg.active}`, display: "flex", gap: SPACE.lg, fontSize: FONT_SIZE.xs, color: C.text.muted }}>
           <span>↑↓ navigate</span>
           <span>↵ select</span>
           <span>Esc close</span>

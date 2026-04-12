@@ -17,7 +17,7 @@ import { EmptyState } from '../../components/ui/empty-state';
 import { TimeRangePicker } from '../../components/ui/time-range-picker';
 import { api } from '../../api/client';
 import { useMetrics } from '../../hooks/useMetrics';
-import { C } from '../../utils/theme';
+import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOW } from '../../utils/theme';
 
 // ── Resource detail helpers ──────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
           { label: "Disk",       val: diskUsed,       sub: `of ${diskTotal} (${diskPct}%)`, pct: diskPct },
           { label: "Uptime",     val: uptimeStr,      sub: os,                              pct: -1      },
         ].map(card => (
-          <div key={card.label} style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, padding: 16, boxShadow: "0 4px 16px rgba(0,0,0,.35)", display: "flex", alignItems: "center", gap: 14 }}>
+          <div key={card.label} style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.xl, padding: SPACE.lg, boxShadow: SHADOW.md, display: "flex", alignItems: "center", gap: SPACE.md }}>
             {card.pct >= 0
               ? <RingChart pct={card.pct} color={fillColor(card.pct)} size={52} />
               : <div style={{ width: 52, height: 52, borderRadius: "50%", background: `${C.accent.primary}18`, border: `2px solid ${C.accent.primary}33`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -110,9 +110,9 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
                 </div>
             }
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>{card.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: card.pct >= 0 ? pctColor(card.pct) : "#7c8cf8", lineHeight: 1 }}>{card.val}</div>
-              <div style={{ fontSize: 10, color: C.text.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.sub}</div>
+              <div style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: SPACE.xs }}>{card.label}</div>
+              <div style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.bold, color: card.pct >= 0 ? pctColor(card.pct) : C.accent.light, lineHeight: 1 }}>{card.val}</div>
+              <div style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, marginTop: SPACE.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.sub}</div>
             </div>
           </div>
         ))}
@@ -122,26 +122,26 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
       {targetId && (
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: C.text.secondary }}>
+            <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.secondary }}>
               Trends
-              {metricsLoading && <span style={{ fontSize: 11, fontWeight: 400, color: C.text.faint, marginLeft: 8 }}>Loading…</span>}
+              {metricsLoading && <span style={{ fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.normal, color: C.text.faint, marginLeft: SPACE.sm }}>Loading…</span>}
             </div>
             <TimeRangePicker value={range} onChange={setRange} />
           </div>
           <div style={{ opacity: metricsLoading ? 0.5 : 1, transition: "opacity 200ms ease" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-              <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 11, color: C.text.muted, marginBottom: 8, fontWeight: 600 }}>Memory Usage</div>
+              <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.xl, padding: SPACE.md }}>
+                <div style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, marginBottom: SPACE.sm, fontWeight: FONT_WEIGHT.semibold }}>Memory Usage</div>
                 <MetricChart data={metricsData.mem_pct ?? []} label="Memory" unit="%" color={C.status.info} height={140} thresholds={{ warn: 70, danger: 90 }} />
               </div>
-              <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 11, color: C.text.muted, marginBottom: 8, fontWeight: 600 }}>Disk Usage</div>
+              <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.xl, padding: SPACE.md }}>
+                <div style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, marginBottom: SPACE.sm, fontWeight: FONT_WEIGHT.semibold }}>Disk Usage</div>
                 <MetricChart data={metricsData.disk_pct ?? []} label="Disk" unit="%" color={C.accent.soft} height={140} thresholds={{ warn: 80, danger: 95 }} />
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 16 }}>
-              <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 11, color: C.text.muted, marginBottom: 8, fontWeight: 600 }}>Load Average (1m)</div>
+              <div style={{ background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.xl, padding: SPACE.md }}>
+                <div style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, marginBottom: SPACE.sm, fontWeight: FONT_WEIGHT.semibold }}>Load Average (1m)</div>
                 <MetricChart data={metricsData.load_1m ?? []} label="Load" unit="" color={C.accent.primary} height={140} />
               </div>
             </div>
@@ -153,8 +153,8 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Card title={`Failed Services (${failed.length})`}>
           {failed.length === 0
-            ? <div style={{ color: C.status.success, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>All services healthy <Check size={13} /></div>
-            : failed.map((s, i) => <div key={i} style={{ fontSize: 13, color: C.status.danger, marginBottom: 3 }}>• {s}</div>)
+            ? <div style={{ color: C.status.success, fontSize: FONT_SIZE.md, display: "flex", alignItems: "center", gap: SPACE.xs }}>All services healthy <Check size={13} /></div>
+            : failed.map((s, i) => <div key={i} style={{ fontSize: FONT_SIZE.md, color: C.status.danger, marginBottom: SPACE.xxs }}>• {s}</div>)
           }
         </Card>
         <Card title="Top Processes">
@@ -172,7 +172,7 @@ export function OverviewTab({ data, targetId }: { data: Record<string, string>; 
  *  collapsible Card with a `<Pre>` body. Used as the default route in
  *  Dashboard's TabContent when no specialized component exists. */
 export function GenericTab({ data }: { data: Record<string, string> }) {
-  if (data.error) return <div style={{ padding: 20, color: C.status.danger }}>{data.error}</div>;
+  if (data.error) return <div style={{ padding: SPACE.xl, color: C.status.danger }}>{data.error}</div>;
   const entries = Object.entries(data);
   if (!entries.length) return <EmptyState icon={<Database size={32} />} title="Nothing to show here" description="The target responded, but this tab has no data yet. Try refreshing or check that the underlying command has results to report." />;
   return (
@@ -216,27 +216,27 @@ export function EventsTab({ data, target }: { data: Record<string, string>; targ
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       {/* summary bar */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 16, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.lg, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{counts.total} Events</span>
-        <div style={{ width: 1, height: 20, background: C.border.muted }} />
+        <span style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.primary }}>{counts.total} Events</span>
+        <div style={{ width: 1, height: SPACE.xl, background: C.border.muted }} />
         {counts.warning > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.warning, animation: "pulse 2s ease-in-out infinite" }} />
-            <span style={{ fontSize: 12, color: C.status.warning, fontWeight: 600 }}>{counts.warning}</span>
-            <span style={{ fontSize: 11, color: C.text.muted }}>Warning</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.status.warning, fontWeight: FONT_WEIGHT.semibold }}>{counts.warning}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Warning</span>
           </div>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.success }} />
-          <span style={{ fontSize: 12, color: C.status.success, fontWeight: 600 }}>{counts.normal}</span>
-          <span style={{ fontSize: 11, color: C.text.muted }}>Normal</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.status.success, fontWeight: FONT_WEIGHT.semibold }}>{counts.normal}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Normal</span>
         </div>
         {counts.total > 0 && (
           <>
             <div style={{ flex: 1 }} />
-            <div style={{ width: 80, height: 5, borderRadius: 3, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
+            <div style={{ width: 80, height: 5, borderRadius: RADIUS.sm, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
               <div style={{ width: `${counts.normal / counts.total * 100}%`, background: C.status.success }} />
               <div style={{ width: `${counts.warning / counts.total * 100}%`, background: C.status.warning }} />
             </div>
@@ -293,19 +293,19 @@ export function ServicesTab({ data, target }: { data: Record<string, string>; ta
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       {/* summary */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0, flexWrap: "wrap",
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{counts.total} Services</span>
-        <div style={{ width: 1, height: 20, background: C.border.muted }} />
+        <span style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.primary }}>{counts.total} Services</span>
+        <div style={{ width: 1, height: SPACE.xl, background: C.border.muted }} />
         {pills.map(p => p.count > 0 && (
           <div key={p.label} style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-            background: p.color + "15", border: `1px solid ${p.color}33`, borderRadius: 6,
+            display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+            background: p.color + "15", border: `1px solid ${p.color}33`, borderRadius: RADIUS.md,
           }}>
-            <span style={{ fontSize: 11 }}>{p.icon}</span>
-            <span style={{ fontSize: 12, color: p.color, fontWeight: 600 }}>{p.count}</span>
-            <span style={{ fontSize: 11, color: C.text.secondary }}>{p.label}</span>
+            <span style={{ fontSize: FONT_SIZE.sm }}>{p.icon}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: p.color, fontWeight: FONT_WEIGHT.semibold }}>{p.count}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>{p.label}</span>
           </div>
         ))}
       </div>
@@ -400,7 +400,7 @@ export function WorkloadsTab({ data, target }: { data: Record<string, string>; t
     { label: "DaemonSets",   key: "daemonsets",   icon: <RefreshCw size={16} />,     color: C.accent.soft, ...parseWorkloadCounts(data.daemonsets   ?? "", "DaemonSets")   },
     { label: "ReplicaSets",  key: "replicasets",  icon: <ClipboardList size={16} />, color: C.text.muted, ...parseWorkloadCounts(data.replicasets  ?? "", "ReplicaSets")  },
     { label: "Jobs",         key: "jobs",         icon: <Zap size={16} />,           color: C.status.warning, ...parseWorkloadCounts(data.jobs         ?? "", "Jobs")         },
-    { label: "CronJobs",     key: "cronjobs",     icon: <Clock size={16} />,         color: "#22d3ee", ...parseWorkloadCounts(data.cronjobs     ?? "", "CronJobs")     },
+    { label: "CronJobs",     key: "cronjobs",     icon: <Clock size={16} />,         color: C.status.info, ...parseWorkloadCounts(data.cronjobs     ?? "", "CronJobs")     },
   ], [data]);
 
   const totalAll  = sections.reduce((s, w) => s + w.total, 0);
@@ -413,32 +413,32 @@ export function WorkloadsTab({ data, target }: { data: Record<string, string>; t
     <div style={{ overflowY: "auto", flex: 1, padding: 16 }}>
       {/* ── Summary bar ────────────────────────────────────────────────── */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", marginBottom: 16,
-        background: C.bg.base, border: `1px solid ${C.border.subtle}`, borderRadius: 10,
+        display: "flex", alignItems: "center", gap: SPACE.lg, padding: `${SPACE.md}px ${SPACE.lg}px`, marginBottom: SPACE.lg,
+        background: C.bg.base, border: `1px solid ${C.border.subtle}`, borderRadius: RADIUS.xl,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 22, fontWeight: 800, color: C.text.primary }}>{totalAll}</span>
-          <span style={{ fontSize: 12, color: C.text.muted }}>Total Workloads</span>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
+          <span style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.black, color: C.text.primary }}>{totalAll}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Total Workloads</span>
         </div>
-        <div style={{ width: 1, height: 24, background: C.border.muted }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <div style={{ width: 1, height: SPACE.xxl, background: C.border.muted }} />
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.status.success, boxShadow: `0 0 6px ${C.status.success}88` }} />
-          <span style={{ fontSize: 13, color: C.status.success, fontWeight: 700 }}>{readyAll}</span>
-          <span style={{ fontSize: 11, color: C.text.muted }}>Ready</span>
+          <span style={{ fontSize: FONT_SIZE.md, color: C.status.success, fontWeight: FONT_WEIGHT.bold }}>{readyAll}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Ready</span>
         </div>
         {failedAll > 0 && (
           <>
-            <div style={{ width: 1, height: 24, background: C.border.muted }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 1, height: SPACE.xxl, background: C.border.muted }} />
+            <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.status.danger, boxShadow: `0 0 6px ${C.status.danger}88`, animation: "pulse 2s ease-in-out infinite" }} />
-              <span style={{ fontSize: 13, color: C.status.danger, fontWeight: 700 }}>{failedAll}</span>
-              <span style={{ fontSize: 11, color: C.text.muted }}>Not Ready</span>
+              <span style={{ fontSize: FONT_SIZE.md, color: C.status.danger, fontWeight: FONT_WEIGHT.bold }}>{failedAll}</span>
+              <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Not Ready</span>
             </div>
           </>
         )}
         {/* health bar */}
         <div style={{ flex: 1 }} />
-        <div style={{ width: 120, height: 6, borderRadius: 3, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
+        <div style={{ width: 120, height: 6, borderRadius: RADIUS.sm, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
           {totalAll > 0 && (
             <>
               <div style={{ width: `${readyAll / totalAll * 100}%`, background: C.status.success, transition: "width .5s" }} />
@@ -454,7 +454,7 @@ export function WorkloadsTab({ data, target }: { data: Record<string, string>; t
       </div>
 
       {/* ── Resource type cards ────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: SPACE.sm, marginBottom: SPACE.lg }}>
         {sections.map(s => {
           const isActive = expanded === s.key;
           const pct = s.total > 0 ? Math.round(s.ready / s.total * 100) : 100;
@@ -463,39 +463,38 @@ export function WorkloadsTab({ data, target }: { data: Record<string, string>; t
             <div
               key={s.key}
               onClick={() => setExpanded(isActive ? "" : s.key)}
+              className="card-interactive"
               style={{
-                background: isActive ? "#12162a" : C.bg.card,
+                background: isActive ? C.bg.active : C.bg.card,
                 border: `1px solid ${isActive ? s.color + "66" : C.border.muted}`,
-                borderRadius: 10, padding: "14px 16px", cursor: "pointer",
+                borderRadius: RADIUS.xl, padding: `${SPACE.md}px ${SPACE.lg}px`, cursor: "pointer",
                 transition: "all .15s", position: "relative", overflow: "hidden",
                 boxShadow: isActive ? `0 0 20px ${s.color}15` : "none",
               }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.borderColor = s.color + "44"; }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = C.border.muted; }}
             >
               {/* top accent line */}
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.total > 0 ? s.color : C.border.muted }} />
 
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginBottom: SPACE.sm }}>
                 <span style={{ color: s.color, display: "flex", alignItems: "center" }}>{s.icon}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{s.label}</span>
+                <span style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.primary }}>{s.label}</span>
                 <span style={{ marginLeft: "auto", color: C.text.faint, display: "flex", alignItems: "center" }}>{isActive ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
               </div>
 
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 28, fontWeight: 800, color: s.total > 0 ? s.color : C.text.faint, lineHeight: 1 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginBottom: SPACE.sm }}>
+                <span style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.black, color: s.total > 0 ? s.color : C.text.faint, lineHeight: 1 }}>
                   {s.total}
                 </span>
                 {s.total > 0 && (
-                  <div style={{ display: "flex", gap: 8, fontSize: 11 }}>
-                    <span style={{ color: C.status.success, display: "inline-flex", alignItems: "center", gap: 2 }}><Check size={11} /> {s.ready}</span>
-                    {s.notReady > 0 && <span style={{ color: C.status.danger, display: "inline-flex", alignItems: "center", gap: 2 }}><XIcon size={11} /> {s.notReady}</span>}
+                  <div style={{ display: "flex", gap: SPACE.sm, fontSize: FONT_SIZE.sm }}>
+                    <span style={{ color: C.status.success, display: "inline-flex", alignItems: "center", gap: SPACE.xxs }}><Check size={11} /> {s.ready}</span>
+                    {s.notReady > 0 && <span style={{ color: C.status.danger, display: "inline-flex", alignItems: "center", gap: SPACE.xxs }}><XIcon size={11} /> {s.notReady}</span>}
                   </div>
                 )}
               </div>
 
               {/* mini progress bar */}
-              <div style={{ height: 3, borderRadius: 2, background: C.border.muted, overflow: "hidden" }}>
+              <div style={{ height: 3, borderRadius: RADIUS.sm, background: C.border.muted, overflow: "hidden" }}>
                 {s.total > 0 && (
                   <div style={{ width: `${pct}%`, height: "100%", background: pctColor, transition: "width .4s" }} />
                 )}
@@ -513,17 +512,17 @@ export function WorkloadsTab({ data, target }: { data: Record<string, string>; t
         const hasData = hasKubectlData(raw);
         return (
           <div style={{
-            background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: 10,
-            overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,.3)",
+            background: C.bg.card, border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.xl,
+            overflow: "hidden", boxShadow: SHADOW.sm,
           }}>
             <div style={{
-              padding: "10px 16px", borderBottom: `1px solid ${C.border.muted}`,
-              display: "flex", alignItems: "center", gap: 8,
-              background: "#12141f",
+              padding: `${SPACE.sm}px ${SPACE.lg}px`, borderBottom: `1px solid ${C.border.muted}`,
+              display: "flex", alignItems: "center", gap: SPACE.sm,
+              background: C.bg.base,
             }}>
-              <span style={{ fontSize: 14 }}>{s.icon}</span>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{s.label}</span>
-              <span style={{ fontSize: 11, color: C.text.muted }}>· {s.total} resource{s.total !== 1 ? "s" : ""}</span>
+              <span style={{ fontSize: FONT_SIZE.md }}>{s.icon}</span>
+              <span style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold }}>{s.label}</span>
+              <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>· {s.total} resource{s.total !== 1 ? "s" : ""}</span>
             </div>
             <div style={{ overflowX: "auto" }}>
               {hasData
@@ -536,7 +535,7 @@ export function WorkloadsTab({ data, target }: { data: Record<string, string>; t
                       detail.open(kind, name, ns);
                     } : undefined}
                   />
-                : <div style={{ padding: 20, color: C.text.faint, fontSize: 13 }}>No {s.label.toLowerCase()} found</div>
+                : <div style={{ padding: SPACE.xl, color: C.text.faint, fontSize: FONT_SIZE.md }}>No {s.label.toLowerCase()} found</div>
               }
             </div>
           </div>
@@ -593,27 +592,27 @@ export function K8sStorageTab({ data, target }: { data: Record<string, string>; 
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       {/* summary */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0, flexWrap: "wrap",
       }}>
         {pills.map(p => (
           <div key={p.label} style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-            background: p.color + "15", border: `1px solid ${p.color}33`, borderRadius: 6,
+            display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+            background: p.color + "15", border: `1px solid ${p.color}33`, borderRadius: RADIUS.md,
           }}>
-            <span style={{ fontSize: 11 }}>{p.icon}</span>
-            <span style={{ fontSize: 12, color: p.color, fontWeight: 600 }}>{p.count}</span>
-            <span style={{ fontSize: 11, color: C.text.secondary }}>{p.label}</span>
+            <span style={{ fontSize: FONT_SIZE.sm }}>{p.icon}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: p.color, fontWeight: FONT_WEIGHT.semibold }}>{p.count}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>{p.label}</span>
           </div>
         ))}
         {counts.pvcs > 0 && (
           <>
-            <div style={{ width: 1, height: 20, background: C.border.muted }} />
+            <div style={{ width: 1, height: SPACE.xl, background: C.border.muted }} />
             {statusPills.map(s => s.count > 0 && (
-              <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div key={s.label} style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.color }} />
-                <span style={{ fontSize: 11, color: s.color, fontWeight: 600 }}>{s.count}</span>
-                <span style={{ fontSize: 10, color: C.text.muted }}>{s.label}</span>
+                <span style={{ fontSize: FONT_SIZE.sm, color: s.color, fontWeight: FONT_WEIGHT.semibold }}>{s.count}</span>
+                <span style={{ fontSize: FONT_SIZE.xs, color: C.text.muted }}>{s.label}</span>
               </div>
             ))}
           </>
@@ -663,24 +662,24 @@ export function IngressTab({ data, target }: { data: Record<string, string>; tar
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       {/* summary */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
         <div style={{
-          display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-          background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: 6,
+          display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+          background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: RADIUS.md,
         }}>
           <Globe size={11} />
-          <span style={{ fontSize: 12, color: C.accent.light, fontWeight: 600 }}>{counts.ingresses}</span>
-          <span style={{ fontSize: 11, color: C.text.secondary }}>Ingresses</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.accent.light, fontWeight: FONT_WEIGHT.semibold }}>{counts.ingresses}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>Ingresses</span>
         </div>
         <div style={{
-          display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-          background: `${C.text.muted}15`, border: `1px solid ${C.text.muted}33`, borderRadius: 6,
+          display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+          background: `${C.text.muted}15`, border: `1px solid ${C.text.muted}33`, borderRadius: RADIUS.md,
         }}>
           <Tag size={11} />
-          <span style={{ fontSize: 12, color: C.text.muted, fontWeight: 600 }}>{counts.classes}</span>
-          <span style={{ fontSize: 11, color: C.text.secondary }}>Classes</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted, fontWeight: FONT_WEIGHT.semibold }}>{counts.classes}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>Classes</span>
         </div>
       </div>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -741,17 +740,17 @@ export function NetworkTab({ data, target }: { data: Record<string, string>; tar
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       {/* summary */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0, flexWrap: "wrap",
       }}>
         {sections.map(s => (
           <div key={s.key} style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-            background: s.color + "15", border: `1px solid ${s.color}33`, borderRadius: 6,
+            display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+            background: s.color + "15", border: `1px solid ${s.color}33`, borderRadius: RADIUS.md,
           }}>
-            <span style={{ fontSize: 11 }}>{s.icon}</span>
-            <span style={{ fontSize: 12, color: s.color, fontWeight: 600 }}>{s.count}</span>
-            <span style={{ fontSize: 11, color: C.text.secondary }}>{s.label}</span>
+            <span style={{ fontSize: FONT_SIZE.sm }}>{s.icon}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: s.color, fontWeight: FONT_WEIGHT.semibold }}>{s.count}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>{s.label}</span>
           </div>
         ))}
       </div>
@@ -811,25 +810,25 @@ export function DockerContainersTab({ data, target }: { data: Record<string, str
   return (
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary }}>{counts.total} Containers</span>
-        <div style={{ width: 1, height: 20, background: C.border.muted }} />
-        {counts.up > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.primary }}>{counts.total} Containers</span>
+        <div style={{ width: 1, height: SPACE.xl, background: C.border.muted }} />
+        {counts.up > 0 && <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.success }} />
-          <span style={{ fontSize: 12, color: C.status.success, fontWeight: 600 }}>{counts.up}</span>
-          <span style={{ fontSize: 11, color: C.text.muted }}>Running</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.status.success, fontWeight: FONT_WEIGHT.semibold }}>{counts.up}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Running</span>
         </div>}
-        {counts.exited > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        {counts.exited > 0 && <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.danger, animation: "pulse 2s ease-in-out infinite" }} />
-          <span style={{ fontSize: 12, color: C.status.danger, fontWeight: 600 }}>{counts.exited}</span>
-          <span style={{ fontSize: 11, color: C.text.muted }}>Exited</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.status.danger, fontWeight: FONT_WEIGHT.semibold }}>{counts.exited}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Exited</span>
         </div>}
-        {counts.paused > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        {counts.paused > 0 && <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.warning }} />
-          <span style={{ fontSize: 12, color: C.status.warning, fontWeight: 600 }}>{counts.paused}</span>
-          <span style={{ fontSize: 11, color: C.text.muted }}>Paused</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.status.warning, fontWeight: FONT_WEIGHT.semibold }}>{counts.paused}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Paused</span>
         </div>}
       </div>
       <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No containers running"
@@ -857,16 +856,16 @@ export function DockerVolumesTab({ data, target }: { data: Record<string, string
   return (
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
         <div style={{
-          display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-          background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: 6,
+          display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+          background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: RADIUS.md,
         }}>
           <HardDrive size={11} />
-          <span style={{ fontSize: 12, color: C.accent.light, fontWeight: 600 }}>{count}</span>
-          <span style={{ fontSize: 11, color: C.text.secondary }}>Volumes</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.accent.light, fontWeight: FONT_WEIGHT.semibold }}>{count}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>Volumes</span>
         </div>
       </div>
       <KubectlTable raw={raw} emptyMessage="No Docker volumes"
@@ -893,16 +892,16 @@ export function DockerImagesTab({ data, target }: { data: Record<string, string>
   return (
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
         <div style={{
-          display: "flex", alignItems: "center", gap: 5, padding: "3px 10px",
-          background: `${C.status.info}15`, border: `1px solid ${C.status.info}33`, borderRadius: 6,
+          display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`,
+          background: `${C.status.info}15`, border: `1px solid ${C.status.info}33`, borderRadius: RADIUS.md,
         }}>
           <Package size={11} />
-          <span style={{ fontSize: 12, color: C.status.info, fontWeight: 600 }}>{count}</span>
-          <span style={{ fontSize: 11, color: C.text.secondary }}>Images</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.status.info, fontWeight: FONT_WEIGHT.semibold }}>{count}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>Images</span>
         </div>
       </div>
       <KubectlTable raw={raw} emptyMessage="No Docker images"
@@ -937,11 +936,11 @@ export function DockerStatsTab({ data, target }: { data: Record<string, string>;
   return (
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: C.text.primary, display: "inline-flex", alignItems: "center", gap: 6 }}><BarChart3 size={14} /> Container Stats</span>
-        <span style={{ fontSize: 11, color: C.text.faint }}>CPU & memory usage (live snapshot)</span>
+        <span style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.primary, display: "inline-flex", alignItems: "center", gap: SPACE.sm }}><BarChart3 size={14} /> Container Stats</span>
+        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.faint }}>CPU & memory usage (live snapshot)</span>
       </div>
       <KubectlTable raw={raw} colorFn={colorFn} emptyMessage="No container stats available"
         onRowClick={target ? (cols, headers) => {
@@ -999,32 +998,32 @@ export function SSHServicesTab({ data, target }: { data: Record<string, string>;
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       {/* TIER 1 — Summary bar */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.lg}px`,
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: C.text.primary, lineHeight: 1 }}>{counts.total}</span>
-        <span style={{ fontSize: 12, color: C.text.muted }}>Services</span>
-        <div style={{ width: 1, height: 20, background: C.border.muted }} />
+        <span style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.black, color: C.text.primary, lineHeight: 1 }}>{counts.total}</span>
+        <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Services</span>
+        <div style={{ width: 1, height: SPACE.xl, background: C.border.muted }} />
 
         {counts.running > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.success, boxShadow: `0 0 5px ${C.status.success}88` }} />
-            <span style={{ fontSize: 12, color: C.status.success, fontWeight: 600 }}>{counts.running}</span>
-            <span style={{ fontSize: 11, color: C.text.muted }}>Running</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.status.success, fontWeight: FONT_WEIGHT.semibold }}>{counts.running}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Running</span>
           </div>
         )}
         {counts.failed > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.danger, animation: "pulse 2s ease-in-out infinite" }} />
-            <span style={{ fontSize: 12, color: C.status.danger, fontWeight: 600 }}>{counts.failed}</span>
-            <span style={{ fontSize: 11, color: C.text.muted }}>Failed</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.status.danger, fontWeight: FONT_WEIGHT.semibold }}>{counts.failed}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Failed</span>
           </div>
         )}
         {counts.exited > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.status.warning }} />
-            <span style={{ fontSize: 12, color: C.status.warning, fontWeight: 600 }}>{counts.exited}</span>
-            <span style={{ fontSize: 11, color: C.text.muted }}>Exited</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.status.warning, fontWeight: FONT_WEIGHT.semibold }}>{counts.exited}</span>
+            <span style={{ fontSize: FONT_SIZE.sm, color: C.text.muted }}>Exited</span>
           </div>
         )}
 
@@ -1032,7 +1031,7 @@ export function SSHServicesTab({ data, target }: { data: Record<string, string>;
         {counts.total > 0 && (
           <>
             <div style={{ flex: 1 }} />
-            <div style={{ width: 120, height: 6, borderRadius: 3, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
+            <div style={{ width: 120, height: 6, borderRadius: RADIUS.sm, background: C.border.subtle, overflow: "hidden", display: "flex" }}>
               <div style={{ width: `${counts.running / counts.total * 100}%`, background: C.status.success, transition: "width .5s" }} />
               <div style={{ width: `${counts.failed / counts.total * 100}%`, background: C.status.danger, transition: "width .5s" }} />
               <div style={{ width: `${counts.exited / counts.total * 100}%`, background: C.status.warning, transition: "width .5s" }} />
@@ -1046,7 +1045,7 @@ export function SSHServicesTab({ data, target }: { data: Record<string, string>;
         <Card title={`Failed Services (${counts.failed})`} defaultOpen={counts.failed > 0}>
           {failedHasContent
             ? <div style={{ overflowX: "auto" }}><KubectlTable raw={data.failed ?? ""} emptyMessage="No failed services" /></div>
-            : <div style={{ color: C.status.success, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+            : <div style={{ color: C.status.success, fontSize: FONT_SIZE.md, display: "flex", alignItems: "center", gap: SPACE.xs }}>
                 All services healthy <Check size={13} />
               </div>
           }
@@ -1131,8 +1130,8 @@ export function ProcessesTab({ data }: { data: Record<string, string> }) {
   const metricCardStyle = {
     background: C.bg.card,
     border: `1px solid ${C.border.muted}`,
-    borderRadius: 10,
-    padding: "14px 16px",
+    borderRadius: RADIUS.xl,
+    padding: `${SPACE.md}px ${SPACE.lg}px`,
     flex: 1,
     minWidth: 0,
   } as const;
@@ -1143,36 +1142,36 @@ export function ProcessesTab({ data }: { data: Record<string, string> }) {
       <div style={{ display: "flex", gap: 12 }}>
         {/* Load Average */}
         <div style={metricCardStyle}>
-          <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Load Average</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: loadColor, lineHeight: 1 }}>
+          <div style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: SPACE.sm }}>Load Average</div>
+          <div style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.black, color: loadColor, lineHeight: 1 }}>
             {load1 !== null ? load1.toFixed(2) : "—"}
           </div>
-          <div style={{ fontSize: 11, color: C.text.faint, marginTop: 4 }}>
+          <div style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, marginTop: SPACE.xs }}>
             5m: {load5} · 15m: {load15}
           </div>
         </div>
 
         {/* Total Processes */}
         <div style={metricCardStyle}>
-          <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Total Processes</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent.light, lineHeight: 1 }}>{totalProcs}</div>
-          <div style={{ fontSize: 11, color: C.text.faint, marginTop: 4 }}>active processes</div>
+          <div style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: SPACE.sm }}>Total Processes</div>
+          <div style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.black, color: C.accent.light, lineHeight: 1 }}>{totalProcs}</div>
+          <div style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, marginTop: SPACE.xs }}>active processes</div>
         </div>
 
         {/* Top CPU */}
         <div style={metricCardStyle}>
-          <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Top CPU Consumer</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: cpuStatColor, lineHeight: 1 }}>{topCpuPct}%</div>
-          <div style={{ fontSize: 11, color: C.text.faint, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: SPACE.sm }}>Top CPU Consumer</div>
+          <div style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.black, color: cpuStatColor, lineHeight: 1 }}>{topCpuPct}%</div>
+          <div style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, marginTop: SPACE.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {topCpuCmd || "—"}
           </div>
         </div>
 
         {/* Top Memory */}
         <div style={metricCardStyle}>
-          <div style={{ fontSize: 10, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Top Memory Consumer</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: memStatColor, lineHeight: 1 }}>{topMemPct}%</div>
-          <div style={{ fontSize: 11, color: C.text.faint, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: FONT_SIZE.xs, color: C.text.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: SPACE.sm }}>Top Memory Consumer</div>
+          <div style={{ fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.black, color: memStatColor, lineHeight: 1 }}>{topMemPct}%</div>
+          <div style={{ fontSize: FONT_SIZE.sm, color: C.text.faint, marginTop: SPACE.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {topMemCmd || "—"}
           </div>
         </div>
@@ -1223,42 +1222,42 @@ export function SecurityTab({ data }: { data: Record<string, string> }) {
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
       {/* TIER 1 — Summary bar */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", flexWrap: "wrap",
+        display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.lg}px`, flexWrap: "wrap",
         background: C.bg.panel, borderBottom: `1px solid ${C.border.subtle}`, flexShrink: 0,
       }}>
         {/* Label */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginRight: SPACE.xs }}>
           <Shield size={14} stroke={C.accent.light} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: C.text.primary }}>Security Overview</span>
+          <span style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: C.text.primary }}>Security Overview</span>
         </div>
-        <div style={{ width: 1, height: 20, background: C.border.muted }} />
+        <div style={{ width: 1, height: SPACE.xl, background: C.border.muted }} />
 
         {/* Active users pill */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`, background: `${C.accent.light}15`, border: `1px solid ${C.accent.light}33`, borderRadius: RADIUS.md }}>
           <Users size={11} stroke={C.accent.light} />
-          <span style={{ fontSize: 12, color: C.accent.light, fontWeight: 600 }}>{activeUserCount}</span>
-          <span style={{ fontSize: 11, color: C.text.secondary }}>Active Users</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.accent.light, fontWeight: FONT_WEIGHT.semibold }}>{activeUserCount}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>Active Users</span>
         </div>
 
         {/* Recent logins pill */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", background: `${C.status.info}15`, border: `1px solid ${C.status.info}33`, borderRadius: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`, background: `${C.status.info}15`, border: `1px solid ${C.status.info}33`, borderRadius: RADIUS.md }}>
           <FileText size={11} stroke={C.status.info} />
-          <span style={{ fontSize: 12, color: C.status.info, fontWeight: 600 }}>{recentLoginCount}</span>
-          <span style={{ fontSize: 11, color: C.text.secondary }}>Recent Logins</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.status.info, fontWeight: FONT_WEIGHT.semibold }}>{recentLoginCount}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>Recent Logins</span>
         </div>
 
         {/* Failed attempts pill */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", background: `${C.status.danger}15`, border: `1px solid ${C.status.danger}33`, borderRadius: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`, background: `${C.status.danger}15`, border: `1px solid ${C.status.danger}33`, borderRadius: RADIUS.md }}>
           <AlertTriangle size={11} stroke={C.status.danger} style={failedCount > 0 ? { animation: "pulse 2s ease-in-out infinite" } : undefined} />
-          <span style={{ fontSize: 12, color: C.status.danger, fontWeight: 600 }}>{failedCount}</span>
-          <span style={{ fontSize: 11, color: C.text.secondary }}>Failed Attempts</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.status.danger, fontWeight: FONT_WEIGHT.semibold }}>{failedCount}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>Failed Attempts</span>
         </div>
 
         {/* Firewall status pill */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", background: `${firewall.color}15`, border: `1px solid ${firewall.color}33`, borderRadius: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px`, background: `${firewall.color}15`, border: `1px solid ${firewall.color}33`, borderRadius: RADIUS.md }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: firewall.color, flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: firewall.color, fontWeight: 600 }}>Firewall</span>
-          <span style={{ fontSize: 11, color: C.text.secondary }}>{firewall.label}</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: firewall.color, fontWeight: FONT_WEIGHT.semibold }}>Firewall</span>
+          <span style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary }}>{firewall.label}</span>
         </div>
       </div>
 
@@ -1274,7 +1273,7 @@ export function SecurityTab({ data }: { data: Record<string, string> }) {
 
         <Card title={`Failed SSH Attempts (${failedCount})`} defaultOpen={failedCount > 0}>
           {failedCount > 0
-            ? <div style={{ background: `${C.status.danger}08`, borderRadius: 6, padding: 8 }}>
+            ? <div style={{ background: `${C.status.danger}08`, borderRadius: RADIUS.md, padding: SPACE.sm }}>
                 <Pre>{data.failed_logins ?? ""}</Pre>
               </div>
             : <Pre>{data.failed_logins ?? "No failed login attempts"}</Pre>
