@@ -1,42 +1,25 @@
-# Aziro Ops
+# AziroOps
 
-> AI-powered DevOps command center — monitor, inspect, and fix your infrastructure with natural language.
+> AI-powered DevOps command center — monitor, diagnose, and fix infrastructure with natural language.
 
-Aziro Ops connects to your servers, Kubernetes clusters, and cloud accounts and gives you a professional dashboard with real-time monitoring, agentic AI chat, and intelligent incident management — all in one place.
+AziroOps connects to Kubernetes clusters, servers, Docker hosts, and cloud accounts, providing a unified dashboard with real-time monitoring, agentic AI chat, and intelligent incident management.
 
----
-
-## Status
-
-**v0.0.1** — First tagged release. Feature-complete for single-user internal use. Production hardening underway.
-
-## Differentiators
-
-Features where Aziro Ops leads other open-source DevOps tools (Lens, ArgoCD, Headlamp, Komodor, Grafana, Datadog, RunWhen, Portainer, Devtron, Kubecost):
-
-- **Cmd+K Command Palette with live K8s resource search** — search targets, pages, and live pods/nodes/deployments in one palette
-- **Multi-cloud unified sidebar** — Kubernetes, SSH, Docker, AWS, GCP, Azure, Terraform managed from a single rail
-- **Inline `✦ AI` badges** on unhealthy resources — one-click diagnosis without opening chat
-- **Two-model AI display** — tool calls and final answer stream as separate visible steps
-- **Resource Topology SVG Graph** — Ingress → Service → Deployment → Pod network flow
-- **Cloud auth pre-checks** in the AddTarget wizard — verifies CLI installed and authenticated before saving
-- **Persistent log stream tray** — dev-tools console pattern, not a modal
-- **SEV1/SEV2/SEV3** triage with snapshots captured at the moment the event fired
+**v0.0.1** — First tagged release. Feature-complete for single-user teams.
 
 ---
 
 ## Supported Targets
 
-| Type | Connection | What you get |
+| Type | Connection | Capabilities |
 |------|-----------|-------------|
-| **Kubernetes** | kubectl context | Nodes, Pods, Deployments, Services, Ingress, Storage, Workloads, topology graph |
-| **Server (SSH)** | SSH password or key | CPU, memory, disk, network, logs, services — Linux, Windows, Mac |
-| **Local** | Auto-detected | Same as SSH — auto-registered when running on Linux |
-| **Docker** | Local or remote daemon | Containers, images, networks, volumes, stats |
-| **AWS** | CLI profile + region | EC2, S3, EKS, RDS, account info |
+| **Kubernetes** | kubectl context | Nodes, Pods, Deployments, Services, Ingress, Storage, Events, Topology graph |
+| **SSH** | Password or key | CPU, Memory, Disk, Network, Logs, Services, Processes, Security |
+| **Local** | Auto-detected | Same as SSH — auto-registered on Linux hosts |
+| **Docker** | Local or remote | Containers, Images, Networks, Volumes, Stats |
+| **AWS** | CLI profile + region | EC2, S3, EKS, RDS, Account info |
 | **GCP** | Project ID | Compute, GKE, Storage, IAM |
 | **Azure** | Subscription ID | VMs, AKS, Storage, Resource Groups |
-| **Terraform** | Workspace directory | State, plan, outputs |
+| **Terraform** | Workspace dir | State, Plan, Outputs |
 
 ---
 
@@ -44,45 +27,72 @@ Features where Aziro Ops leads other open-source DevOps tools (Lens, ArgoCD, Hea
 
 ### Dashboard
 - Tab-based resource explorer per target type
-- **Kubernetes**: Nodes, Pods, Workloads, Services, Ingress, Storage, Network, Events tabs
-- **SSH/Local**: Overview (CPU/memory/disk/uptime metrics), Logs, Network, Storage
-- Click any resource → modal with Describe / Logs / Prev Logs / AI Analysis tabs
-- Inline `✦ AI` badge on unhealthy pods — one-click diagnosis without opening chat
+- **Kubernetes**: Workloads, Nodes, Pods, Services, Ingress, Storage, Network, Events
+- **SSH/Local**: Overview with ring charts (CPU/Memory/Disk), Services, Processes, Logs, Network, Storage, Security
+- **Docker**: Containers, Images, Networks, Volumes, Stats
+- Click any resource row to open detail modal (Describe / Logs / Previous Logs / AI Analysis)
+- Inline kebab menu (three-dot) on every table row — Describe, Stream Logs, AI Diagnose/Analyze
+- Inline `AI` badges on unhealthy pods — one-click diagnosis without opening chat
+- Health summary bars: pods running/pending/failed, deployments ready/total, nodes ready/total
+- Auto-refresh with configurable intervals (15s / 30s / 60s / off) and live staleness indicator
+- Namespace filter with per-target persistence
 
 ### AI Chat
-- Target-scoped chat: ask about a specific cluster or server
-- General sessions: persistent conversation history across sessions
-- Streaming responses word-by-word (SSE), Markdown rendered with code highlighting
-- Two-model architecture: fast model for tool calls, smart model for answers
+- Target-scoped chat — ask about a specific cluster, server, or container
+- General sessions with persistent conversation history
+- Streaming responses (SSE) with Markdown rendering and syntax-highlighted code blocks
+- Two-model architecture: fast model for tool calls, smarter model for final answers
+- Tool-call visualization — expandable blocks showing command, output, and duration
+- Follow-up suggestion chips after each AI response
+- Thumbs up/down feedback on AI responses
+- Code block copy button (hover-reveal)
 
-### Monitoring & Alerts
+### Monitoring and Alerts
 - Background watcher streams Kubernetes events via `kubectl get events -w`
 - Auto-triages to **SEV1** (critical), **SEV2** (warning), **SEV3** (info)
-- Stores all incidents in SQLite with snapshots, AI diagnosis, and remediation
-- Live Alerts page with SSE push — no polling needed
+- SQLite event store with snapshots captured at the moment of the event
+- Live Alerts page with SSE push — no polling
+- SEV1/SEV2 alert banner across all routes — click to jump to alert detail
 
 ### Incident History
-- Full incident log with AI diagnosis inline
-- Filter by severity, status, or resource name
-- Acknowledge / Resolve workflow
-- Status persists across restarts
-- Event deduplication on History and Events tabs
+- Full incident log with inline AI diagnosis
+- Filter by severity, status, namespace, or resource name
+- Acknowledge / Resolve workflow with toast feedback
+- Event deduplication — groups repeated events by object + reason with count
 
-### UI Polish
-- Collapsible sidebar (icon-only mode at 56px)
-- Breadcrumb navigation on all pages
-- Auto-refresh with configurable intervals (15s/30s/60s/off) and staleness indicator
-- Health summary bars (pods running/pending/failed, deployments, nodes)
-- Inline kebab menu (three-dot) on table rows with context actions (Describe, Logs, AI Diagnose)
+### Navigation and UX
+- **Cmd+K command palette** — search targets, pages, and live pods/nodes/deployments; verb actions (describe, logs, AI analyze)
+- **Collapsible sidebar** — icon-only mode at 56px, with tooltips; persists across sessions
+- **Breadcrumb navigation** on all pages (Home > Dashboard > Target > Tab)
+- **Day/Night theme** with system default detection and manual toggle
+- **Onboarding tour** (react-joyride) — first-run walkthrough, replay from Settings
+- **Keyboard shortcut cheat sheet** — press `?` to view 15+ shortcuts
+- **Settings page** — AI model selector, Ollama URL, theme toggle, keyboard shortcuts, replay tour
+- **Toast notifications** on every mutating action (Sonner)
+- **Error boundaries** per route with recovery UI
+- **Responsive** on tablet (1024px+)
+- **Accessibility** — Lighthouse score 100, axe-core clean, focus rings, ARIA landmarks, keyboard navigation
 
-### Honest Gaps
+### SVG Topology Graph
+- Ingress > Service > Deployment > Pod network flow
+- Zoom, pan, live SSE updates
+- Health propagation — unhealthy pods tint upstream nodes
 
-| Gap | Status |
-|-----|--------|
-| No multi-user authentication | API key only — multi-user login deferred post-v1.0 |
-| Flask dev server (single-process) | Gunicorn + nginx not yet added |
-| SQLite write serialization | Postgres migration not yet done |
-| Read-only resource views | Describe/Logs/AI Analysis done — restart/scale/delete not yet |
+---
+
+## What Sets AziroOps Apart
+
+Compared to Lens, Portainer, Rancher, Grafana, Datadog, and similar tools:
+
+| Feature | AziroOps | Others |
+|---------|----------|--------|
+| Cmd+K with live K8s resource search | Yes | Lens has search, no verb actions |
+| Multi-cloud sidebar (K8s + SSH + Docker + AWS + GCP + Azure + Terraform) | Yes | Usually single-target |
+| Inline AI badges on unhealthy resources | Yes | No |
+| Two-model AI (tool calls + answer as separate streams) | Yes | Single-model or no AI |
+| SVG topology with live SSE health propagation | Yes | Lens has it, most don't |
+| Cloud auth pre-checks in AddTarget wizard | Yes | No |
+| Persistent log stream tray (dev-tools pattern) | Yes | Modal-based |
 
 ---
 
@@ -104,10 +114,42 @@ Uses **LiteLLM** — supports 100+ providers. Set `AI_MODEL` or use separate `TO
 | **Deepseek** | `deepseek/deepseek-chat` | `DEEPSEEK_API_KEY` |
 | **Cohere** | `cohere/command-r-plus` | `COHERE_API_KEY` |
 
-**Two-model architecture** — fast model for tool calls, smart model for final answers:
+### Two-model architecture
+
+Fast model for tool calls, smart model for final answers:
 
 ```bash
 TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 python3 app.py
+```
+
+### Recommended Ollama models
+
+| Model | Size | VRAM | Best for | Install |
+| ----- | ---- | ---- | -------- | ------- |
+| **`llama3.1:8b`** | 4.7 GB | 6 GB | Default all-rounder | `ollama pull llama3.1:8b` |
+| **`qwen2.5:7b`** | 4.4 GB | 6 GB | Strong tool calling | `ollama pull qwen2.5:7b` |
+| **`mistral:7b`** | 4.1 GB | 6 GB | Fast, concise — good TOOL_MODEL | `ollama pull mistral:7b` |
+| **`gemma3:4b`** | 3.3 GB | 4 GB | Lightweight — 8 GB RAM laptops | `ollama pull gemma3:4b` |
+| **`llama3.1:70b`** | 40 GB | 48 GB | Best local quality — needs GPU | `ollama pull llama3.1:70b` |
+| **`deepseek-r1:8b`** | 4.9 GB | 6 GB | Strong reasoning | `ollama pull deepseek-r1:8b` |
+
+### Recommended setups
+
+```bash
+# Budget (8 GB RAM) — single model
+AI_MODEL=ollama/gemma3:4b
+
+# Standard (16 GB RAM)
+TOOL_MODEL=ollama/mistral:7b
+ANSWER_MODEL=ollama/llama3.1:8b
+
+# Power (24+ GB RAM)
+TOOL_MODEL=ollama/qwen2.5:7b
+ANSWER_MODEL=ollama/llama3.1:70b
+
+# Hybrid: local tool calls + cloud answers (best cost-to-quality)
+TOOL_MODEL=ollama/qwen2.5:7b
+ANSWER_MODEL=claude-haiku-4-5-20251001
 ```
 
 ---
@@ -117,108 +159,83 @@ TOOL_MODEL=groq/llama-3.1-8b-instant ANSWER_MODEL=claude-haiku-4-5-20251001 pyth
 ### 1. Install
 
 ```bash
-# Clone and install
 git clone https://github.com/gkhandale-aziro/devops-ai.git
 cd devops-ai
 pip install -r requirements.txt
-
-# Copy the env template
 cp .env.example .env
 ```
 
 ### 2. Configure AI model
 
-Aziro Ops needs an AI backend. Pick **one** option:
+Pick **one** option:
 
-#### Option A — Ollama (local, free, private)
+**Option A — Ollama (local, free, private)**
 
 ```bash
-# Install Ollama: https://ollama.com/download
+# Install: https://ollama.com/download
 ollama pull llama3.1:8b
-# No API key needed — runs entirely on your machine
+# No API key needed
 ```
 
-#### Option B — Cloud API key
+**Option B — Cloud API key**
 
-Add your key to `.env`:
+Add to `.env`:
 
 ```bash
-# OpenAI
-OPENAI_API_KEY=sk-...
-AI_MODEL=gpt-4o-mini
-
-# Or Anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-AI_MODEL=claude-haiku-4-5-20251001
-
-# Or Google Gemini
 GEMINI_API_KEY=...
 AI_MODEL=gemini/gemini-2.0-flash
-
-# Or Groq (free tier available)
-GROQ_API_KEY=gsk_...
-AI_MODEL=groq/llama-3.1-8b-instant
 ```
 
-#### Option C — Two-model setup (recommended for best results)
+Or OpenAI (`OPENAI_API_KEY`), Anthropic (`ANTHROPIC_API_KEY`), Groq (`GROQ_API_KEY`), etc.
 
-Use a fast model for tool calls and a smarter model for final answers:
+**Option C — Two-model setup (recommended)**
 
 ```bash
 TOOL_MODEL=groq/llama-3.1-8b-instant
 ANSWER_MODEL=claude-haiku-4-5-20251001
 ```
 
-See [Recommended Ollama Models](#recommended-ollama-models) for local model choices.
-
 ### 3. Configure API authentication
-
-Set `AZIRO_API_KEY` to secure all `/api/` endpoints with Bearer token auth. When unset, auth is disabled (acceptable for local development only).
 
 ```bash
 # Generate a secure key
 export AZIRO_API_KEY=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
 
-# Or add to .env for persistence
+# Or add to .env
 echo "AZIRO_API_KEY=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')" >> .env
 ```
 
-The frontend sends this automatically. For direct API calls, pass it as a Bearer token:
+The frontend sends this automatically. For direct API calls:
 
 ```bash
 curl -H "Authorization: Bearer <your-key>" http://localhost:5000/api/v1/targets
 ```
 
-> **Warning:** Without `AZIRO_API_KEY`, every `/api/` route is open to anyone who can reach the server. Always set it before exposing Aziro Ops to any network.
+> **Warning:** Without `AZIRO_API_KEY`, all API routes are open. Always set it before exposing to any network.
 
 ### 4. Run
 
-#### Web mode (React dashboard)
-
 ```bash
+# Web mode (React dashboard)
 python3 app.py
 # → http://localhost:5000
-```
 
-#### CLI mode (terminal UI)
-
-```bash
+# CLI mode
 python3 main.py
-python3 main.py --target prod-k8s
 python3 main.py --target prod-k8s --monitor
 ```
 
 ### 5. Frontend development
 
-The React SPA is pre-built and committed to `frontend_dist/` — running `python3 app.py` serves it directly with no build step required. You only need Node.js if you're modifying the frontend.
+The React SPA is pre-built in `frontend_dist/` — `python3 app.py` serves it with no build step. Node.js is only needed for frontend changes.
 
 ```bash
 cd frontend
 npm install           # first time only
 npm run dev           # Vite dev server on :5173, proxies /api to :5000
 npm run build         # rebuild frontend_dist/ for production
-npm run test          # Vitest unit tests
-npm run test:e2e      # Playwright end-to-end tests
+npm run test          # Vitest unit tests (507 tests)
+npm run test:e2e      # Playwright e2e tests (18 tests)
 ```
 
 Requires Node.js 18+.
@@ -254,9 +271,7 @@ The Dockerfile uses 8 parallel BuildKit stages — each CLI downloads concurrent
 
 **Requires:** Docker with BuildKit (`docker-buildx` plugin).
 
-The container runs as a non-root `aziro` user with reduced privileges. Docker Compose enforces resource limits (2 GB RAM, 2 CPUs).
-
-The image does **not** include: Node.js, frontend source, tests, or Ollama. If using Ollama, run it on the host (see below).
+Runs as non-root `aziro` user. Docker Compose enforces resource limits (2 GB RAM, 2 CPUs).
 
 ### Build and run
 
@@ -264,204 +279,207 @@ The image does **not** include: Node.js, frontend source, tests, or Ollama. If u
 # Build (~2-3 min cold, <30s warm cache)
 DOCKER_BUILDKIT=1 docker build -t aziro-ops .
 
-# Run with the launcher script (mounts everything upfront)
+# Run with the launcher script
 chmod +x docker-run.sh
 ./docker-run.sh
 
-# Or via Docker Compose
+# Or Docker Compose
 docker compose up --build
 ```
 
-The launcher script and compose file pre-mount all credential directories (kubeconfig, AWS, GCP, Azure, SSH, Docker socket). Directories can be empty at start — they're live bind mounts, so any credentials you add on the host (e.g. `aws configure`, `gcloud auth login`) appear inside the container instantly. **No restart needed to add new targets.**
+The launcher script pre-mounts all credential directories (kubeconfig, AWS, GCP, Azure, SSH, Docker socket). They're live bind mounts — credentials added on the host appear inside instantly. No restart needed.
 
-Alternatively, you can skip host mounts entirely and **paste credentials directly in the UI** (kubeconfig content, GCP service account JSON, SSH private keys, AWS access keys). These are written to the data volume and encrypted at rest.
+Alternatively, paste credentials directly in the UI (kubeconfig content, GCP SA JSON, SSH keys, AWS access keys). Written to the data volume and encrypted at rest.
 
 ### Using with Ollama
 
 Ollama runs on the host, not in the container:
 
 ```bash
-# Linux/Codespace/WSL — rebind to all interfaces so Docker can reach it
+# Linux/Codespace/WSL — rebind so Docker can reach it
 OLLAMA_HOST=0.0.0.0:11434 ollama serve
 
-# macOS — default bind is fine
+# macOS — default is fine
 ollama serve
 
-# Add to .env:
+# In .env:
 OLLAMA_API_BASE=http://host.docker.internal:11434
 ```
 
-On Linux, the launcher script adds `--add-host=host.docker.internal:host-gateway` automatically, so DNS works. **But** Ollama's default Linux bind is `127.0.0.1:11434` which containers cannot reach — you **must** set `OLLAMA_HOST=0.0.0.0:11434` or the container will get `connection refused`. For systemd installs, add `Environment="OLLAMA_HOST=0.0.0.0:11434"` to `/etc/systemd/system/ollama.service` under `[Service]`.
+> On Linux, Ollama defaults to `127.0.0.1` which containers cannot reach. You **must** set `OLLAMA_HOST=0.0.0.0:11434`.
 
 ### Persistent data
 
-All state is stored in the `/app/data` volume:
+All state in the `/app/data` volume:
 
 | File | Contents |
 | ---- | -------- |
-| `.aziro_key` | Fernet encryption key for credentials |
+| `.aziro_key` | Fernet encryption key |
 | `targets.json` | Encrypted target configurations |
 | `chat_sessions.json` | Chat session metadata |
 | `chat_messages.json` | Chat message history |
-| `aziro.db` | SQLite event store (incidents, snapshots, AI analyses) |
-| `creds/<tid>/` | Inline credentials pasted via UI (kubeconfig, SA keys) |
-| `.kube/config` | Container-generated kubeconfig (from EKS/GKE/AKS setup) |
+| `aziro.db` | SQLite event store (incidents, snapshots, analyses) |
+| `metrics.db` | SQLite metrics store (CPU, memory, disk, load time series) |
+| `creds/<tid>/` | Inline credentials pasted via UI |
 
-> **Backup:** `docker run --rm -v aziro-data:/data -v $(pwd):/backup alpine tar czf /backup/aziro-backup.tar.gz /data`
-
-See [`docs/setup-guide.md`](docs/setup-guide.md) for the full Docker reference, target connection guide, and troubleshooting.
-
----
-
-## Recommended Ollama Models
-
-All models run locally via [Ollama](https://ollama.com) — no API key, no data leaves your machine.
-
-### Best for Aziro Ops
-
-| Model | Size | VRAM | Best for | Install |
-| ----- | ---- | ---- | -------- | ------- |
-| **`llama3.1:8b`** | 4.7 GB | 6 GB | Default all-rounder — good tool calling + answers | `ollama pull llama3.1:8b` |
-| **`qwen2.5:7b`** | 4.4 GB | 6 GB | Strong tool calling, fast on modest hardware | `ollama pull qwen2.5:7b` |
-| **`mistral:7b`** | 4.1 GB | 6 GB | Fast, concise answers — good as TOOL_MODEL | `ollama pull mistral:7b` |
-| **`gemma3:4b`** | 3.3 GB | 4 GB | Lightweight — works on laptops with 8 GB RAM | `ollama pull gemma3:4b` |
-| **`llama3.1:70b`** | 40 GB | 48 GB | Best local quality — needs serious GPU | `ollama pull llama3.1:70b` |
-| **`deepseek-r1:8b`** | 4.9 GB | 6 GB | Strong reasoning for complex diagnosis | `ollama pull deepseek-r1:8b` |
-
-### Recommended two-model setups (local)
+**Backup:**
 
 ```bash
-# Budget (8 GB RAM) — single model
-AI_MODEL=ollama/gemma3:4b
-
-# Standard (16 GB RAM) — fast tool calls, solid answers
-TOOL_MODEL=ollama/mistral:7b
-ANSWER_MODEL=ollama/llama3.1:8b
-
-# Power (24+ GB RAM) — best local quality
-TOOL_MODEL=ollama/qwen2.5:7b
-ANSWER_MODEL=ollama/llama3.1:70b
+docker run --rm -v aziro-data:/data -v $(pwd):/backup alpine tar czf /backup/aziro-backup.tar.gz /data
 ```
 
-### Hybrid: local tool calls + cloud answers
-
-Best cost-to-quality ratio — tool calls stay local (free), only final answers hit the API:
-
-```bash
-TOOL_MODEL=ollama/qwen2.5:7b
-ANSWER_MODEL=claude-haiku-4-5-20251001  # or gpt-4o-mini, gemini/gemini-2.0-flash
-```
+See [`docs/setup-guide.md`](docs/setup-guide.md) for the full Docker reference and troubleshooting.
 
 ---
 
 ## Architecture
 
-### Package Structure
+### Project structure
 
 ```
 devops-ai/
-├── app.py                   ← Web server entry point (Flask)
-├── main.py                  ← CLI entry point (TerminalUI + agent loop)
+├── app.py                     ← Flask web server entry point
+├── main.py                    ← CLI entry point (TerminalUI + agent loop)
 │
 ├── ui/
-│   ├── web.py               ← Flask routes (thin, logic-free)
-│   └── terminal.py          ← CLI TerminalUI (colored output, readline loop)
+│   ├── web.py                 ← Flask routes + API key auth middleware
+│   └── terminal.py            ← CLI terminal UI
 │
-├── frontend/                ← React 18 + TypeScript + Vite SPA
-│   └── src/
-│       ├── pages/
-│       │   ├── Home.tsx, Alerts.tsx, History.tsx, Chat.tsx
-│       │   ├── Dashboard.tsx
-│       │   └── dashboard/   ← primitives, tables, tabs (extracted modules)
-│       ├── components/      ← Sidebar, CommandPalette, ResourceGraph,
-│       │                       LogStream, ChatPanel, AIDrawer, AlertCard,
-│       │                       AddTargetModal, LevelBadge, Markdown, ThemeContext
-│       ├── hooks/           ← useChat, useSSE (exponential backoff)
-│       └── api/client.ts    ← Typed API layer + SSE stream reader
+├── frontend/                  ← React 18 + TypeScript + Vite
+│   ├── src/
+│   │   ├── App.tsx            ← Root: routing, sidebar, alert banner
+│   │   ├── pages/
+│   │   │   ├── Home.tsx       ← Landing — stat cards, health bars, recent events
+│   │   │   ├── Dashboard.tsx  ← Target dashboard — tab dispatcher, chat, topology
+│   │   │   ├── Alerts.tsx     ← Live SSE alerts with start/stop monitor
+│   │   │   ├── History.tsx    ← Incident log with detail panel
+│   │   │   ├── Chat.tsx       ← General AI chat sessions
+│   │   │   ├── Settings.tsx   ← Models, theme, Ollama URL, shortcuts, tour replay
+│   │   │   └── dashboard/
+│   │   │       ├── tabs.tsx       ← 12+ tab components (Workloads, Pods, Overview, etc.)
+│   │   │       ├── tables.tsx     ← PodTable, NodeTable, ResourceModal, LogsTab
+│   │   │       └── primitives.tsx ← RingChart, PodSummaryBar, Card, SkeletonLoader
+│   │   ├── components/
+│   │   │   ├── Sidebar.tsx        ← Collapsible nav with target connections
+│   │   │   ├── CommandPalette.tsx ← Cmd+K with live search + verb actions
+│   │   │   ├── ChatPanel.tsx      ← Streaming chat with tool-call blocks
+│   │   │   ├── ResourceGraph.tsx  ← SVG topology with zoom/pan/SSE
+│   │   │   ├── LogStream.tsx      ← EventSource log tray
+│   │   │   ├── AlertBanner.tsx    ← Route-persistent SEV1/SEV2 banner
+│   │   │   ├── AlertCard.tsx      ← Alert card with AI + ack actions
+│   │   │   ├── OnboardingTour.tsx ← react-joyride tour
+│   │   │   ├── AddTargetModal.tsx ← Wizard with cloud auth pre-checks
+│   │   │   ├── KeyboardHelp.tsx   ← ? shortcut overlay
+│   │   │   └── Markdown.tsx       ← Rendered markdown with copy button
+│   │   ├── components/ui/         ← Shared primitives (shadcn-inspired)
+│   │   │   ├── data-table.tsx     ← @tanstack/react-table wrapper
+│   │   │   ├── health-summary.tsx ← Pod/deploy/node status bar
+│   │   │   ├── metric-chart.tsx   ← Recharts time series
+│   │   │   ├── time-range-picker.tsx
+│   │   │   ├── breadcrumb.tsx, badge.tsx, button.tsx, card.tsx
+│   │   │   ├── dialog.tsx, dropdown-menu.tsx, input.tsx, tooltip.tsx
+│   │   │   └── empty-state.tsx
+│   │   ├── hooks/
+│   │   │   ├── useChat.ts         ← SSE chat with tool-call parsing
+│   │   │   ├── useSSE.ts          ← Monitor SSE with exponential backoff
+│   │   │   ├── useMetrics.ts      ← Polling metrics API
+│   │   │   └── useAutoRefresh.ts  ← Configurable refresh intervals
+│   │   ├── api/client.ts          ← Typed API layer + SSE stream reader
+│   │   ├── utils/
+│   │   │   ├── theme.ts           ← Design tokens (colors, spacing, radius, fonts)
+│   │   │   ├── animations.ts      ← Shared animation styles
+│   │   │   ├── toast.ts           ← Sonner toast wrapper
+│   │   │   └── parseKubectl.ts    ← kubectl output → table parser
+│   │   └── types/index.ts         ← Shared TypeScript types
+│   └── e2e/                       ← Playwright specs
+│       ├── dod-walkthrough.spec.ts ← 18 tests: DoD 12-step keyboard walkthrough
+│       ├── dashboard.spec.ts       ← Dashboard visual regression
+│       └── fixtures.ts             ← Mock API data
 │
-├── agent/                   ← Agentic loop
-│   ├── conversation.py      ← SSE streaming + tool loop (max 5 steps)
-│   ├── manager.py           ← Per-target message history
-│   └── needs_tools.py       ← Greeting vs infra heuristic
+├── agent/                     ← Agentic AI loop
+│   ├── conversation.py        ← SSE streaming + tool loop (max 5 steps)
+│   ├── manager.py             ← Per-target message history
+│   └── needs_tools.py         ← Greeting vs infra-question classifier
 │
 ├── providers/
-│   └── client.py            ← LiteLLM wrapper: chat(), chat_stream(),
-│                              TOOL_MODEL / ANSWER_MODEL routing
+│   └── client.py              ← LiteLLM wrapper: TOOL_MODEL / ANSWER_MODEL routing
 │
-├── tools/                   ← One file per target type
-│   ├── executor.py          ← Routes command to correct tool, _run_many (max 8 workers)
-│   ├── base.py              ← run_command(), 30s timeout, 3000 char truncation
-│   ├── filter.py            ← is_destructive() — blocks dangerous commands
-│   ├── ssh.py, kubectl.py, docker.py, local.py
+├── tools/                     ← One file per target type
+│   ├── executor.py            ← Routes to correct tool, parallel _run_many
+│   ├── base.py                ← run_command(), 30s timeout, truncation
+│   ├── filter.py              ← is_destructive() — blocks dangerous commands
+│   ├── kubectl.py, ssh.py, docker.py, local.py
 │   └── aws.py, gcp.py, azure.py, terraform.py
 │
-├── monitor/                 ← Background event watcher
-│   ├── watcher.py           ← kubectl get events -w stream
-│   └── triage.py            ← SEV1 / SEV2 / SEV3 classifier
+├── monitor/                   ← Background event watcher
+│   ├── watcher.py             ← kubectl get events -w stream
+│   └── triage.py              ← SEV1/SEV2/SEV3 classifier
 │
 ├── store/
-│   └── db.py                ← SQLite: events, snapshots, analyses (with JOIN)
+│   ├── db.py                  ← SQLite: events, snapshots, analyses
+│   └── metrics.py             ← SQLite MetricCollector (zero-config time series)
 │
 ├── sessions/
-│   └── manager.py           ← Chat sessions, persisted to chat_messages.json
+│   └── manager.py             ← Chat sessions persisted to JSON
 │
 ├── targets/
-│   ├── manager.py           ← Connection CRUD, credential masking
-│   └── crypto.py            ← Fernet encryption for credentials at rest
+│   ├── manager.py             ← Connection CRUD, credential masking
+│   └── crypto.py              ← Fernet encryption for credentials at rest
 │
-├── sandbox/                 ← Execution isolation
-│   ├── safe.py              ← Read-only command whitelist
-│   ├── docker_sandbox.py    ← Container isolation
-│   ├── executor.py          ← SANDBOX=safe|docker|local
-│   └── redact.py            ← StreamRedactor — scrubs secrets from SSE streams
-│
-├── auth/                    ← (API key auth via AZIRO_API_KEY — multi-user login deferred)
+├── sandbox/                   ← Execution isolation
+│   ├── safe.py                ← Read-only command whitelist
+│   ├── docker_sandbox.py      ← Container isolation
+│   ├── executor.py            ← SANDBOX=safe|docker|local routing
+│   └── redact.py              ← StreamRedactor — scrubs secrets from SSE
 │
 ├── prompts/
-│   ├── system_prompt.txt    ← Editable without code changes
-│   └── builder.py           ← Injects live pod list at startup
+│   ├── system_prompt.txt      ← Editable system prompt
+│   └── builder.py             ← Injects live pod list at startup
 │
-└── tests/                   ← pytest suite (153 tests) + Vitest (507 unit tests) + Playwright (18 e2e tests)
+└── tests/                     ← 153 pytest + 507 Vitest + 18 Playwright
 ```
 
-### Request Flow
+### Request flow
 
 ```
 Browser (React SPA)
        │
        │  HTTP / SSE
        ▼
-ui/web.py  (Flask, thin routes)
+ui/web.py  (Flask + AZIRO_API_KEY middleware)
        │
-       ├─ /api/v1/targets          → targets/manager.py  (credential-masked)
-       ├─ /api/v1/tab/<tid>/<tab>  → tools/executor.py   (_run_many, parallel)
-       ├─ /api/v1/resource/<tid>   → tools/executor.py   (describe + logs)
-       ├─ /api/v1/topology/<tid>   → kubectl → structured JSON (nodes/edges)
-       ├─ /api/v1/logs/<tid>/stream→ subprocess.Popen kubectl logs -f (SSE)
-       ├─ /api/v1/search/<tid>     → parallel kubectl grep (Cmd+K live search)
-       ├─ /api/v1/chat/<tid>/stream→ agent/conversation.py (tool loop + stream)
-       ├─ /api/v1/sessions/...     → sessions/manager.py (persistent history)
-       ├─ /api/v1/monitor/stream   → monitor/watcher.py (SSE push)
-       └─ /api/v1/events/...       → store/db.py (SQLite, JOIN with analyses)
+       ├─ /api/v1/targets           → targets/manager.py  (credential-masked)
+       ├─ /api/v1/tab/<tid>/<tab>   → tools/executor.py   (parallel _run_many)
+       ├─ /api/v1/resource/<tid>    → tools/executor.py   (describe + logs)
+       ├─ /api/v1/topology/<tid>    → kubectl → structured JSON (nodes/edges)
+       ├─ /api/v1/logs/<tid>/stream → subprocess kubectl logs -f (SSE)
+       ├─ /api/v1/search/<tid>      → parallel kubectl grep (Cmd+K)
+       ├─ /api/v1/chat/<tid>/stream → agent/conversation.py (tool loop + stream)
+       ├─ /api/v1/analyze/stream    → one-shot AI diagnosis (SSE)
+       ├─ /api/v1/sessions/...      → sessions/manager.py (persistent history)
+       ├─ /api/v1/monitor/stream    → monitor/watcher.py (SSE push)
+       ├─ /api/v1/health/<tid>      → pod/deploy/node counts
+       ├─ /api/v1/metrics/<tid>     → store/metrics.py (time series)
+       └─ /api/v1/events/...        → store/db.py (SQLite with JOIN)
 ```
 
-### AI Agent Loop
+### AI agent loop
 
 ```
 User message
       │
       ▼
-agent/needs_tools.py
+agent/needs_tools.py  (greeting or infra question?)
       │
-      ├─ greeting / general  ──▶  providers/chat_stream()  ──▶  SSE → browser
+      ├─ greeting/general  →  providers/chat_stream()  →  SSE → browser
       │
       └─ infra question
               │
-              └──▶  agent/conversation.py  (max 5 steps)
+              └──▶  agent/conversation.py  (max 5 tool steps)
                           │
                           ├─ LLM [TOOL_MODEL] picks command
                           ├─ tools/executor.py runs on target
-                          ├─ result fed back to LLM → repeat
+                          ├─ result fed back → repeat if needed
                           └─ LLM [ANSWER_MODEL] streams final answer → browser
 ```
 
@@ -474,30 +492,50 @@ agent/needs_tools.py
 | `AI_MODEL` | `ollama/llama3.1:8b` | Model for both tool calls and answers |
 | `TOOL_MODEL` | — | Override model for tool calls only |
 | `ANSWER_MODEL` | — | Override model for final answers only |
-| `OLLAMA_API_BASE` | — | Ollama server URL. **Required in Docker:** `http://host.docker.internal:11434` |
-| `AZIRO_API_KEY` | — | Bearer token for API auth. When unset, auth is disabled (dev mode) |
-| `AZIRO_DATA_DIR` | Project root | Data directory for DB, targets, sessions. Docker sets to `/app/data` |
-| `AZIRO_KEY_FILE` | `$AZIRO_DATA_DIR/.aziro_key` | Fernet encryption key location |
+| `OLLAMA_API_BASE` | — | Ollama URL. Required in Docker: `http://host.docker.internal:11434` |
+| `AZIRO_API_KEY` | — | Bearer token for API auth. Unset = no auth (dev only) |
+| `AZIRO_DATA_DIR` | Project root | Data directory. Docker sets to `/app/data` |
+| `AZIRO_KEY_FILE` | `$AZIRO_DATA_DIR/.aziro_key` | Fernet key location |
 | `SANDBOX` | `safe` | Execution mode: `safe`, `docker`, or `local` |
 | `PORT` | `5000` | Web server port |
 
-### Runtime model API
+### Runtime model switching
 
 Change AI models without restarting:
 
 ```bash
-# Check current models
-curl http://127.0.0.1:5000/api/v1/info -H "Authorization: Bearer <key>"
+# Check current
+curl http://localhost:5000/api/v1/info -H "Authorization: Bearer <key>"
 
-# List available Ollama models
-curl http://127.0.0.1:5000/api/v1/models -H "Authorization: Bearer <key>"
+# List Ollama models
+curl http://localhost:5000/api/v1/models -H "Authorization: Bearer <key>"
 
-# Switch models at runtime
-curl -X PUT http://127.0.0.1:5000/api/v1/models \
+# Switch at runtime
+curl -X PUT http://localhost:5000/api/v1/models \
   -H "Authorization: Bearer <key>" \
   -H "Content-Type: application/json" \
   -d '{"tool_model": "groq/llama-3.1-8b-instant", "answer_model": "gpt-4o-mini"}'
 ```
+
+---
+
+## Testing
+
+| Suite | Count | Command |
+|-------|-------|---------|
+| Python (pytest) | 153 | `pytest` |
+| Frontend unit (Vitest) | 507 | `cd frontend && npm test` |
+| E2E (Playwright) | 18 | `cd frontend && npm run test:e2e` |
+| Accessibility (axe-core) | Integrated in Vitest | Lighthouse score: **100** |
+
+---
+
+## Known Limitations
+
+- No multi-user authentication (API key auth only; login deferred post-v1.0)
+- Flask dev server (no Gunicorn/nginx production server yet)
+- SQLite only (no Postgres migration yet)
+- Read-only resource views (describe/logs/AI — no restart/scale/delete/edit YAML)
 
 ---
 
@@ -507,3 +545,10 @@ curl -X PUT http://127.0.0.1:5000/api/v1/models \
 - `pip install -r requirements.txt`
 - At least one AI provider (Ollama locally, or any cloud API key)
 - CLI tools as needed: `kubectl`, `docker`, `aws`, `gcloud`, `az`, `terraform`
+- Node.js 18+ (only for frontend development)
+
+---
+
+## License
+
+Proprietary. Internal use only.
