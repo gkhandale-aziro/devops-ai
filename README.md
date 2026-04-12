@@ -8,7 +8,7 @@ Aziro Ops connects to your servers, Kubernetes clusters, and cloud accounts and 
 
 ## Status
 
-**Pre-v1.0 — Developer preview.** Feature-complete for single-user internal use. A 6-week hardening + UI sprint is underway to reach production-ready v1.0. See [`Aziro_Ops_Priority_Roadmap.docx`](Aziro_Ops_Priority_Roadmap.docx) and [`Aziro_Ops_UI_Roadmap_Merged.docx`](Aziro_Ops_UI_Roadmap_Merged.docx) for the plan.
+**v0.0.1** — First tagged release. Feature-complete for single-user internal use. Production hardening underway.
 
 ## Differentiators
 
@@ -66,21 +66,23 @@ Features where Aziro Ops leads other open-source DevOps tools (Lens, ArgoCD, Hea
 - Filter by severity, status, or resource name
 - Acknowledge / Resolve workflow
 - Status persists across restarts
+- Event deduplication on History and Events tabs
 
-### Honest Gaps (being addressed in v1.0 sprint)
+### UI Polish
+- Collapsible sidebar (icon-only mode at 56px)
+- Breadcrumb navigation on all pages
+- Auto-refresh with configurable intervals (15s/30s/60s/off) and staleness indicator
+- Health summary bars (pods running/pending/failed, deployments, nodes)
+- Inline kebab menu (three-dot) on table rows with context actions (Describe, Logs, AI Diagnose)
+
+### Honest Gaps
 
 | Gap | Status |
 |-----|--------|
-| No authentication / multi-user | Flask-Login + RBAC landing in Week 1 |
-| Flask dev server (single-process) | Gunicorn + nginx landing in Week 2 |
-| SQLite write serialization | Postgres + Alembic landing in Week 3 |
-| No real metric charts (current sparklines are decorative) | Recharts + Prometheus landing in Week 3 |
-| No light theme (only dark variants) | Day / Night theme landing in Week 1 |
-| No toast / notification feedback | Sonner toast system landing in Week 1 |
-| No settings page | Settings page landing in Week 2 |
-| No onboarding tour | react-joyride landing in Week 4 |
-| Read-only resource views | Restart/Scale/Delete/Edit YAML landing in Week 2–4 |
-| No WCAG accessibility baseline | Axe-core CI landing in Week 5 |
+| No multi-user authentication | API key only — multi-user login deferred post-v1.0 |
+| Flask dev server (single-process) | Gunicorn + nginx not yet added |
+| SQLite write serialization | Postgres migration not yet done |
+| Read-only resource views | Describe/Logs/AI Analysis done — restart/scale/delete not yet |
 
 ---
 
@@ -413,13 +415,13 @@ devops-ai/
 │   ├── executor.py          ← SANDBOX=safe|docker|local
 │   └── redact.py            ← StreamRedactor — scrubs secrets from SSE streams
 │
-├── auth/                    ← (Scaffolding — Flask-Login landing in Week 1)
+├── auth/                    ← (API key auth via AZIRO_API_KEY — multi-user login deferred)
 │
 ├── prompts/
 │   ├── system_prompt.txt    ← Editable without code changes
 │   └── builder.py           ← Injects live pod list at startup
 │
-└── tests/                   ← pytest suite (153 tests) + Vitest (26 component tests)
+└── tests/                   ← pytest suite (153 tests) + Vitest (507 unit tests) + Playwright (18 e2e tests)
 ```
 
 ### Request Flow
