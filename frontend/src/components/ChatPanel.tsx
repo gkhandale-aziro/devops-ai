@@ -383,14 +383,24 @@ function ToolCallBlock({ tool }: { tool: ToolCall }) {
       overflow: "hidden",
       ...(tool.status === "running" ? { animation: "glow-pulse 2s infinite" } : {}),
     }}>
-      <div
+      <button
+        type="button"
         onClick={() => tool.output && setExpanded(!expanded)}
+        disabled={!tool.output}
+        aria-expanded={tool.output ? expanded : undefined}
+        aria-label={tool.output ? `${expanded ? "Collapse" : "Expand"} output for ${tool.cmd}` : tool.cmd}
         style={{
           display: "flex", alignItems: "center", gap: 8,
           padding: "6px 10px",
           cursor: tool.output ? "pointer" : "default",
           fontSize: 11,
           fontFamily: "'Cascadia Code','Consolas',monospace",
+          // Neutralize default button chrome — the row renders as a strip, not a button.
+          width: "100%",
+          background: "transparent",
+          border: "none",
+          color: "inherit",
+          textAlign: "left",
         }}
       >
         {tool.output && (
@@ -402,7 +412,7 @@ function ToolCallBlock({ tool }: { tool: ToolCall }) {
         <span style={{ color: C.status.success, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool.cmd}</span>
         {durationStr && <span style={{ color: C.text.faint, fontSize: 10, flexShrink: 0 }}>{durationStr}</span>}
         <span style={{ flexShrink: 0 }}>{statusIcon}</span>
-      </div>
+      </button>
       {expanded && tool.output && (
         <div style={{
           borderTop: `1px solid ${C.border.subtle}`,

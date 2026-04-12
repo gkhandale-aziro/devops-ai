@@ -45,7 +45,7 @@ Current UI score: **3.6 / 10** — target **7+ / 10** by v1.0.
 - [x] Focus rings + keyboard hover states — global `:focus-visible` ring (WCAG 2.4.7)
 - [x] Toast/notification system — sonner installed, wired to mutating actions
 - [x] ErrorBoundary per route — error boundaries per page
-- [x] Banner alerts for SEV1/SEV2 when user is on another page
+- [ ] Banner alerts for SEV1/SEV2 when user is on another page — previously checked off but only `ModelStatusBanner` exists; no route-persistent alert banner. Blocks DoD steps 6 & 7.
 
 ### P1 — Major quality wins
 - [x] DataTable with `@tanstack/react-table` — sort/filter/virtualize; migrated all resource lists
@@ -124,6 +124,15 @@ Demo: tagged v1.0.0, fresh-OS bug bash passes, pilot users onboarded.
 - [ ] Fresh-OS bug bash passes
 - [ ] 2–3 internal pilot users onboarded
 - [ ] 12-step keyboard-only walkthrough passes (Definition of Done)
+
+#### DoD walkthrough audit (2026-04-12)
+Static audit against the 12-step list. Gaps blocking DoD:
+- [ ] **Step 2** — Login flow for non-admin accounts (already open under P1)
+- [ ] **Steps 6/7** — SEV1 banner across routes + click-to-jump (TODO.md line 48 was falsely checked)
+- [ ] **Step 10** — Code copy button on Markdown `<pre>` blocks (Markdown.tsx has no clipboard wiring)
+- [ ] **Step 11** — Incident acknowledge action + toast (no ack verb on AlertCard or Alerts page)
+- [x] **Step 8** — ToolCallBlock expand/collapse keyboard affordance (div → button, aria-expanded)
+- [x] **Step 12** — Settings in Cmd+K palette
 
 ### v1.0 Exit Criteria
 All must be true to ship:
