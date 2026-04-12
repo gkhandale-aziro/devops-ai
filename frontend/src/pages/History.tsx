@@ -228,8 +228,20 @@ export function History() {
   }, [events]);
 
   const filtered = useMemo(() => {
-    if (!nsFilter) return events;
-    return events.filter(e => e.namespace === nsFilter);
+    const base = nsFilter ? events.filter(e => e.namespace === nsFilter) : events;
+    // Deduplicate: group by object + reason, keep latest (first in list), add count to message
+    const seen: Record<string, { event: StoredEvent; count: number }> = {};
+    for (const e of base) {
+      const key = `${e.object}|${e.reason}`;
+      if (seen[key]) {
+        seen[key].count++;
+      } else {
+        seen[key] = { event: e, count: 1 };
+      }
+    }
+    return Object.values(seen).map(({ event, count }) =>
+      count > 1 ? { ...event, message: `(×${count}) ${event.message}` } : event
+    );
   }, [events, nsFilter]);
 
   const hasFilters = level !== "" || objInput !== "" || nsFilter !== "";

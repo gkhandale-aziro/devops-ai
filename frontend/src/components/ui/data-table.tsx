@@ -69,7 +69,8 @@ export function DataTable<TData>({
         const actions = rowActions(row.original);
         if (actions.length === 0) return null;
         return (
-          <DropdownMenu>
+          <div data-actions-cell>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <button
                 className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
@@ -96,6 +97,7 @@ export function DataTable<TData>({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         );
       },
     };
@@ -191,7 +193,11 @@ export function DataTable<TData>({
                     onRowClick && "cursor-pointer",
                     getRowClassName?.(row.original)
                   )}
-                  onClick={() => onRowClick?.(row.original)}
+                  onClick={(e) => {
+                    // Don't fire row click when clicking inside the actions column (kebab menu)
+                    if ((e.target as HTMLElement).closest('[data-actions-cell]')) return;
+                    onRowClick?.(row.original);
+                  }}
                   onKeyDown={keyboardNav ? (e) => {
                     if (onRowClick && (e.key === "Enter" || e.key === " ")) {
                       e.preventDefault(); onRowClick(row.original);
