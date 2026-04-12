@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import type { Target } from "../types";
 import { ThemeToggle } from "./ThemeContext";
 import { TARGET_META } from "../utils/targetIcons";
+import { Pencil } from "lucide-react";
 import { api } from "../api/client";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
   activeId:      string | null;
   onSelect:      (t: Target) => void;
   onRemove:      (id: string) => void;
+  onEdit?:       (t: Target) => void;
   onAddClick:    () => void;
   monitorActive: boolean;
   aiModel:       string;
@@ -29,7 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
   healthy: "#22c55e", degraded: "#f59e0b", fallback: "#f59e0b", unavailable: "#ef4444",
 };
 
-export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, monitorActive, aiModel, onModelChange, modelStatus = "healthy" }: Props) {
+export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddClick, monitorActive, aiModel, onModelChange, modelStatus = "healthy" }: Props) {
   const loc = useLocation();
   const nav = useNavigate();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -270,6 +272,25 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onAddClick, mon
                 </div>
               </div>
 
+              {onEdit && (
+                <button
+                  onClick={e => { e.stopPropagation(); onEdit(t); }}
+                  aria-label="Edit connection"
+                  style={{
+                    background: "none", border: "none",
+                    color: "var(--c-text-faint,#475569)",
+                    cursor: "pointer", padding: "3px", borderRadius: 4,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    opacity: isHovered ? 1 : 0,
+                    transition: "opacity .15s, color .15s",
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.color = "var(--c-accent)")}
+                  onMouseLeave={e => (e.currentTarget.style.color = "var(--c-text-faint,#475569)")}
+                >
+                  <Pencil size={11} strokeWidth={2.5} />
+                </button>
+              )}
               <button
                 onClick={e => { e.stopPropagation(); onRemove(t.id); }}
                 aria-label="Remove connection"

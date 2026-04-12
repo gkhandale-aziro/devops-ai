@@ -30,6 +30,7 @@ export default function App() {
   const [aiModel,       setAiModel]       = useState("");
   const [health,        setHealth]        = useState<ModelHealthStatus | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [editTarget,    setEditTarget]    = useState<Target | null>(null);
 
   const pollHealth = useCallback(() => {
     api.modelHealth().then(h => {
@@ -80,6 +81,18 @@ export default function App() {
     toast.info(`Removed ${name}`);
   }
 
+  async function handleUpdate(id: string, name: string, config: Record<string, string>) {
+    await api.targets.update(id, name, config);
+    const test = await api.targets.test(id);
+    if (test.status !== "online") {
+      toast.error(`Connection failed: ${test.message?.split("\n")[0] ?? "unreachable"}`);
+      throw new Error(`Connection failed: ${test.message?.split("\n")[0] ?? "unreachable"}`);
+    }
+    setEditTarget(null);
+    await loadTargets();
+    toast.success(`Updated ${name}`);
+  }
+
   async function handleAdd(name: string, type: Target["type"], config: Record<string, string>) {
     const t = await api.targets.add(name, type, config);
     const test = await api.targets.test(t.id);
@@ -117,6 +130,7 @@ export default function App() {
           activeId={activeTarget?.id ?? null}
           onSelect={setActiveTarget}
           onRemove={handleRemove}
+          onEdit={setEditTarget}
           onAddClick={() => setShowAdd(true)}
           monitorActive={monitorActive}
           aiModel={aiModel}
@@ -164,6 +178,15 @@ export default function App() {
           <AddTargetModal
             onClose={() => setShowAdd(false)}
             onAdd={handleAdd}
+          />
+        )}
+
+        {editTarget && (
+          <AddTargetModal
+            onClose={() => setEditTarget(null)}
+            onAdd={handleAdd}
+            editTarget={editTarget}
+            onUpdate={handleUpdate}
           />
         )}
 

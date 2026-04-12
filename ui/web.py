@@ -392,6 +392,22 @@ def api_add():
     return jsonify(target)
 
 
+@app.route("/api/v1/targets/<tid>", methods=["PATCH"])
+def api_update(tid):
+    if not _targets.get(tid):
+        return jsonify({"error": "not found"}), 404
+    d = request.json or {}
+    name = d.get("name")
+    config = d.get("config")
+    if config:
+        _persist_inline_content(tid, config)
+    target = _targets.update(tid, name=name, config=config)
+    if not target:
+        return jsonify({"error": "update failed"}), 500
+    target["config"] = _targets.mask_config(target.get("config", {}))
+    return jsonify(target)
+
+
 @app.route("/api/v1/targets/<tid>", methods=["DELETE"])
 def api_delete(tid):
     if not _targets.get(tid):

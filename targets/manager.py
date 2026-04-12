@@ -116,6 +116,30 @@ class TargetManager:
                 return t
         return None
 
+    def update(self, target_id, name=None, config=None):
+        """Update a target's name and/or config fields. Type is immutable.
+        Config values set to '***' (masked) are preserved from the existing
+        config so the frontend can submit a partial update without knowing
+        the actual secret values.
+        """
+        targets = self.load()
+        for t in targets:
+            if t["id"] == target_id:
+                if name is not None:
+                    t["name"] = name
+                if config is not None:
+                    existing = t.get("config", {})
+                    merged = {}
+                    for k, v in config.items():
+                        if v == "***" and k in existing:
+                            merged[k] = existing[k]  # keep existing secret
+                        else:
+                            merged[k] = v
+                    t["config"] = merged
+                self._save(targets)
+                return t
+        return None
+
     def update_status(self, target_id, status):
         targets = self.load()
         for t in targets:

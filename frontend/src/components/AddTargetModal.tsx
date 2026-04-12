@@ -7,6 +7,9 @@ import { api } from "../api/client";
 interface Props {
   onClose: () => void;
   onAdd:   (name: string, type: TargetType, config: Record<string, string>) => Promise<void>;
+  /** When set, the modal opens in edit mode — pre-filled, type step skipped. */
+  editTarget?: { id: string; name: string; type: TargetType; config: Record<string, string> };
+  onUpdate?: (id: string, name: string, config: Record<string, string>) => Promise<void>;
 }
 
 type Step = "type" | "k8s_provider" | "details";
@@ -71,12 +74,17 @@ const LOGIN_GUIDE: Record<K8sProvider, { prereq: string; steps: string[] }> = {
   },
 };
 
-export function AddTargetModal({ onClose, onAdd }: Props) {
-  const [step,        setStep]        = useState<Step>("type");
-  const [selType,     setSelType]     = useState<TargetType | null>(null);
-  const [k8sProvider, setK8sProvider] = useState<K8sProvider>("local");
-  const [name,        setName]        = useState("");
-  const [config,      setConfig]      = useState<Record<string, string>>({});
+export function AddTargetModal({ onClose, onAdd, editTarget, onUpdate }: Props) {
+  const isEdit = !!editTarget;
+  const [step,        setStep]        = useState<Step>(isEdit ? "details" : "type");
+  const [selType,     setSelType]     = useState<TargetType | null>(isEdit ? editTarget.type : null);
+  const [k8sProvider, setK8sProvider] = useState<K8sProvider>(
+    isEdit && editTarget.type === "kubernetes"
+      ? (editTarget.config.provider as K8sProvider) ?? "local"
+      : "local"
+  );
+  const [name,        setName]        = useState(isEdit ? editTarget.name : "");
+  const [config,      setConfig]      = useState<Record<string, string>>(isEdit ? { ...editTarget.config } : {});
   const [status,      setStatus]      = useState<{ type: "ok"|"err"|"info"; msg: string } | null>(null);
   const [busy,        setBusy]        = useState(false);
 
@@ -175,9 +183,13 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
   async function submit() {
     if (!selType || !name.trim()) { setStatus({ type: "err", msg: "Name is required" }); return; }
     setBusy(true);
-    setStatus({ type: "info", msg: "Testing connection…" });
+    setStatus({ type: "info", msg: isEdit ? "Updating…" : "Testing connection…" });
     try {
-      await onAdd(name.trim(), selType, config);
+      if (isEdit && onUpdate) {
+        await onUpdate(editTarget.id, name.trim(), config);
+      } else {
+        await onAdd(name.trim(), selType, config);
+      }
     } catch (e) {
       setStatus({ type: "err", msg: String(e) });
     } finally {
@@ -432,7 +444,9 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
       >
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           <strong id={titleId} style={{ fontSize: 14, color: "var(--c-text-primary)" }}>
-            {step === "type" ? "Add Connection"
+            {isEdit
+              ? `Edit — ${name || selType}`
+              : step === "type" ? "Add Connection"
               : step === "k8s_provider" ? "Kubernetes Provider"
               : selType === "kubernetes" ? `Connect — ${providerLabel}` : `Connect to ${selType}`}
           </strong>
@@ -515,11 +529,13 @@ export function AddTargetModal({ onClose, onAdd }: Props) {
             )}
 
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <button onClick={() => setStep(selType === "kubernetes" ? "k8s_provider" : "type")} style={{ flex: 1, background: "var(--c-bg-card)", border: "1px solid var(--c-border)", color: "var(--c-text-secondary)", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
-                <ArrowLeft size={12} style={{ marginRight: 4 }} /> Back
-              </button>
+              {!isEdit && (
+                <button onClick={() => setStep(selType === "kubernetes" ? "k8s_provider" : "type")} style={{ flex: 1, background: "var(--c-bg-card)", border: "1px solid var(--c-border)", color: "var(--c-text-secondary)", borderRadius: 6, padding: 8, fontSize: 13, cursor: "pointer" }}>
+                  <ArrowLeft size={12} style={{ marginRight: 4 }} /> Back
+                </button>
+              )}
               <button onClick={submit} disabled={busy} style={{ flex: 2, background: busy ? "#374151" : "#4f46e5", border: "none", color: "#fff", borderRadius: 6, padding: 8, fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer" }}>
-                {busy ? "Connecting…" : "Connect"}
+                {busy ? (isEdit ? "Updating…" : "Connecting…") : (isEdit ? "Update" : "Connect")}
               </button>
             </div>
           </>

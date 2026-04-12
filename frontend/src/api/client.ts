@@ -58,6 +58,12 @@ export const api = {
       }),
     remove: (id: string) =>
       req<{ ok: boolean }>(`/api/v1/targets/${id}`, { method: "DELETE" }),
+    update: (id: string, name: string, config: Record<string, string>) =>
+      req<Target>(`/api/v1/targets/${id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ name, config }),
+      }),
     test: (id: string) =>
       req<{ status: string; message: string }>(`/api/v1/targets/${id}/test`),
   },

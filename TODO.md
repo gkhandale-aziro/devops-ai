@@ -113,7 +113,7 @@ Demo: new user onboards without help; keyboard-only power users happy; topology 
 
 ### Week 5 — Polish & Compliance
 Demo: Lighthouse a11y > 95, responsive on tablet, intentional copy on every state.
-- [~] Lighthouse Accessibility > 95; axe-core CI passing — axe-core wired via vitest-axe covering primitives, ErrorBoundary, ConfirmDialog, AlertCard, DataTable, AddTargetModal (`fa9722c` + follow-up); Lighthouse pending
+- [x] Lighthouse Accessibility > 95; axe-core CI passing — axe-core via vitest-axe (`fa9722c`), Lighthouse **100** on live server (`cca7af4`)
 - [x] Responsive on tablet (1024px+) — AIDrawer clamp(380,42vw,520), Home/Overview auto-fit grids, Alerts toolbar flex-wrap (`86c77e3` + follow-up)
 - [x] Microcopy pass — every empty state, error, button label (`f8901d8`)
 - [x] Accessibility pass — landmarks, semantic buttons, focus traps, aria-live, form labels (`2c7c139`)
@@ -147,7 +147,7 @@ All must be true to ship:
 - [x] Onboarding tour completes for new user
 - [x] Cmd+K includes actions, not just nav
 - [x] Keyboard cheat sheet + 15+ shortcuts
-- [ ] Lighthouse a11y > 95
+- [x] Lighthouse a11y > 95 (scored **100** — `cca7af4`)
 - [x] Responsive on tablet (1024px+)
 - [x] All 7 differentiators preserved
 - [x] Microcopy reviewed on every empty state, error, button
