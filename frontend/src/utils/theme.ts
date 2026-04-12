@@ -105,3 +105,47 @@ export const TIMING = {
   transition:      300,
   transitionFast:  150,
 } as const;
+
+// ── Typography ────────────────────────────────────────────────────────────
+
+/** Font-size scale (px) — max 7 levels. Use instead of magic numbers. */
+export const FONT_SIZE = {
+  xs:   10,   // badges, metadata labels
+  sm:   11,   // captions, secondary text
+  md:   13,   // body text (base)
+  lg:   15,   // subheadings, card titles
+  xl:   18,   // section headings
+  xxl:  24,   // page headings
+  hero: 32,   // stat card hero numbers
+} as const;
+
+/** Font-weight scale. */
+export const FONT_WEIGHT = {
+  normal:   400,
+  medium:   500,
+  semibold: 600,
+  bold:     700,
+  black:    800,
+} as const;
+
+// ── Elevation ─────────────────────────────────────────────────────────────
+
+/** Box-shadow tokens — reference CSS vars so they adapt to Day/Night. */
+export const SHADOW = {
+  sm:   "var(--shadow-sm)",
+  md:   "var(--shadow-md)",
+  lg:   "var(--shadow-lg)",
+  glow: "var(--shadow-glow-accent)",
+} as const;
+
+// ── Z-index ───────────────────────────────────────────────────────────────
+
+/** Z-index scale — use instead of arbitrary numbers. */
+export const Z_INDEX = {
+  base:     0,
+  dropdown: 50,
+  sticky:   100,
+  modal:    200,
+  toast:    300,
+  tooltip:  400,
+} as const;
