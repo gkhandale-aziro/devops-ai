@@ -127,7 +127,7 @@ Demo: tagged v1.0.0, fresh-OS bug bash passes, pilot users onboarded.
 
 #### DoD walkthrough audit (2026-04-12)
 Static audit against the 12-step list. Gaps blocking DoD:
-- [ ] **Step 2** — Login flow for non-admin accounts (already open under P1)
+- [ ] **Step 2** — Login flow for non-admin accounts (deferred to post-v1.0; API key auth sufficient for single-team)
 - [x] **Steps 6/7** — SEV1 banner across routes + click-to-jump (`AlertBanner.tsx`)
 - [x] **Step 10** — Code copy button on Markdown `<pre>` blocks (hover-reveal Copy button, `navigator.clipboard`)
 - [x] **Step 11** — Incident acknowledge action + toast (Ack button on AlertCard + `toast.success`)
