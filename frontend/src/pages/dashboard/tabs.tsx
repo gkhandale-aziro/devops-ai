@@ -196,11 +196,58 @@ export function GenericTab({ data }: { data: Record<string, string> }) {
 
 // ── Events tab ────────────────────────────────────────────────────────────────
 
+/** Deduplicate kubectl events: group by OBJECT+REASON+TYPE, keep latest, add count.
+ *  Returns a new raw string with a COUNT column prepended. */
+function deduplicateEvents(raw: string): string {
+  if (!hasKubectlData(raw)) return raw;
+  const lines = raw.split("\n");
+  const header = lines[0];
+  const dataLines = lines.slice(1).filter(l => l.trim());
+  if (dataLines.length === 0) return raw;
+
+  // Parse header to find column positions (whitespace-aligned)
+  const colStarts: number[] = [];
+  const headerUpper = header.toUpperCase();
+  for (const col of ["LAST SEEN", "TYPE", "REASON", "OBJECT", "MESSAGE"]) {
+    const idx = headerUpper.indexOf(col);
+    if (idx >= 0) colStarts.push(idx);
+  }
+  if (colStarts.length < 5) return raw; // unexpected format, don't touch
+
+  const extractCol = (line: string, colIdx: number): string => {
+    const start = colStarts[colIdx];
+    const end = colIdx + 1 < colStarts.length ? colStarts[colIdx + 1] : line.length;
+    return line.slice(start, end).trim();
+  };
+
+  // Group by OBJECT + REASON + TYPE
+  const groups: Record<string, { line: string; count: number }> = {};
+  for (const line of dataLines) {
+    const type = extractCol(line, 1);
+    const reason = extractCol(line, 2);
+    const object = extractCol(line, 3);
+    const key = `${object}|${reason}|${type}`;
+    if (groups[key]) {
+      groups[key].count++;
+    } else {
+      groups[key] = { line, count: 1 };
+    }
+  }
+
+  // Rebuild with COUNT column
+  const countHeader = "COUNT".padEnd(8) + header;
+  const dedupedLines = Object.values(groups).map(
+    (g) => String(g.count).padEnd(8) + g.line
+  );
+  return [countHeader, ...dedupedLines].join("\n");
+}
+
 /** Kubernetes events tab — summary pills (normal vs warning) + `KubectlTable`.
  *  Warning/Error rows are colorized via a TYPE-column ColorFn. */
 export function EventsTab({ data, target }: { data: Record<string, string>; target?: Target }) {
   const detail = useResourceDetail(target?.id ?? "");
-  const raw = data.output ?? "";
+  const rawOriginal = data.output ?? "";
+  const raw = useMemo(() => deduplicateEvents(rawOriginal), [rawOriginal]);
   const colorFn: ColorFn = (val, col) => {
     if (col.toUpperCase() === "TYPE") {
       if (val === "Warning") return C.status.warning;
@@ -211,14 +258,14 @@ export function EventsTab({ data, target }: { data: Record<string, string>; targ
 
   const counts = useMemo(() => {
     let warning = 0, normal = 0;
-    if (hasKubectlData(raw)) {
-      for (const line of raw.split("\n").slice(1)) {
+    if (hasKubectlData(rawOriginal)) {
+      for (const line of rawOriginal.split("\n").slice(1)) {
         if (/\bWarning\b/.test(line)) warning++;
         else if (/\bNormal\b/.test(line)) normal++;
       }
     }
     return { warning, normal, total: warning + normal };
-  }, [raw]);
+  }, [rawOriginal]);
 
   return (
     <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
