@@ -184,8 +184,9 @@ export const api = {
   monitor: {
     start:  (targetId: string) =>
       req<{ ok: boolean; monitoring: string }>(`/api/v1/monitor/${targetId}`, { method: "POST" }),
-    stop:   () => req<{ ok: boolean }>("/api/v1/monitor", { method: "DELETE" }),
-    status: () => req<{ active: boolean }>("/api/v1/monitor/status"),
+    stop:   (targetId?: string) =>
+      req<{ ok: boolean }>(`/api/v1/monitor${targetId ? `?tid=${targetId}` : ""}`, { method: "DELETE" }),
+    status: () => req<{ active: boolean; targets: string[] }>("/api/v1/monitor/status"),
   },
 
   // ── Event history (DB) ────────────────────────────────────────────────────

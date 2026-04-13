@@ -26,7 +26,7 @@ import { OnboardingTour } from "./components/OnboardingTour";
 export default function App() {
   const [targets,       setTargets]       = useState<Target[]>([]);
   const [activeTarget,  setActiveTarget]  = useState<Target | null>(null);
-  const [monitorActive, setMonitorActive] = useState(false);
+  const [monitoringTargets, setMonitoringTargets] = useState<Set<string>>(new Set());
   const [showAdd,       setShowAdd]       = useState(false);
   const [aiModel,       setAiModel]       = useState("");
   const [health,        setHealth]        = useState<ModelHealthStatus | null>(null);
@@ -50,7 +50,7 @@ export default function App() {
 
   useEffect(() => {
     loadTargets();
-    api.monitor.status().then(s => setMonitorActive(s.active))
+    api.monitor.status().then(s => setMonitoringTargets(new Set(s.targets ?? [])))
       .catch(e => console.warn("[App] monitor.status failed:", (e as Error)?.message));
     // Initial load + poll health every 30s
     api.info().then(i => setAiModel(i.answer_model))
@@ -136,7 +136,7 @@ export default function App() {
           onRemove={handleRemove}
           onEdit={setEditTarget}
           onAddClick={() => setShowAdd(true)}
-          monitorActive={monitorActive}
+          monitorActive={monitoringTargets.size > 0}
           aiModel={aiModel}
           onModelChange={(m) => { setAiModel(m); pollHealth(); }}
           modelStatus={health?.status ?? "healthy"}
@@ -150,7 +150,7 @@ export default function App() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <ModelStatusBanner onModelChange={() => { window.location.href = "/settings"; }} />
-          <AlertBanner monitorActive={monitorActive} />
+          <AlertBanner monitorActive={monitoringTargets.size > 0} />
 
           {/* Top bar — search */}
           <header style={{
@@ -163,13 +163,13 @@ export default function App() {
 
           <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Routes>
-            <Route path="/"          element={<ErrorBoundary><Home targets={targets} monitorActive={monitorActive} /></ErrorBoundary>} />
+            <Route path="/"          element={<ErrorBoundary><Home targets={targets} monitorActive={monitoringTargets.size > 0} /></ErrorBoundary>} />
             <Route path="/dashboard" element={<ErrorBoundary><Dashboard target={activeTarget} /></ErrorBoundary>} />
             <Route path="/alerts"    element={
               <ErrorBoundary><Alerts
                 targets={targets}
-                monitorActive={monitorActive}
-                onMonitorChange={setMonitorActive}
+                monitoringTargets={monitoringTargets}
+                onMonitoringChange={setMonitoringTargets}
               /></ErrorBoundary>
             } />
             <Route path="/history" element={<ErrorBoundary><History /></ErrorBoundary>} />

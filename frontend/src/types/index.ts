@@ -45,13 +45,15 @@ export function levelColor(level: string) {
 // ── Monitor alert (SSE) ───────────────────────────────────────────────────────
 
 export interface MonitorAlert {
-  type:      "monitor_alert";
-  level:     TriageLevel;
-  reason:    string;
-  object:    string;
-  namespace: string;
-  message:   string;
-  source:    string;
+  type:        "monitor_alert";
+  level:       TriageLevel;
+  reason:      string;
+  object:      string;
+  namespace:   string;
+  message:     string;
+  source:      string;
+  target_id:   string;
+  target_name: string;
 }
 
 export type SSEEvent = MonitorAlert | { type: "keepalive" };

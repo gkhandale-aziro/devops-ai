@@ -904,7 +904,7 @@ def _web_classify(raw_event):
     return "SEV3"
 
 
-def _web_triage_handle(raw_event):
+def _web_triage_handle(raw_event, target_id="", target_name=""):
     """
     Lightweight triage for the web — classify and broadcast to SSE subscribers.
     No auto-queries: user investigates via the chat UI after seeing the alert.
@@ -914,13 +914,15 @@ def _web_triage_handle(raw_event):
 
     level = _web_classify(raw_event)
     _broadcast_alert({
-        "type":      "monitor_alert",
-        "level":     level,
-        "reason":    raw_event.get("reason", ""),
-        "object":    raw_event.get("object", ""),
-        "namespace": raw_event.get("namespace", ""),
-        "message":   raw_event.get("message", ""),
-        "source":    raw_event.get("source", "kubernetes"),
+        "type":        "monitor_alert",
+        "level":       level,
+        "reason":      raw_event.get("reason", ""),
+        "object":      raw_event.get("object", ""),
+        "namespace":   raw_event.get("namespace", ""),
+        "message":     raw_event.get("message", ""),
+        "source":      raw_event.get("source", "kubernetes"),
+        "target_id":   target_id,
+        "target_name": target_name,
     })
 
 
@@ -939,7 +941,8 @@ def api_monitor_start(tid):
         if existing:
             existing.stop()
         watcher = EventWatcher(executor)
-        watcher.on_event(_web_triage_handle)
+        tname = target.get("name", "")
+        watcher.on_event(lambda e, _tid=tid, _tn=tname: _web_triage_handle(e, target_id=_tid, target_name=_tn))
         # only persist Warning events — Normal events are informational noise
         watcher.on_event(lambda e: _store.save_event(e, _web_classify(e)) if e.get("type") == "Warning" else None)
         watcher.watch()
