@@ -97,22 +97,24 @@ export function Dashboard({ target }: Props) {
     else localStorage.removeItem(`dashboard-ns-${target.id}`);
   }, [target?.id, nsFilter]);
 
-  // Load tab data when tab changes (skip for chat/topology tabs)
-  // On tab/target/namespace change: clear data and show skeleton.
-  // On auto-refresh (reloadKey): keep existing data visible, replace silently.
-  const prevTabRef = useRef({ tid: target?.id, tab: activeTab, ns: nsFilter });
+  // Load tab data when tab/target/namespace changes or auto-refresh fires.
+  // Navigation (tab/target/ns change): clear data → skeleton → fresh load.
+  // Auto-refresh (reloadKey only): keep current data visible, replace silently.
+  const prevNavRef = useRef({ tid: target?.id, tab: activeTab, ns: nsFilter });
   useEffect(() => {
     if (!target || !activeTab || activeTab === "__chat" || activeTab === "__topology") return;
-    const isRefreshOnly =
-      prevTabRef.current.tid === target.id &&
-      prevTabRef.current.tab === activeTab &&
-      prevTabRef.current.ns === nsFilter;
-    prevTabRef.current = { tid: target.id, tab: activeTab, ns: nsFilter };
 
-    if (!isRefreshOnly) {
-      setTabData({});     // clear only on real navigation
+    const prev = prevNavRef.current;
+    const isNavigation =
+      prev.tid !== target.id || prev.tab !== activeTab || prev.ns !== nsFilter;
+    prevNavRef.current = { tid: target.id, tab: activeTab, ns: nsFilter };
+
+    if (isNavigation) {
+      setTabData({});        // clear → skeleton only on real navigation
+      setTabLoading(true);
     }
-    setTabLoading(true);
+    // On silent refresh: don't clear data, don't show loading spinner
+
     const params: Record<string, string> = {};
     if (isK8s && nsFilter) params.ns = nsFilter;
     api.tab(target.id, activeTab, Object.keys(params).length ? params : undefined)
@@ -120,7 +122,9 @@ export function Dashboard({ target }: Props) {
       .catch((e) => {
         console.error(`[Dashboard] tab "${activeTab}" load failed:`, e);
         const detail = (e as Error)?.message ? ` (${(e as Error).message})` : "";
-        setTabData({ error: `Could not load ${activeTab} data${detail} — check kubectl access and cluster connectivity.` });
+        if (isNavigation) {
+          setTabData({ error: `Could not load ${activeTab} data${detail} — check kubectl access and cluster connectivity.` });
+        }
         setErrorToast(`Failed to load ${activeTab}${detail}`);
       })
       .finally(() => setTabLoading(false));

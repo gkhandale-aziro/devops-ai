@@ -42,6 +42,44 @@ interface DataTableProps<TData> {
   rowActions?: (row: TData) => RowAction[];
 }
 
+/** Per-row kebab menu — isolated component so open state survives parent re-renders. */
+function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TData) => RowAction[] }) {
+  const [open, setOpen] = useState(false);
+  const actions = rowActions(row);
+  if (actions.length === 0) return null;
+  return (
+    <div data-actions-cell>
+      <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label="Row actions"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {actions.map((action) => (
+            <DropdownMenuItem
+              key={action.label}
+              variant={action.variant}
+              disabled={action.disabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                action.onClick();
+              }}
+            >
+              {action.icon}
+              {action.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 export function DataTable<TData>({
   columns,
   data,
@@ -56,12 +94,6 @@ export function DataTable<TData>({
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-
-  // Defer data updates while a dropdown menu is open to prevent unmounting
-  const [stableData, setStableData] = useState(data);
-  // Sync data prop into stableData, but only when dropdown is closed
-  if (!dropdownOpen && data !== stableData) setStableData(data);
 
   // Append kebab actions column when rowActions is provided
   const allColumns = useMemo(() => {
@@ -71,47 +103,13 @@ export function DataTable<TData>({
       header: "",
       size: 40,
       enableSorting: false,
-      cell: ({ row }) => {
-        const actions = rowActions(row.original);
-        if (actions.length === 0) return null;
-        return (
-          <div data-actions-cell>
-          <DropdownMenu modal={false} onOpenChange={setDropdownOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
-                onClick={(e) => e.stopPropagation()}
-                aria-label="Row actions"
-              >
-                <MoreVertical className="h-4 w-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {actions.map((action) => (
-                <DropdownMenuItem
-                  key={action.label}
-                  variant={action.variant}
-                  disabled={action.disabled}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    action.onClick();
-                  }}
-                >
-                  {action.icon}
-                  {action.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          </div>
-        );
-      },
+      cell: ({ row }) => <RowKebab row={row.original} rowActions={rowActions} />,
     };
     return [...columns, actionsCol];
   }, [columns, rowActions]);
 
   const table = useReactTable({
-    data: stableData,
+    data,
     columns: allColumns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
