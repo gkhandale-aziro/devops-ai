@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   useReactTable,
   getCoreRowModel,
@@ -36,25 +37,37 @@ interface DataTableProps<TData> {
   rowActions?: (row: TData) => RowAction[];
 }
 
-/** Per-row kebab menu — simple custom dropdown (no Radix Portal/DismissableLayer). */
+/**
+ * Per-row kebab menu — custom portal dropdown.
+ * Uses createPortal + position:fixed to escape the table's overflow:auto container.
+ */
 function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TData) => RowAction[] }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
   const actions = rowActions(row);
 
-  // Close on outside click
-  const handleOutsideClick = useCallback((e: MouseEvent) => {
-    if (ref.current && !ref.current.contains(e.target as Node)) {
-      setOpen(false);
-    }
-  }, []);
-
+  // Position menu relative to button when opening
   useEffect(() => {
-    if (open) {
-      document.addEventListener("mousedown", handleOutsideClick);
-      return () => document.removeEventListener("mousedown", handleOutsideClick);
+    if (open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.right });
     }
-  }, [open, handleOutsideClick]);
+  }, [open]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (btnRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
   // Close on Escape
   useEffect(() => {
@@ -67,8 +80,9 @@ function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TD
   if (actions.length === 0) return null;
 
   return (
-    <div data-actions-cell ref={ref} style={{ position: "relative" }}>
+    <div data-actions-cell>
       <button
+        ref={btnRef}
         className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
         onClick={(e) => {
           e.stopPropagation();
@@ -81,11 +95,17 @@ function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TD
         <MoreVertical className="h-4 w-4" />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
+          ref={menuRef}
           role="menu"
-          className="absolute right-0 z-50 min-w-[160px] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-md"
-          style={{ top: "100%", marginTop: 4, animation: "fadeIn 100ms ease-out" }}
+          className="fixed z-[9999] min-w-[160px] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-md"
+          style={{
+            top: pos.top,
+            left: pos.left,
+            transform: "translateX(-100%)",
+            animation: "fadeIn 100ms ease-out",
+          }}
         >
           {actions.map((action) => (
             <button
@@ -110,7 +130,8 @@ function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TD
               {action.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
