@@ -56,6 +56,12 @@ export function DataTable<TData>({
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Defer data updates while a dropdown menu is open to prevent unmounting
+  const [stableData, setStableData] = useState(data);
+  // Sync data prop into stableData, but only when dropdown is closed
+  if (!dropdownOpen && data !== stableData) setStableData(data);
 
   // Append kebab actions column when rowActions is provided
   const allColumns = useMemo(() => {
@@ -70,7 +76,7 @@ export function DataTable<TData>({
         if (actions.length === 0) return null;
         return (
           <div data-actions-cell>
-          <DropdownMenu modal={false}>
+          <DropdownMenu modal={false} onOpenChange={setDropdownOpen}>
             <DropdownMenuTrigger asChild>
               <button
                 className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
@@ -105,7 +111,7 @@ export function DataTable<TData>({
   }, [columns, rowActions]);
 
   const table = useReactTable({
-    data,
+    data: stableData,
     columns: allColumns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
