@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,12 +11,6 @@ import {
 import { ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
 
 export interface RowAction {
   label: string;
@@ -42,40 +36,82 @@ interface DataTableProps<TData> {
   rowActions?: (row: TData) => RowAction[];
 }
 
-/** Per-row kebab menu — isolated component so open state survives parent re-renders. */
+/** Per-row kebab menu — simple custom dropdown (no Radix Portal/DismissableLayer). */
 function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TData) => RowAction[] }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const actions = rowActions(row);
+
+  // Close on outside click
+  const handleOutsideClick = useCallback((e: MouseEvent) => {
+    if (ref.current && !ref.current.contains(e.target as Node)) {
+      setOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      return () => document.removeEventListener("mousedown", handleOutsideClick);
+    }
+  }, [open, handleOutsideClick]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
   if (actions.length === 0) return null;
+
   return (
-    <div data-actions-cell>
-      <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
-            onPointerDown={(e) => e.stopPropagation()}
-            aria-label="Row actions"
-          >
-            <MoreVertical className="h-4 w-4" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+    <div data-actions-cell ref={ref} style={{ position: "relative" }}>
+      <button
+        className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        aria-label="Row actions"
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-50 min-w-[160px] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-md"
+          style={{ top: "100%", marginTop: 4, animation: "fadeIn 100ms ease-out" }}
+        >
           {actions.map((action) => (
-            <DropdownMenuItem
+            <button
               key={action.label}
-              variant={action.variant}
+              role="menuitem"
               disabled={action.disabled}
+              className={cn(
+                "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-xs outline-none transition-colors",
+                "hover:bg-raised hover:text-foreground",
+                action.disabled && "pointer-events-none opacity-50",
+                action.variant === "destructive"
+                  ? "text-red-400 hover:bg-red-500/10 hover:text-red-400"
+                  : "text-muted-foreground",
+              )}
               onClick={(e) => {
                 e.stopPropagation();
+                setOpen(false);
                 action.onClick();
               }}
             >
               {action.icon}
               {action.label}
-            </DropdownMenuItem>
+            </button>
           ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </div>
+      )}
     </div>
   );
 }
