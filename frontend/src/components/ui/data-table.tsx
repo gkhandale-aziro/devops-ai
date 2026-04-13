@@ -39,7 +39,7 @@ interface DataTableProps<TData> {
 
 /**
  * Per-row kebab menu — custom portal dropdown.
- * Uses createPortal + position:fixed to escape the table's overflow:auto container.
+ * All inline styles to avoid any CSS class/variable resolution issues.
  */
 function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TData) => RowAction[] }) {
   const [open, setOpen] = useState(false);
@@ -83,27 +83,41 @@ function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TD
     <div data-actions-cell>
       <button
         ref={btnRef}
-        className="inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:bg-raised hover:text-foreground transition-colors"
+        style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 4, padding: 4, color: "#94a3b8", background: "none", border: "none",
+          cursor: "pointer", transition: "color 150ms, background 150ms",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--c-bg-raised, #1e293b)"; e.currentTarget.style.color = "#e2e8f0"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#94a3b8"; }}
         onClick={(e) => {
           e.stopPropagation();
+          e.preventDefault();
           setOpen((v) => !v);
         }}
         aria-label="Row actions"
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <MoreVertical className="h-4 w-4" />
+        <MoreVertical size={16} />
       </button>
 
       {open && createPortal(
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-[9999] min-w-[160px] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-md"
           style={{
+            position: "fixed",
             top: pos.top,
             left: pos.left,
             transform: "translateX(-100%)",
+            zIndex: 99999,
+            minWidth: 160,
+            background: "var(--c-bg-surface, #1e293b)",
+            border: "1px solid var(--c-border, #334155)",
+            borderRadius: 8,
+            padding: 4,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
             animation: "fadeIn 100ms ease-out",
           }}
         >
@@ -112,14 +126,25 @@ function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TD
               key={action.label}
               role="menuitem"
               disabled={action.disabled}
-              className={cn(
-                "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-xs outline-none transition-colors",
-                "hover:bg-raised hover:text-foreground",
-                action.disabled && "pointer-events-none opacity-50",
-                action.variant === "destructive"
-                  ? "text-red-400 hover:bg-red-500/10 hover:text-red-400"
-                  : "text-muted-foreground",
-              )}
+              style={{
+                display: "flex", width: "100%", alignItems: "center", gap: 8,
+                borderRadius: 4, padding: "6px 8px", fontSize: 12,
+                background: "none", border: "none", cursor: action.disabled ? "default" : "pointer",
+                color: action.variant === "destructive" ? "#f87171" : "#cbd5e1",
+                opacity: action.disabled ? 0.5 : 1,
+                transition: "background 100ms, color 100ms",
+              }}
+              onMouseEnter={(e) => {
+                if (!action.disabled) {
+                  e.currentTarget.style.background = action.variant === "destructive"
+                    ? "rgba(239,68,68,0.1)" : "var(--c-bg-raised, #334155)";
+                  e.currentTarget.style.color = action.variant === "destructive" ? "#f87171" : "#e2e8f0";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "none";
+                e.currentTarget.style.color = action.variant === "destructive" ? "#f87171" : "#cbd5e1";
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 setOpen(false);
