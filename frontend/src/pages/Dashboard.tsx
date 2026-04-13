@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { LayoutGrid, RefreshCw, Grid3X3, MessageSquare, Network } from "lucide-react";
 import { Breadcrumb } from "../components/ui/breadcrumb";
 import type { Target, TabId } from "../types";
@@ -98,10 +98,21 @@ export function Dashboard({ target }: Props) {
   }, [target?.id, nsFilter]);
 
   // Load tab data when tab changes (skip for chat/topology tabs)
+  // On tab/target/namespace change: clear data and show skeleton.
+  // On auto-refresh (reloadKey): keep existing data visible, replace silently.
+  const prevTabRef = useRef({ tid: target?.id, tab: activeTab, ns: nsFilter });
   useEffect(() => {
     if (!target || !activeTab || activeTab === "__chat" || activeTab === "__topology") return;
+    const isRefreshOnly =
+      prevTabRef.current.tid === target.id &&
+      prevTabRef.current.tab === activeTab &&
+      prevTabRef.current.ns === nsFilter;
+    prevTabRef.current = { tid: target.id, tab: activeTab, ns: nsFilter };
+
+    if (!isRefreshOnly) {
+      setTabData({});     // clear only on real navigation
+    }
     setTabLoading(true);
-    setTabData({});
     const params: Record<string, string> = {};
     if (isK8s && nsFilter) params.ns = nsFilter;
     api.tab(target.id, activeTab, Object.keys(params).length ? params : undefined)
