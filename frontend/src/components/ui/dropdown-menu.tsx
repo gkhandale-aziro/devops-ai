@@ -16,9 +16,9 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       className={cn(
         "z-50 min-w-[160px] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-md",
-        "animate-in fade-in-0 zoom-in-95",
         className
       )}
+      style={{ animation: "fadeIn 100ms ease-out" }}
       {...props}
     />
   </DropdownMenuPrimitive.Portal>
