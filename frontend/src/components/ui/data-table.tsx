@@ -109,7 +109,7 @@ export function DataTable<TData>({
               data-row-id={row.id}
               style={{
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
-                borderRadius: 4, padding: 4, color: "#94a3b8", background: "none", border: "none",
+                borderRadius: 4, padding: 4, color: "var(--c-text-primary, #e2e8f0)", background: "none", border: "none",
                 cursor: "pointer",
               }}
               onClick={(e) => {
@@ -286,7 +286,7 @@ export function DataTable<TData>({
                 display: "flex", width: "100%", alignItems: "center", gap: 8,
                 borderRadius: 4, padding: "6px 8px", fontSize: 12,
                 background: "none", border: "none", cursor: action.disabled ? "default" : "pointer",
-                color: action.variant === "destructive" ? "#f87171" : "#cbd5e1",
+                color: action.variant === "destructive" ? "#f87171" : "var(--c-text-primary, #e2e8f0)",
                 opacity: action.disabled ? 0.5 : 1,
                 transition: "background 100ms, color 100ms",
               }}
@@ -294,7 +294,7 @@ export function DataTable<TData>({
                 if (!action.disabled) {
                   e.currentTarget.style.background = action.variant === "destructive"
                     ? "rgba(239,68,68,0.1)" : "var(--c-bg-raised, #334155)";
-                  e.currentTarget.style.color = action.variant === "destructive" ? "#f87171" : "#e2e8f0";
+                  e.currentTarget.style.color = action.variant === "destructive" ? "#f87171" : "var(--c-text-primary, #e2e8f0)";
                 }
               }}
               onMouseLeave={(e) => {
