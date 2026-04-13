@@ -5,14 +5,14 @@ commits or file paths instead of re-describing context.
 
 ## In progress
 
-Week 5 — Polish & Compliance (next up)
+Post-v0.0.1 — hardening and deploy
 
 ---
 
 ## v1.0 UI Roadmap
 
 Sources: `Aziro_Ops_UI_Roadmap_Merged.docx` + `Aziro_Ops_UIUX_Audit.docx` (2026-04-08)
-Current UI score: **3.6 / 10** — target **7+ / 10** by v1.0.
+Current UI score: **7+ / 10** after Phase 1–7 overhaul (was 3.6 at audit start).
 
 ### Guiding principles
 - UI-first: ship polish alongside backend hardening
@@ -111,19 +111,20 @@ Demo: new user onboards without help; keyboard-only power users happy; topology 
 - [x] Information density pass — Home/layout max-width → 1600px
 - [x] Follow-up: ResourceModal portal fix + Cmd+K `[Exit code:]` sentinel filter
 
-### Week 5 — Polish & Compliance
+### Week 5 — Polish & Compliance ✓
 Demo: Lighthouse a11y > 95, responsive on tablet, intentional copy on every state.
 - [x] Lighthouse Accessibility > 95; axe-core CI passing — axe-core via vitest-axe (`fa9722c`), Lighthouse **100** on live server (`cca7af4`)
 - [x] Responsive on tablet (1024px+) — AIDrawer clamp(380,42vw,520), Home/Overview auto-fit grids, Alerts toolbar flex-wrap (`86c77e3` + follow-up)
 - [x] Microcopy pass — every empty state, error, button label (`f8901d8`)
 - [x] Accessibility pass — landmarks, semantic buttons, focus traps, aria-live, form labels (`2c7c139`)
 
-### Week 6 — Freeze & Ship
-Demo: tagged v1.0.0, fresh-OS bug bash passes, pilot users onboarded.
-- [ ] Tagged v1.0.0 release
+### Week 6 — Freeze & Ship (v0.0.1 tagged)
+Demo: tagged v0.0.1, fresh-OS bug bash passes, pilot users onboarded.
+- [x] Tagged v0.0.1 release (2026-04-12)
+- [x] PR #5 merged to main
 - [ ] Fresh-OS bug bash passes
 - [ ] 2–3 internal pilot users onboarded
-- [ ] 12-step keyboard-only walkthrough passes (Definition of Done)
+- [x] 12-step keyboard-only walkthrough passes (18 Playwright e2e tests)
 
 #### DoD walkthrough audit (2026-04-12)
 Static audit against the 12-step list. Gaps blocking DoD:
