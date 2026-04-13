@@ -944,7 +944,7 @@ def api_monitor_start(tid):
         tname = target.get("name", "")
         watcher.on_event(lambda e, _tid=tid, _tn=tname: _web_triage_handle(e, target_id=_tid, target_name=_tn))
         # only persist Warning events — Normal events are informational noise
-        watcher.on_event(lambda e: _store.save_event(e, _web_classify(e)) if e.get("type") == "Warning" else None)
+        watcher.on_event(lambda e, _tid=tid, _tn=tname: _store.save_event(e, _web_classify(e), target_id=_tid, target_name=_tn) if e.get("type") == "Warning" else None)
         watcher.watch()
         _web_watchers[tid] = watcher
         _metric_collector.start(tid, target, executor)

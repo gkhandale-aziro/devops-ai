@@ -98,11 +98,17 @@ class EventStore:
 
     def _migrate(self):
         """Add columns introduced after initial schema without dropping existing data."""
-        try:
-            with self._conn() as c:
-                c.execute("ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open'")
-        except Exception:
-            pass  # column already exists
+        migrations = [
+            "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open'",
+            "ALTER TABLE events ADD COLUMN target_id TEXT DEFAULT ''",
+            "ALTER TABLE events ADD COLUMN target_name TEXT DEFAULT ''",
+        ]
+        for sql in migrations:
+            try:
+                with self._conn() as c:
+                    c.execute(sql)
+            except Exception:
+                pass  # column already exists
 
     def _conn(self):
         conn = sqlite3.connect(self._db, check_same_thread=False)
@@ -113,7 +119,8 @@ class EventStore:
 
     # ── write ─────────────────────────────────────────────────────────────────
 
-    def save_event(self, event: dict, level: str) -> int:
+    def save_event(self, event: dict, level: str,
+                   target_id: str = "", target_name: str = "") -> int:
         """
         Persist a monitor event. Returns the new event id.
         Also purges events older than RETENTION_DAYS.
@@ -122,8 +129,8 @@ class EventStore:
         with self._conn() as c:
             cur = c.execute(
                 """INSERT INTO events
-                   (timestamp, source, level, reason, object, namespace, message, raw)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (timestamp, source, level, reason, object, namespace, message, raw, target_id, target_name)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (now,
                  event.get("source",    "kubernetes"),
                  level,
@@ -131,7 +138,9 @@ class EventStore:
                  event.get("object",    ""),
                  event.get("namespace", ""),
                  event.get("message",   ""),
-                 json.dumps(event)),
+                 json.dumps(event),
+                 target_id,
+                 target_name),
             )
             eid = cur.lastrowid
 

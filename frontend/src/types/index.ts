@@ -88,6 +88,8 @@ export interface StoredEvent {
   namespace:       string;
   message:         string;
   status:          IncidentStatus;
+  target_id?:      string;
+  target_name?:    string;
   last_diagnosis?: string;
   snapshots?:      Snapshot[];
   analyses?:       Analysis[];

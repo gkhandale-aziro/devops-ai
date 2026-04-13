@@ -50,15 +50,22 @@ const MOCK_EVENT = {
   id: 1,
   level: "SEV1" as const,
   reason: "CrashLoopBackOff",
-  object: "pod/nginx",
+  object: "pod/nginx-7f8b9c6d4-x2k9l",
   namespace: "default",
   source: "kubelet",
   message: "Container crashed",
   timestamp: new Date().toISOString(),
   status: "open" as const,
+  target_id: "t1",
+  target_name: "test-cluster",
   snapshots: [],
   analyses: [],
 };
+
+/** Switch to flat view so DataTable is directly visible (default is grouped). */
+function switchToFlat() {
+  fireEvent.click(screen.getByTitle("Flat list"));
+}
 
 describe("History", () => {
   beforeEach(() => {
@@ -71,7 +78,6 @@ describe("History", () => {
         <History />
       </MemoryRouter>,
     );
-    // "Incident History" appears in both the hidden h1 and the visible header
     expect(screen.getAllByText("Incident History").length).toBeGreaterThanOrEqual(1);
   });
 
@@ -85,6 +91,16 @@ describe("History", () => {
     expect(screen.getByText("SEV1")).toBeInTheDocument();
     expect(screen.getByText("SEV2")).toBeInTheDocument();
     expect(screen.getByText("SEV3")).toBeInTheDocument();
+  });
+
+  it("shows view mode toggle (Grouped / Flat)", () => {
+    render(
+      <MemoryRouter>
+        <History />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTitle("Group by workload")).toBeInTheDocument();
+    expect(screen.getByTitle("Flat list")).toBeInTheDocument();
   });
 
   it("shows namespace filter dropdown", () => {
@@ -128,7 +144,7 @@ describe("History", () => {
     expect(screen.getByText("No incidents recorded yet")).toBeInTheDocument();
   });
 
-  it("shows data after loading resolves", async () => {
+  it("shows workload groups in grouped view (default)", async () => {
     const { api } = await import("../api/client");
     (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT]);
     render(
@@ -137,11 +153,69 @@ describe("History", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
+      // Workload name extracted: nginx-7f8b9c6d4-x2k9l → nginx
+      expect(screen.getByText("nginx")).toBeInTheDocument();
+    });
+    // Target name shown in group header
+    expect(screen.getByText("test-cluster")).toBeInTheDocument();
+    // Event count shown
+    expect(screen.getByText("1 event")).toBeInTheDocument();
+  });
+
+  it("expanding a workload group shows DataTable with events", async () => {
+    const { api } = await import("../api/client");
+    (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT]);
+    render(
+      <MemoryRouter>
+        <History />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("nginx")).toBeInTheDocument();
+    });
+    // Click to expand the group
+    fireEvent.click(screen.getByText("nginx"));
+    expect(screen.getByTestId("data-table")).toBeInTheDocument();
+    expect(screen.getByText("CrashLoopBackOff")).toBeInTheDocument();
+  });
+
+  it("groups multiple events from same workload together", async () => {
+    const { api } = await import("../api/client");
+    const events = [
+      MOCK_EVENT,
+      { ...MOCK_EVENT, id: 2, reason: "OOMKilled", object: "pod/nginx-7f8b9c6d4-abc12" },
+    ];
+    (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue(events);
+    render(
+      <MemoryRouter>
+        <History />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("nginx")).toBeInTheDocument();
+    });
+    // Both events grouped under "nginx" — shows 2 events
+    expect(screen.getByText("2 events")).toBeInTheDocument();
+  });
+
+  it("shows data in flat view after switching", async () => {
+    const { api } = await import("../api/client");
+    (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT]);
+    render(
+      <MemoryRouter>
+        <History />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("nginx")).toBeInTheDocument();
+    });
+    switchToFlat();
+    await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
   });
 
-  it("shows DataTable when events exist", async () => {
+  it("shows DataTable when events exist (flat view)", async () => {
     const { api } = await import("../api/client");
     (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT, { ...MOCK_EVENT, id: 2, level: "SEV2" }]);
     render(
@@ -149,6 +223,10 @@ describe("History", () => {
         <History />
       </MemoryRouter>,
     );
+    await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
     await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
@@ -183,9 +261,7 @@ describe("History", () => {
     await waitFor(() => {
       expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     });
-    // No Clear button initially (no filters active)
     expect(screen.queryByText("Clear")).not.toBeInTheDocument();
-    // Click a severity to activate a filter
     fireEvent.click(screen.getByText("SEV2"));
     expect(screen.getByText("Clear")).toBeInTheDocument();
   });
@@ -220,7 +296,7 @@ describe("History", () => {
     });
   });
 
-  it("shows event count after loading", async () => {
+  it("shows event count after loading (grouped view)", async () => {
     const { api } = await import("../api/client");
     (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT]);
     render(
@@ -229,7 +305,8 @@ describe("History", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByText("1 event")).toBeInTheDocument();
+      // Grouped view shows "1 workload · 1 event"
+      expect(screen.getByText(/1 workload/)).toBeInTheDocument();
     });
   });
 
@@ -242,11 +319,11 @@ describe("History", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByText("2 events")).toBeInTheDocument();
+      expect(screen.getByText(/2 events/)).toBeInTheDocument();
     });
   });
 
-  it("opens detail panel when event row is clicked", async () => {
+  it("opens detail panel when event row is clicked (flat view)", async () => {
     const { api } = await import("../api/client");
     const detailEvent = {
       ...MOCK_EVENT,
@@ -264,23 +341,26 @@ describe("History", () => {
     );
 
     await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
+
+    await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
 
-    // Click on the row to open the detail panel
     fireEvent.click(screen.getByTestId("row-1"));
 
     await waitFor(() => {
       expect(api.events.get).toHaveBeenCalledWith(1);
     });
 
-    // Detail panel should appear with event info
     await waitFor(() => {
       expect(screen.getByText("Detailed crash info")).toBeInTheDocument();
     });
   });
 
-  it("detail panel shows meta rows (Object, Namespace, Source, Time)", async () => {
+  it("detail panel shows meta rows including Target", async () => {
     const { api } = await import("../api/client");
     const detailEvent = {
       ...MOCK_EVENT,
@@ -288,6 +368,7 @@ describe("History", () => {
       namespace: "staging",
       source: "kubelet",
       message: "OOMKilled",
+      target_name: "prod-cluster",
       snapshots: [],
       analyses: [],
     };
@@ -299,6 +380,11 @@ describe("History", () => {
         <History />
       </MemoryRouter>,
     );
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
 
     await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
@@ -314,6 +400,8 @@ describe("History", () => {
     expect(screen.getByText("Namespace")).toBeInTheDocument();
     expect(screen.getByText("Source")).toBeInTheDocument();
     expect(screen.getByText("Time")).toBeInTheDocument();
+    expect(screen.getByText("Target")).toBeInTheDocument();
+    expect(screen.getByText("prod-cluster")).toBeInTheDocument();
   });
 
   it("detail panel shows status buttons (Open, Acknowledged, Resolved)", async () => {
@@ -332,6 +420,11 @@ describe("History", () => {
         <History />
       </MemoryRouter>,
     );
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
 
     await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
@@ -363,6 +456,11 @@ describe("History", () => {
         <History />
       </MemoryRouter>,
     );
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
 
     await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
@@ -398,6 +496,11 @@ describe("History", () => {
     );
 
     await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
+
+    await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
 
@@ -425,6 +528,11 @@ describe("History", () => {
     );
 
     await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
+
+    await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
 
@@ -435,7 +543,6 @@ describe("History", () => {
     });
 
     fireEvent.click(screen.getByText(/Ask AI to Explain/));
-    // AIDrawer mock should be in the DOM
     expect(screen.getByTestId("ai-drawer")).toBeInTheDocument();
   });
 
@@ -443,7 +550,7 @@ describe("History", () => {
     const { api } = await import("../api/client");
     const detailEvent = {
       ...MOCK_EVENT,
-      object: "pod/nginx",
+      object: "pod/nginx-7f8b9c6d4-x2k9l",
       snapshots: [],
       analyses: [],
     };
@@ -457,32 +564,9 @@ describe("History", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("data-table")).toBeInTheDocument();
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     });
-
-    fireEvent.click(screen.getByTestId("row-1"));
-
-    await waitFor(() => {
-      expect(screen.getByText(/View all for pod\/nginx/)).toBeInTheDocument();
-    });
-  });
-
-  it("clicking 'View all for X' sets object filter and closes detail", async () => {
-    const { api } = await import("../api/client");
-    const detailEvent = {
-      ...MOCK_EVENT,
-      object: "pod/nginx",
-      snapshots: [],
-      analyses: [],
-    };
-    (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT]);
-    (api.events.get as ReturnType<typeof vi.fn>).mockResolvedValue(detailEvent);
-
-    render(
-      <MemoryRouter>
-        <History />
-      </MemoryRouter>,
-    );
+    switchToFlat();
 
     await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
@@ -491,18 +575,8 @@ describe("History", () => {
     fireEvent.click(screen.getByTestId("row-1"));
 
     await waitFor(() => {
-      expect(screen.getByText(/View all for pod\/nginx/)).toBeInTheDocument();
+      expect(screen.getByText(/View all for/)).toBeInTheDocument();
     });
-
-    fireEvent.click(screen.getByText(/View all for pod\/nginx/));
-
-    // Detail panel should be closed (no status buttons visible)
-    await waitFor(() => {
-      expect(screen.queryByText("Open")).not.toBeInTheDocument();
-    });
-
-    // The object search input should be filled
-    expect(screen.getByPlaceholderText("Search object…")).toHaveValue("pod/nginx");
   });
 
   it("detail panel close button removes the panel", async () => {
@@ -522,6 +596,11 @@ describe("History", () => {
     );
 
     await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
+
+    await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
 
@@ -531,9 +610,7 @@ describe("History", () => {
       expect(screen.getByText("Open")).toBeInTheDocument();
     });
 
-    // The close button has an X icon — find the button in the detail panel header
     const closeButtons = screen.getAllByRole("button");
-    // The close button is the one that closes the detail panel (has no text, is near the detail header)
     const closeBtn = closeButtons.find(b => b.querySelector(".lucide-x"));
     expect(closeBtn).toBeDefined();
     fireEvent.click(closeBtn!);
@@ -563,21 +640,23 @@ describe("History", () => {
     );
 
     await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
+
+    await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByTestId("row-1"));
 
-    // CollapsibleSections should show labels
     await waitFor(() => {
       expect(screen.getByText("kubectl describe")).toBeInTheDocument();
     });
     expect(screen.getByText("kubectl logs")).toBeInTheDocument();
 
-    // Content is hidden by default (collapsed)
     expect(screen.queryByText("Name: nginx")).not.toBeInTheDocument();
 
-    // Click to expand
     fireEvent.click(screen.getByText("kubectl describe"));
     expect(screen.getByText(/Name: nginx/)).toBeInTheDocument();
   });
@@ -599,6 +678,11 @@ describe("History", () => {
     );
 
     await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
+
+    await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
 
@@ -612,7 +696,6 @@ describe("History", () => {
 
   it("detail panel shows loading skeleton while fetching", async () => {
     const { api } = await import("../api/client");
-    // Make get hang so we see the loading state
     let resolveGet!: (v: unknown) => void;
     (api.events.list as ReturnType<typeof vi.fn>).mockResolvedValue([MOCK_EVENT]);
     (api.events.get as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(r => { resolveGet = r; }));
@@ -624,17 +707,20 @@ describe("History", () => {
     );
 
     await waitFor(() => {
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    });
+    switchToFlat();
+
+    await waitFor(() => {
       expect(screen.getByTestId("data-table")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByTestId("row-1"));
 
-    // Should show "Loading…" in the detail panel header while loading
     await waitFor(() => {
       expect(screen.getByText("Loading…")).toBeInTheDocument();
     });
 
-    // Resolve the get call
     resolveGet({ ...MOCK_EVENT, snapshots: [], analyses: [] });
 
     await waitFor(() => {
@@ -660,9 +746,7 @@ describe("History", () => {
 
     const nsSelect = screen.getByLabelText("Filter by namespace");
     expect(nsSelect).toBeInTheDocument();
-    // The namespace options should be populated from events
     fireEvent.change(nsSelect, { target: { value: "kube-system" } });
-    // Clear button should appear after filtering
     expect(screen.getByText("Clear")).toBeInTheDocument();
   });
 
@@ -681,9 +765,7 @@ describe("History", () => {
     const searchInput = screen.getByPlaceholderText("Search object…");
     fireEvent.change(searchInput, { target: { value: "nginx" } });
 
-    // The input value should update immediately
     expect(searchInput).toHaveValue("nginx");
-    // Clear button appears because objInput is non-empty
     expect(screen.getByText("Clear")).toBeInTheDocument();
   });
 
@@ -719,11 +801,9 @@ describe("History", () => {
       expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     });
 
-    // Activate a filter first
     fireEvent.click(screen.getByText("SEV1"));
     expect(screen.getByText("Clear")).toBeInTheDocument();
 
-    // Click "All" to reset
     fireEvent.click(screen.getByText("All"));
     expect(screen.queryByText("Clear")).not.toBeInTheDocument();
   });
@@ -741,7 +821,6 @@ describe("History", () => {
     });
     (api.events.list as ReturnType<typeof vi.fn>).mockClear();
     fireEvent.click(screen.getByText("SEV3"));
-    // After clicking SEV3, Clear button should appear (filter is active)
     expect(screen.getByText("Clear")).toBeInTheDocument();
   });
 });

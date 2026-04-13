@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
-import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight, Clock } from "lucide-react";
+import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight, Clock, Server, Layers } from "lucide-react";
 import { Breadcrumb } from "../components/ui/breadcrumb";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { StoredEvent, TriageLevel, Snapshot, Analysis, IncidentStatus } from "../types";
@@ -21,6 +21,8 @@ const STATUS_STYLES: Record<IncidentStatus, { color: string; bg: string; label: 
   resolved:     { color: "var(--c-green)", bg: "var(--c-green-bg)", label: "Resolved"     },
 };
 
+type ViewMode = "flat" | "grouped";
+
 /**
  * Builds column definitions for the incident history DataTable.
  * Accepts closures so cell renderers can access per-render state without
@@ -28,9 +30,10 @@ const STATUS_STYLES: Record<IncidentStatus, { color: string; bg: string; label: 
  */
 function buildIncidentColumns(opts: {
   openAIForEvent: (ev: StoredEvent) => void;
+  showTarget: boolean;
 }): ColumnDef<StoredEvent, unknown>[] {
-  const { openAIForEvent } = opts;
-  return [
+  const { openAIForEvent, showTarget } = opts;
+  const cols: ColumnDef<StoredEvent, unknown>[] = [
     {
       accessorKey: "level",
       header: "Severity",
@@ -48,6 +51,27 @@ function buildIncidentColumns(opts: {
         </span>
       ),
     },
+  ];
+
+  // Target column — only when events have target info
+  if (showTarget) {
+    cols.push({
+      accessorKey: "target_name",
+      header: "Target",
+      cell: ({ row }) => {
+        const e = row.original;
+        if (!e.target_name) return <span className="text-xs text-muted-foreground">—</span>;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Server size={12} style={{ color: "var(--c-accent)", flexShrink: 0 }} />
+            <span style={{ fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium }}>{e.target_name}</span>
+          </div>
+        );
+      },
+    });
+  }
+
+  cols.push(
     {
       accessorKey: "reason",
       header: "Reason",
@@ -119,7 +143,33 @@ function buildIncidentColumns(opts: {
         </button>
       ),
     },
-  ];
+  );
+
+  return cols;
+}
+
+/** Extract workload name from object: pod/nginx-abc123 → nginx, pod/web-server-xyz → web-server */
+function workloadName(object: string): string {
+  // Remove resource prefix (pod/, node/, etc.)
+  const name = object.includes("/") ? object.split("/").pop()! : object;
+  // Strip trailing pod hash: name-<replicaset-hash>-<pod-hash>
+  // Common pattern: deployment-name-7f8b9c6d4-x2k9l → deployment-name
+  const match = name.match(/^(.+?)-[a-z0-9]{6,10}-[a-z0-9]{4,5}$/);
+  if (match) return match[1];
+  // ReplicaSet pattern: name-7f8b9c6d4 → name
+  const rsMatch = name.match(/^(.+?)-[a-f0-9]{6,10}$/);
+  if (rsMatch) return rsMatch[1];
+  return name;
+}
+
+interface WorkloadGroup {
+  workload: string;
+  namespace: string;
+  targetName: string;
+  events: StoredEvent[];
+  worstLevel: TriageLevel;
+  latestTime: string;
+  openCount: number;
 }
 
 function relativeTime(ts: string): string {
@@ -133,6 +183,8 @@ function relativeTime(ts: string): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+const SEV_ORDER: Record<string, number> = { SEV1: 0, SEV2: 1, SEV3: 2 };
+
 export function History() {
   const [events,        setEvents]        = useState<StoredEvent[]>([]);
   const [loading,       setLoading]       = useState(true);
@@ -144,11 +196,15 @@ export function History() {
   const [selectedId,    setSelectedId]    = useState<number | null>(null);
   const [detail,        setDetail]        = useState<StoredEvent | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [viewMode,      setViewMode]      = useState<ViewMode>("grouped");
 
   // AI drawer state
   const [aiDrawerOpen, setAiDrawerOpen]   = useState(false);
   const [aiContext,    setAiContext]       = useState("");
   const [aiTitle,      setAiTitle]        = useState("");
+
+  // Expanded workload groups
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function handleObjInput(val: string) {
@@ -195,6 +251,7 @@ export function History() {
       .join("\n");
     const prompt =
       `You are a Kubernetes SRE. Explain this incident clearly and suggest remediation steps.\n\n` +
+      (ev.target_name ? `Target: ${ev.target_name}\n` : "") +
       `Severity: ${ev.level} (${(LEVEL_LABELS as Record<string, string>)[ev.level] ?? ev.level})\n` +
       `Reason: ${ev.reason}\nObject: ${ev.object}${ev.namespace ? " / " + ev.namespace : ""}\n` +
       `Source: ${ev.source}\nTime: ${ev.timestamp}\nMessage: ${ev.message ?? "—"}\n${snaps}`;
@@ -203,13 +260,16 @@ export function History() {
     setAiDrawerOpen(true);
   }, []);
 
-  /** Column defs are rebuilt only when openAIForEvent changes (stable ref). */
+  // Check if any events have target info
+  const hasTargetInfo = useMemo(() => events.some(e => !!e.target_name), [events]);
+
+  /** Column defs — rebuilt when target info availability changes. */
   const incidentColumns = useMemo(
-    () => buildIncidentColumns({ openAIForEvent }),
-    [openAIForEvent]
+    () => buildIncidentColumns({ openAIForEvent, showTarget: hasTargetInfo }),
+    [openAIForEvent, hasTargetInfo]
   );
 
-  /** Highlight selected row + add severity left-border accent via CSS classes. */
+  /** Highlight selected row. */
   const getRowClassName = useCallback((e: StoredEvent): string => {
     const parts: string[] = [];
     if (e.id === selectedId) parts.push("bg-[var(--c-bg-active)]");
@@ -228,21 +288,47 @@ export function History() {
   }, [events]);
 
   const filtered = useMemo(() => {
-    const base = nsFilter ? events.filter(e => e.namespace === nsFilter) : events;
-    // Deduplicate: group by object + reason, keep latest (first in list), add count to message
-    const seen: Record<string, { event: StoredEvent; count: number }> = {};
-    for (const e of base) {
-      const key = `${e.object}|${e.reason}`;
-      if (seen[key]) {
-        seen[key].count++;
-      } else {
-        seen[key] = { event: e, count: 1 };
-      }
-    }
-    return Object.values(seen).map(({ event, count }) =>
-      count > 1 ? { ...event, message: `(×${count}) ${event.message}` } : event
-    );
+    return nsFilter ? events.filter(e => e.namespace === nsFilter) : events;
   }, [events, nsFilter]);
+
+  /** Group events by workload (deployment/pod base name). */
+  const workloadGroups = useMemo((): WorkloadGroup[] => {
+    const groups: Record<string, WorkloadGroup> = {};
+    for (const e of filtered) {
+      const wl = workloadName(e.object);
+      const key = `${e.target_name || "unknown"}|${e.namespace || "default"}|${wl}`;
+      if (!groups[key]) {
+        groups[key] = {
+          workload: wl,
+          namespace: e.namespace || "default",
+          targetName: e.target_name || "",
+          events: [],
+          worstLevel: "SEV3",
+          latestTime: e.timestamp,
+          openCount: 0,
+        };
+      }
+      const g = groups[key];
+      g.events.push(e);
+      if (SEV_ORDER[e.level] < SEV_ORDER[g.worstLevel]) g.worstLevel = e.level as TriageLevel;
+      if (e.timestamp > g.latestTime) g.latestTime = e.timestamp;
+      if ((e.status ?? "open") === "open") g.openCount++;
+    }
+    // Sort: worst severity first, then most recent
+    return Object.values(groups).sort((a, b) => {
+      const sevDiff = SEV_ORDER[a.worstLevel] - SEV_ORDER[b.worstLevel];
+      if (sevDiff !== 0) return sevDiff;
+      return b.latestTime.localeCompare(a.latestTime);
+    });
+  }, [filtered]);
+
+  function toggleGroup(key: string) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   const hasFilters = level !== "" || objInput !== "" || nsFilter !== "";
 
@@ -259,13 +345,42 @@ export function History() {
         gap: 14,
         flexShrink: 0,
         background: "var(--c-bg-raised)",
+        flexWrap: "wrap",
       }}>
         <Breadcrumb items={[
           { label: "Home", href: "/" },
           { label: "Incident History", icon: <Clock size={14} /> },
         ]} />
 
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {/* View mode toggle */}
+          <div style={{ display: "flex", borderRadius: RADIUS.md, overflow: "hidden", border: "1px solid var(--c-border-strong)" }}>
+            <button
+              onClick={() => setViewMode("grouped")}
+              title="Group by workload"
+              style={{
+                padding: "4px 10px", fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
+                background: viewMode === "grouped" ? "var(--c-bg-active)" : "var(--c-bg-surface)",
+                border: "none",
+                color: viewMode === "grouped" ? "var(--c-accent-hover)" : "var(--c-text-muted)",
+                display: "flex", alignItems: "center", gap: 4,
+              }}
+            ><Layers size={12} /> Grouped</button>
+            <button
+              onClick={() => setViewMode("flat")}
+              title="Flat list"
+              style={{
+                padding: "4px 10px", fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
+                background: viewMode === "flat" ? "var(--c-bg-active)" : "var(--c-bg-surface)",
+                border: "none", borderLeft: "1px solid var(--c-border-strong)",
+                color: viewMode === "flat" ? "var(--c-accent-hover)" : "var(--c-text-muted)",
+                display: "flex", alignItems: "center", gap: 4,
+              }}
+            >Flat</button>
+          </div>
+
+          <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
+
           {/* Severity filter pills */}
           <div style={{ display: "flex", gap: 4 }}>
             <button
@@ -343,7 +458,10 @@ export function History() {
 
           <div style={{ width: 1, height: 20, background: "var(--c-border-strong)", flexShrink: 0 }} />
           <span style={{ fontSize: FONT_SIZE.sm, color: "var(--c-text-muted)" }}>
-            {loading ? "Loading…" : `${filtered.length} event${filtered.length !== 1 ? "s" : ""}`}
+            {loading ? "Loading…" : viewMode === "grouped"
+              ? `${workloadGroups.length} workload${workloadGroups.length !== 1 ? "s" : ""} · ${filtered.length} event${filtered.length !== 1 ? "s" : ""}`
+              : `${filtered.length} event${filtered.length !== 1 ? "s" : ""}`
+            }
           </span>
           <button
             onClick={load}
@@ -361,7 +479,7 @@ export function History() {
       {/* ── Main content area ──────────────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-        {/* Event table — full width */}
+        {/* Event table / grouped view */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
           <div style={{ flex: 1, overflowY: "auto" }}>
             {loadError && (
@@ -390,7 +508,104 @@ export function History() {
               />
             )}
 
-            {filtered.length > 0 && (
+            {/* ── Grouped view ── */}
+            {filtered.length > 0 && viewMode === "grouped" && (
+              <div style={{ padding: "12px 20px", display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+                {workloadGroups.map(g => {
+                  const groupKey = `${g.targetName}|${g.namespace}|${g.workload}`;
+                  const isExpanded = expandedGroups.has(groupKey);
+                  const levelColor = LEVEL_COLORS[g.worstLevel];
+
+                  return (
+                    <div key={groupKey} style={{
+                      border: `1px solid ${levelColor.border}`,
+                      borderRadius: RADIUS.lg,
+                      overflow: "hidden",
+                      background: "var(--c-bg-surface)",
+                    }}>
+                      {/* Group header */}
+                      <button
+                        onClick={() => toggleGroup(groupKey)}
+                        style={{
+                          width: "100%", display: "flex", alignItems: "center", gap: SPACE.sm,
+                          padding: `${SPACE.sm}px ${SPACE.md}px`,
+                          background: levelColor.bg,
+                          border: "none",
+                          borderBottom: isExpanded ? `1px solid ${levelColor.border}` : "none",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span style={{ color: levelColor.text, display: "flex", alignItems: "center" }}>
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </span>
+
+                        <LevelBadge level={g.worstLevel} />
+
+                        <span style={{ fontWeight: FONT_WEIGHT.semibold, fontSize: FONT_SIZE.md, color: "var(--c-text-primary)" }}>
+                          {g.workload}
+                        </span>
+
+                        <span style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)" }}>
+                          {g.namespace}
+                        </span>
+
+                        {g.targetName && (
+                          <span style={{
+                            display: "flex", alignItems: "center", gap: 4,
+                            fontSize: FONT_SIZE.xs, color: "var(--c-accent-hover)",
+                            background: "var(--c-accent-dim)",
+                            padding: `2px ${SPACE.sm}px`,
+                            borderRadius: RADIUS.md,
+                          }}>
+                            <Server size={10} />
+                            {g.targetName}
+                          </span>
+                        )}
+
+                        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: SPACE.sm }}>
+                          {g.openCount > 0 && (
+                            <span style={{
+                              fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold,
+                              color: levelColor.text,
+                              background: levelColor.bg,
+                              border: `1px solid ${levelColor.border}`,
+                              padding: `2px ${SPACE.sm}px`,
+                              borderRadius: RADIUS.md,
+                            }}>
+                              {g.openCount} open
+                            </span>
+                          )}
+                          <span style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)" }}>
+                            {g.events.length} event{g.events.length !== 1 ? "s" : ""}
+                          </span>
+                          <span style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)" }}>
+                            {relativeTime(g.latestTime)}
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Expanded: show events in this group */}
+                      {isExpanded && (
+                        <div>
+                          <DataTable<StoredEvent>
+                            columns={incidentColumns}
+                            data={g.events}
+                            onRowClick={(e) => openDetail(e.id)}
+                            getRowClassName={getRowClassName}
+                            emptyMessage="No events"
+                            keyboardNav
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Flat view ── */}
+            {filtered.length > 0 && viewMode === "flat" && (
               <DataTable<StoredEvent>
                 columns={incidentColumns}
                 data={filtered}
@@ -434,6 +649,9 @@ export function History() {
                     <MetaRow label="Namespace" value={detail.namespace || "—"} />
                     <MetaRow label="Source"    value={detail.source} />
                     <MetaRow label="Time"      value={relativeTime(detail.timestamp)} title={detail.timestamp} />
+                    {detail.target_name && (
+                      <MetaRow label="Target" value={detail.target_name} />
+                    )}
                   </div>
 
                   {/* status buttons */}
