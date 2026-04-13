@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   useReactTable,
@@ -37,131 +37,6 @@ interface DataTableProps<TData> {
   rowActions?: (row: TData) => RowAction[];
 }
 
-/**
- * Per-row kebab menu — custom portal dropdown.
- * All inline styles to avoid any CSS class/variable resolution issues.
- */
-function RowKebab<TData>({ row, rowActions }: { row: TData; rowActions: (row: TData) => RowAction[] }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const actions = rowActions(row);
-
-  // Position menu relative to button when opening
-  useEffect(() => {
-    if (open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.right });
-    }
-  }, [open]);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (btnRef.current?.contains(target)) return;
-      if (menuRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  if (actions.length === 0) return null;
-
-  return (
-    <div data-actions-cell>
-      <button
-        ref={btnRef}
-        style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          borderRadius: 4, padding: 4, color: "#94a3b8", background: "none", border: "none",
-          cursor: "pointer", transition: "color 150ms, background 150ms",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--c-bg-raised, #1e293b)"; e.currentTarget.style.color = "#e2e8f0"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#94a3b8"; }}
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          setOpen((v) => !v);
-        }}
-        aria-label="Row actions"
-        aria-expanded={open}
-        aria-haspopup="menu"
-      >
-        <MoreVertical size={16} />
-      </button>
-
-      {open && createPortal(
-        <div
-          ref={menuRef}
-          role="menu"
-          style={{
-            position: "fixed",
-            top: pos.top,
-            left: pos.left,
-            transform: "translateX(-100%)",
-            zIndex: 99999,
-            minWidth: 160,
-            background: "var(--c-bg-surface, #1e293b)",
-            border: "1px solid var(--c-border, #334155)",
-            borderRadius: 8,
-            padding: 4,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-            animation: "fadeIn 100ms ease-out",
-          }}
-        >
-          {actions.map((action) => (
-            <button
-              key={action.label}
-              role="menuitem"
-              disabled={action.disabled}
-              style={{
-                display: "flex", width: "100%", alignItems: "center", gap: 8,
-                borderRadius: 4, padding: "6px 8px", fontSize: 12,
-                background: "none", border: "none", cursor: action.disabled ? "default" : "pointer",
-                color: action.variant === "destructive" ? "#f87171" : "#cbd5e1",
-                opacity: action.disabled ? 0.5 : 1,
-                transition: "background 100ms, color 100ms",
-              }}
-              onMouseEnter={(e) => {
-                if (!action.disabled) {
-                  e.currentTarget.style.background = action.variant === "destructive"
-                    ? "rgba(239,68,68,0.1)" : "var(--c-bg-raised, #334155)";
-                  e.currentTarget.style.color = action.variant === "destructive" ? "#f87171" : "#e2e8f0";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "none";
-                e.currentTarget.style.color = action.variant === "destructive" ? "#f87171" : "#cbd5e1";
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                action.onClick();
-              }}
-            >
-              {action.icon}
-              {action.label}
-            </button>
-          ))}
-        </div>,
-        document.body,
-      )}
-    </div>
-  );
-}
-
 export function DataTable<TData>({
   columns,
   data,
@@ -177,6 +52,44 @@ export function DataTable<TData>({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
 
+  // ── Kebab menu state — lifted here so cell re-renders can't destroy it ──
+  const [kebabRowId, setKebabRowId] = useState<string | null>(null);
+  const [kebabPos, setKebabPos] = useState({ top: 0, left: 0 });
+  const [kebabActions, setKebabActions] = useState<RowAction[]>([]);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const openKebab = useCallback((rowId: string, actions: RowAction[], btnEl: HTMLElement) => {
+    const rect = btnEl.getBoundingClientRect();
+    setKebabPos({ top: rect.bottom + 4, left: rect.right });
+    setKebabActions(actions);
+    setKebabRowId(rowId);
+  }, []);
+
+  const closeKebab = useCallback(() => setKebabRowId(null), []);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!kebabRowId) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      // Don't close if clicking the menu itself
+      if (menuRef.current?.contains(target)) return;
+      // Don't close if clicking a kebab button (it will toggle)
+      if ((target as HTMLElement).closest?.("[data-kebab-btn]")) return;
+      setKebabRowId(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [kebabRowId]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!kebabRowId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setKebabRowId(null); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [kebabRowId]);
+
   // Append kebab actions column when rowActions is provided
   const allColumns = useMemo(() => {
     if (!rowActions) return columns;
@@ -185,10 +98,41 @@ export function DataTable<TData>({
       header: "",
       size: 40,
       enableSorting: false,
-      cell: ({ row }) => <RowKebab row={row.original} rowActions={rowActions} />,
+      // Cell renders just the button — no local state needed
+      cell: ({ row }) => {
+        const actions = rowActions(row.original);
+        if (actions.length === 0) return null;
+        return (
+          <div data-actions-cell>
+            <button
+              data-kebab-btn
+              data-row-id={row.id}
+              style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                borderRadius: 4, padding: 4, color: "#94a3b8", background: "none", border: "none",
+                cursor: "pointer",
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (kebabRowId === row.id) {
+                  closeKebab();
+                } else {
+                  openKebab(row.id, actions, e.currentTarget);
+                }
+              }}
+              aria-label="Row actions"
+              aria-haspopup="menu"
+            >
+              <MoreVertical size={16} />
+            </button>
+          </div>
+        );
+      },
     };
     return [...columns, actionsCol];
-  }, [columns, rowActions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns, rowActions, kebabRowId]);
 
   const table = useReactTable({
     data,
@@ -312,6 +256,64 @@ export function DataTable<TData>({
       <div className="text-xs text-muted-foreground">
         {table.getFilteredRowModel().rows.length} of {data.length} row(s)
       </div>
+
+      {/* ── Kebab dropdown — rendered ONCE at DataTable level via portal ── */}
+      {kebabRowId && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{
+            position: "fixed",
+            top: kebabPos.top,
+            left: kebabPos.left,
+            transform: "translateX(-100%)",
+            zIndex: 99999,
+            minWidth: 160,
+            background: "var(--c-bg-surface, #1e293b)",
+            border: "1px solid var(--c-border, #334155)",
+            borderRadius: 8,
+            padding: 4,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+            animation: "fadeIn 100ms ease-out",
+          }}
+        >
+          {kebabActions.map((action) => (
+            <button
+              key={action.label}
+              role="menuitem"
+              disabled={action.disabled}
+              style={{
+                display: "flex", width: "100%", alignItems: "center", gap: 8,
+                borderRadius: 4, padding: "6px 8px", fontSize: 12,
+                background: "none", border: "none", cursor: action.disabled ? "default" : "pointer",
+                color: action.variant === "destructive" ? "#f87171" : "#cbd5e1",
+                opacity: action.disabled ? 0.5 : 1,
+                transition: "background 100ms, color 100ms",
+              }}
+              onMouseEnter={(e) => {
+                if (!action.disabled) {
+                  e.currentTarget.style.background = action.variant === "destructive"
+                    ? "rgba(239,68,68,0.1)" : "var(--c-bg-raised, #334155)";
+                  e.currentTarget.style.color = action.variant === "destructive" ? "#f87171" : "#e2e8f0";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "none";
+                e.currentTarget.style.color = action.variant === "destructive" ? "#f87171" : "#cbd5e1";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setKebabRowId(null);
+                action.onClick();
+              }}
+            >
+              {action.icon}
+              {action.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
