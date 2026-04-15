@@ -40,6 +40,12 @@ from observability import (
     current_request_id, new_request_id, bind_request_id, clear_request_id,
     REQUEST_ID_HEADER,
 )
+from auth import (
+    AuthStore, auth_bp,
+    init_login_manager, audit_after_request,
+    AUTH_MODE_APIKEY, AUTH_MODE_SESSION, AUTH_MODE_BOTH,
+)
+from auth.middleware import get_auth_mode, session_auth_check, role_check
 
 configure_logging()
 log = get_logger("aziro.web")
@@ -56,10 +62,54 @@ _targets  = TargetManager()
 _agent    = Agent(_llm, _tools)
 _session  = AgentSession()
 _store    = EventStore()
+_auth     = AuthStore()
 _metric_collector = MetricCollector(_store)
+
+
+def _bootstrap_admin_if_empty():
+    """On first boot with an empty users table, create an admin from
+    AZIRO_BOOTSTRAP_ADMIN_USER / _PASSWORD. This runs only once per
+    deployment — subsequent boots see users >= 1 and skip silently.
+    Logged so the operator has a paper trail of the first credential."""
+    if _auth.count_users() > 0:
+        return
+    user = os.environ.get("AZIRO_BOOTSTRAP_ADMIN_USER", "").strip()
+    pw   = os.environ.get("AZIRO_BOOTSTRAP_ADMIN_PASSWORD", "")
+    if not user or not pw:
+        return
+    try:
+        _auth.create_user(user, pw, role="admin")
+        log.info("auth.bootstrap_admin_created", extra={"username": user})
+    except ValueError as e:
+        log.error("auth.bootstrap_admin_failed", extra={"error": str(e)})
+
+
+_bootstrap_admin_if_empty()
 
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
+
+# Flask session cookie signing key. If unset we mint an ephemeral one —
+# fine for local dev, but restarts will invalidate all active sessions.
+# Production deployments MUST set AZIRO_SESSION_SECRET.
+_SESSION_SECRET = os.environ.get("AZIRO_SESSION_SECRET", "").strip()
+if not _SESSION_SECRET:
+    _SESSION_SECRET = secrets.token_urlsafe(32)
+    log.warning("auth.ephemeral_session_secret",
+                extra={"hint": "set AZIRO_SESSION_SECRET in production"})
+app.config["SECRET_KEY"] = _SESSION_SECRET
+
+# Flask-Login + blueprint + audit hook. Must happen before any
+# before_request hooks that reference current_user.
+app.extensions = getattr(app, "extensions", {}) or {}
+app.extensions["aziro_auth_store"] = _auth
+init_login_manager(app, _auth)
+app.register_blueprint(auth_bp)
+
+
+@app.after_request
+def _audit_hook(response):
+    return audit_after_request(_auth, response)
 
 # Trust X-Forwarded-* headers from N reverse-proxy hops (nginx, caddy,
 # cloud LB, etc.). Default is 0 — ProxyFix is opt-in because trusting
@@ -212,12 +262,48 @@ _UNAUTH_PROBE_PATHS = frozenset({"/api/v1/healthz", "/api/v1/readyz"})
 
 @app.before_request
 def _auth_middleware():
-    """Enforce auth on all /api/ endpoints."""
+    """Enforce auth on all /api/ endpoints.
+
+    AZIRO_AUTH_MODE controls which credential types are accepted:
+      apikey  — Bearer token only (legacy). Default.
+      session — Flask-Login session cookie only.
+      both    — either is fine (useful during cutover).
+
+    /api/v1/auth/login itself must be reachable without credentials,
+    otherwise there's no way to obtain a session."""
     if not request.path.startswith("/api/"):
-        return None  # static files — no auth
+        return None
     if request.path in _UNAUTH_PROBE_PATHS:
         return None
-    return _check_auth()
+    # Login endpoint is the one /api/ path that must be open.
+    if request.path == "/api/v1/auth/login":
+        return None
+
+    mode = get_auth_mode()
+
+    if mode == AUTH_MODE_APIKEY:
+        err = _check_auth()
+        if err is not None:
+            return err
+        return role_check()  # no-op when not authenticated; stays no-op here
+
+    if mode == AUTH_MODE_SESSION:
+        err = session_auth_check()
+        if err is not None:
+            return err
+        return role_check()
+
+    # both — pass if either credential is valid.
+    key_err = _check_auth()
+    if key_err is None:
+        # Valid API key. Role check still runs but won't apply without a
+        # session-bound user; API-key callers are treated as admin-equivalent.
+        return None
+    sess_err = session_auth_check()
+    if sess_err is not None:
+        # Neither valid. Return the session error (more actionable for UI).
+        return sess_err
+    return role_check()
 
 
 # ── Rate limiting ─────────────────────────────────────────────────────────────
