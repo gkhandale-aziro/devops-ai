@@ -237,6 +237,68 @@ class TestApiTargetsValidation:
         assert r.status_code in (400, 415)
 
 
+# ── Per-message length cap (H-02) ─────────────────────────────────────────────
+
+class TestMessageLengthCap:
+    """Prompts/messages over _MAX_MESSAGE_CHARS must return 400, not reach LLM.
+
+    The 1 MB MAX_CONTENT_LENGTH body cap is a separate, coarser gate. This
+    covers the finer per-message cap that bounds LLM token spend.
+    """
+
+    def test_chat_stream_rejects_oversize_message(self, client):
+        c, mock_targets, _ = client
+        mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
+        from ui.web import _MAX_MESSAGE_CHARS
+        big = "a" * (_MAX_MESSAGE_CHARS + 1)
+        r = c.post("/api/v1/chat/t1/stream",
+                   json={"message": big},
+                   content_type="application/json")
+        assert r.status_code == 400
+        assert b"too long" in r.data
+
+    def test_chat_stream_accepts_boundary_message(self, client):
+        c, mock_targets, _ = client
+        mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
+        from ui.web import _MAX_MESSAGE_CHARS
+        at_cap = "a" * _MAX_MESSAGE_CHARS
+        # Don't stream to completion — just verify the cap doesn't reject at
+        # exactly the limit. Status should NOT be 400 for length.
+        r = c.post("/api/v1/chat/t1/stream",
+                   json={"message": at_cap},
+                   content_type="application/json")
+        assert r.status_code != 400 or b"too long" not in r.data
+
+    def test_analyze_rejects_oversize_prompt(self, client):
+        c, *_ = client
+        from ui.web import _MAX_MESSAGE_CHARS
+        big = "x" * (_MAX_MESSAGE_CHARS + 1)
+        r = c.post("/api/v1/analyze",
+                   json={"prompt": big},
+                   content_type="application/json")
+        assert r.status_code == 400
+        assert b"too long" in r.data
+
+    def test_analyze_stream_rejects_oversize_prompt(self, client):
+        c, *_ = client
+        from ui.web import _MAX_MESSAGE_CHARS
+        big = "x" * (_MAX_MESSAGE_CHARS + 1)
+        r = c.post("/api/v1/analyze/stream",
+                   json={"prompt": big},
+                   content_type="application/json")
+        assert r.status_code == 400
+        assert b"too long" in r.data
+
+    def test_body_over_1mb_rejected_by_flask(self, client):
+        c, *_ = client
+        # MAX_CONTENT_LENGTH=1MB — Flask should 413 before our route runs.
+        payload = '{"prompt":"' + ("y" * (2 * 1024 * 1024)) + '"}'
+        r = c.post("/api/v1/analyze",
+                   data=payload,
+                   content_type="application/json")
+        assert r.status_code == 413
+
+
 # ── _web_classify triage logic ────────────────────────────────────────────────
 
 class TestWebClassify:

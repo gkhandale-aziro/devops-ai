@@ -55,6 +55,23 @@ app = Flask(__name__, static_folder=None)
 _MAX_BODY_MB = int(os.environ.get("AZIRO_MAX_BODY_MB", "1"))
 app.config["MAX_CONTENT_LENGTH"] = _MAX_BODY_MB * 1024 * 1024
 
+# Per-message character cap for chat/analyze prompts. The 1 MB body cap
+# above still allows a single oversized message to spike LLM token cost;
+# this bounds the text that actually reaches the model.
+_MAX_MESSAGE_CHARS = int(os.environ.get("AZIRO_MAX_MESSAGE_CHARS", "4000"))
+
+
+def _reject_if_too_long(text: str, field: str):
+    """Return a (response, status) tuple if text exceeds the per-message cap,
+    else None. Callers pass the already-stripped user input."""
+    if len(text) > _MAX_MESSAGE_CHARS:
+        return jsonify({
+            "error": f"{field} too long",
+            "max_chars": _MAX_MESSAGE_CHARS,
+            "got_chars": len(text),
+        }), 400
+    return None
+
 # ── API authentication ────────────────────────────────────────────────────────
 # Set AZIRO_API_KEY env var to require Bearer token auth on all /api/ routes.
 # When unset, auth is disabled (dev mode).
@@ -766,6 +783,9 @@ def api_chat_stream(tid):
     user_msg = (request.json or {}).get("message", "").strip()
     if not user_msg:
         return jsonify({"error": "empty message"}), 400
+    too_long = _reject_if_too_long(user_msg, "message")
+    if too_long:
+        return too_long
 
     # Serialize concurrent chat requests for the same target so the
     # get → append → set sequence cannot interleave across threads.
@@ -840,6 +860,9 @@ def api_analyze_stream():
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
+    too_long = _reject_if_too_long(prompt, "prompt")
+    if too_long:
+        return too_long
     messages = [{"role": "system", "content": _ANALYSIS_SYSTEM},
                 {"role": "user",   "content": prompt}]
     redactor = StreamRedactor()
@@ -852,6 +875,9 @@ def api_analyze():
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
+    too_long = _reject_if_too_long(prompt, "prompt")
+    if too_long:
+        return too_long
     messages = [{"role": "system", "content": _ANALYSIS_SYSTEM},
                 {"role": "user",   "content": prompt}]
     try:
@@ -1060,6 +1086,9 @@ def api_sessions_chat_stream(sid):
     user_msg = (request.json or {}).get("message", "").strip()
     if not user_msg:
         return jsonify({"error": "empty message"}), 400
+    too_long = _reject_if_too_long(user_msg, "message")
+    if too_long:
+        return too_long
 
     msgs = _sessions.get_messages(sid)
     msgs.append({"role": "user", "content": user_msg})
