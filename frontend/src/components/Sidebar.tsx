@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Settings, Wifi, X, Plus, RotateCcw, ChevronDown, ChevronLeft } from "lucide-react";
+import { Zap, Home as HomeIcon, LayoutGrid, Bell, Clock, MessageSquare, Settings, Wifi, X, Plus, RotateCcw, ChevronDown, ChevronLeft, LogOut, User as UserIcon } from "lucide-react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import type { ReactNode } from "react";
 import type { Target } from "../types";
@@ -14,15 +14,20 @@ interface Props {
   targets:       Target[];
   activeId:      string | null;
   onSelect:      (t: Target) => void;
-  onRemove:      (id: string) => void;
+  /** Viewers don't get write actions — pass `undefined` to hide the button. */
+  onRemove?:     (id: string) => void;
   onEdit?:       (t: Target) => void;
-  onAddClick:    () => void;
+  /** Viewers don't get "Add connection" — pass `undefined` to hide. */
+  onAddClick?:   () => void;
   monitorActive: boolean;
   aiModel:       string;
   onModelChange?: (model: string) => void;
   modelStatus?:  "healthy" | "degraded" | "fallback" | "unavailable";
   collapsed?:    boolean;
   onToggle?:     () => void;
+  /** Current signed-in user (role-aware UI). */
+  currentUser?:  { username: string; role: "admin" | "viewer" } | null;
+  onLogout?:     () => void;
 }
 
 // TODO: Move TYPE_COLORS and STATUS_COLORS to theme.ts as canonical color maps
@@ -68,7 +73,7 @@ function SidebarTooltip({ label, children, side = "right" }: { label: string; ch
   );
 }
 
-export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddClick, monitorActive, aiModel, onModelChange, modelStatus = "healthy", collapsed = false, onToggle }: Props) {
+export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddClick, monitorActive, aiModel, onModelChange, modelStatus = "healthy", collapsed = false, onToggle, currentUser, onLogout }: Props) {
   const loc = useLocation();
   const nav = useNavigate();
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -312,7 +317,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
               <Wifi size={16} stroke={C.text.faint} strokeWidth={1.5} />
             </div>
             <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.secondary, marginBottom: 3 }}>No connections yet</div>
-            <div style={{ fontSize: FONT_SIZE.xs, color: C.text.faint, lineHeight: 1.5 }}>Add a target below</div>
+            <div style={{ fontSize: FONT_SIZE.xs, color: C.text.faint, lineHeight: 1.5 }}>{onAddClick ? "Add a target below" : "No targets available"}</div>
           </div>
         )}
 
@@ -417,30 +422,33 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
                   <Pencil size={FONT_SIZE.sm} strokeWidth={2.5} />
                 </button>
               )}
-              <button
-                onClick={e => { e.stopPropagation(); onRemove(t.id); }}
-                aria-label="Remove connection"
-                className="conn-action hover-text-danger"
-                style={{
-                  background: "none", border: "none",
-                  color: C.text.faint,
-                  cursor: "pointer", padding: "3px", borderRadius: RADIUS.sm,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <X size={FONT_SIZE.sm} strokeWidth={2.5} />
-              </button>
+              {onRemove && (
+                <button
+                  onClick={e => { e.stopPropagation(); onRemove(t.id); }}
+                  aria-label="Remove connection"
+                  className="conn-action hover-text-danger"
+                  style={{
+                    background: "none", border: "none",
+                    color: C.text.faint,
+                    cursor: "pointer", padding: "3px", borderRadius: RADIUS.sm,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <X size={FONT_SIZE.sm} strokeWidth={2.5} />
+                </button>
+              )}
             </div>
           );
         })}
 
-        {/* Add connection button */}
-        {collapsed ? (
+        {/* Add connection button — hidden when viewer (onAddClick undefined) */}
+        {onAddClick && (collapsed ? (
           <SidebarTooltip label="Add Connection">
             <button
               data-tour="add-connection"
               onClick={onAddClick}
+              aria-label="Add connection"
               className="hover-bg-accent-dim"
               style={{
                 width: 34, height: 34, margin: `${SPACE.xs}px auto 0`,
@@ -477,7 +485,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
             <Plus size={FONT_SIZE.md} strokeWidth={2.5} />
             Add Connection
           </button>
-        )}
+        ))}
       </div>
 
       {/* ── Footer — compact: model + theme + tips in one row ─────────────── */}
@@ -711,6 +719,63 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
             </button>
           </>
         )}
+
+        {/* User chip + logout — only visible when signed in AND logout is wired */}
+        {currentUser && onLogout && (collapsed ? (
+          <SidebarTooltip label={`${currentUser.username} — sign out`}>
+            <button
+              onClick={onLogout}
+              aria-label="Sign out"
+              className="hover-bg-raised"
+              style={{
+                width: 34, height: 34, borderRadius: RADIUS.md,
+                background: "transparent", border: `1px solid ${C.border.muted}`,
+                color: C.text.muted, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "background .15s",
+              }}
+            >
+              <LogOut size={FONT_SIZE.sm} />
+            </button>
+          </SidebarTooltip>
+        ) : (
+          <div
+            data-testid="user-chip"
+            style={{
+              display: "flex", alignItems: "center", gap: SPACE.xs,
+              padding: `${SPACE.xs}px ${SPACE.sm}px`,
+              border: `1px solid ${C.border.muted}`,
+              borderRadius: RADIUS.sm,
+              marginTop: SPACE.xs,
+            }}
+          >
+            <UserIcon size={FONT_SIZE.xs} aria-hidden="true" color={C.text.muted} />
+            <span style={{
+              flex: 1, minWidth: 0,
+              fontSize: FONT_SIZE.xs,
+              color: C.text.secondary,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {currentUser.username}
+              <span style={{ color: C.text.faint, marginLeft: 4 }}>
+                ({currentUser.role})
+              </span>
+            </span>
+            <button
+              onClick={onLogout}
+              aria-label="Sign out"
+              title="Sign out"
+              className="hover-text-danger"
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: C.text.muted, padding: 2,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <LogOut size={FONT_SIZE.xs} />
+            </button>
+          </div>
+        ))}
       </div>
     </nav>
     </TooltipPrimitive.Provider>

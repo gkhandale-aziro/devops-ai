@@ -326,3 +326,49 @@ describe("Sidebar", () => {
     expect(screen.queryByText("DevOps AI Platform")).not.toBeInTheDocument();
   });
 });
+
+// ── Phase E2: role-gating + user chip ────────────────────────────────────────
+
+describe("Sidebar role-gating", () => {
+  it("hides Add Connection button when onAddClick is undefined (viewer)", () => {
+    renderSidebar({ onAddClick: undefined });
+    expect(screen.queryByText("Add Connection")).not.toBeInTheDocument();
+  });
+
+  it("shows Add Connection when onAddClick is provided (admin)", () => {
+    renderSidebar({ onAddClick: vi.fn() });
+    expect(screen.getByText("Add Connection")).toBeInTheDocument();
+  });
+
+  it("hides per-target remove button when onRemove is undefined", () => {
+    renderSidebar({ targets: [k8sTarget], onRemove: undefined });
+    expect(screen.queryByLabelText("Remove connection")).not.toBeInTheDocument();
+  });
+
+  it("renders the remove button when onRemove is provided", () => {
+    renderSidebar({ targets: [k8sTarget], onRemove: vi.fn() });
+    expect(screen.getByLabelText("Remove connection")).toBeInTheDocument();
+  });
+});
+
+describe("Sidebar user chip", () => {
+  it("shows the signed-in user + role + a Sign out button", () => {
+    const onLogout = vi.fn();
+    renderSidebar({
+      currentUser: { username: "alice", role: "admin" },
+      onLogout,
+    });
+    const chip = screen.getByTestId("user-chip");
+    expect(chip).toHaveTextContent("alice");
+    expect(chip).toHaveTextContent("(admin)");
+    const logoutBtn = screen.getByLabelText("Sign out");
+    fireEvent.click(logoutBtn);
+    expect(onLogout).toHaveBeenCalledOnce();
+  });
+
+  it("omits the user chip when currentUser is null", () => {
+    renderSidebar({ currentUser: null });
+    expect(screen.queryByTestId("user-chip")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sign out")).not.toBeInTheDocument();
+  });
+});

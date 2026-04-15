@@ -30,13 +30,13 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
   - C-03 / RUN-1: gunicorn + gevent
   - H-03: HSTS header + TLS-behind-proxy deploy doc
   - H-08 / SEC-4: CSRF / Origin+Referer checks
-- [~] **Phase E — Auth baseline** (biggest, own track)
+- [x] **Phase E — Auth baseline** (biggest, own track)
   - [x] E1 backend: H-01 / SEC-1 / SEC-2 — Flask-Login, users table, audit log, role model, AZIRO_AUTH_MODE switch
-  - [ ] E2 frontend: login page, 401→redirect, role-gated UI
+  - [x] E2 frontend: login page, AuthContext, ProtectedRoute, 401→redirect, role-gated target add/remove, logout
 
 ### Security baseline
-- [ ] **SEC-1** Flask-Login + `users` table + bcrypt; roles: admin, viewer (M)
-- [ ] **SEC-2** Audit log table: user, timestamp, target_id, command, result (S)
+- [x] **SEC-1** Flask-Login + `users` table + bcrypt; roles: admin, viewer (M) — shipped in Phase E1
+- [x] **SEC-2** Audit log table: user, timestamp, target_id, command, result (S) — shipped in Phase E1
 - [ ] **SEC-3** Flask-Limiter rate limits on `/api/v1/chat/*/stream` — LLM cost cap (S)
 - [ ] **SEC-4** CSRF protection + security headers (CSP, HSTS, X-Frame-Options) (S)
 - [ ] **SEC-5** SSH host key verification — replace `AutoAddPolicy` with `RejectPolicy` (S)
