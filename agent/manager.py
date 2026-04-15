@@ -1,6 +1,8 @@
 """
 agent/manager.py — per-target session state (message history for each connection).
 """
+import threading
+
 from targets  import TargetManager
 from prompts  import SYSTEM
 
@@ -16,13 +18,24 @@ def _trim(messages):
 
 
 class AgentSession:
-    """Holds conversation state for a single target connection."""
+    """Holds conversation state for a single target connection.
+
+    All dict mutations are guarded by an RLock so concurrent Flask workers
+    cannot race on `_sessions` (create-vs-remove, concurrent get init, etc).
+    Per-target chat serialization is still handled at the call site via
+    `_get_session_lock(tid)` in ui/web.py — this lock only protects the
+    outer dict, not the message-list semantics.
+    """
 
     def __init__(self):
         self._sessions = {}  # target_id → messages list
+        self._lock = threading.RLock()
 
     def get(self, target_id):
-        if target_id not in self._sessions:
+        with self._lock:
+            if target_id in self._sessions:
+                return self._sessions[target_id]
+
             target = _targets.get(target_id)
             name   = target["name"] if target else "server"
             ttype  = target.get("type", "ssh") if target else "ssh"
@@ -51,13 +64,15 @@ class AgentSession:
                 {"role": "system",
                  "content": SYSTEM + "\n\n" + "\n".join(context_parts)}
             ]
-        return self._sessions[target_id]
+            return self._sessions[target_id]
 
     def set(self, target_id, messages):
-        self._sessions[target_id] = messages
+        with self._lock:
+            self._sessions[target_id] = messages
 
     def trim(self, messages):
         return _trim(messages)
 
     def remove(self, target_id):
-        self._sessions.pop(target_id, None)
+        with self._lock:
+            self._sessions.pop(target_id, None)
