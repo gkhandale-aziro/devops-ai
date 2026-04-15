@@ -24,8 +24,8 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
       regression-locked (#13)
 - [x] **Phase C — Observability** — M-05 structured JSON logs +
       request-ID ContextVar middleware + X-Request-ID echo, replaced
-      scattered `print()`; M-06 `/api/v1/healthz` + `/readyz` with
-      auth + rate-limit bypass (#14)
+      scattered `print()`; M-06 `/api/v1/healthz` + `/api/v1/readyz`
+      with auth + rate-limit bypass (#14)
 - [ ] **Phase D — Production server & edge hardening**
   - C-03 / RUN-1: gunicorn + gevent
   - H-03: HSTS header + TLS-behind-proxy deploy doc

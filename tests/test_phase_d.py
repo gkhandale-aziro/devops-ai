@@ -21,15 +21,21 @@ from unittest.mock import patch
 
 # ── fixture — same source-class patching pattern as phase B/C ────────────────
 
-def _reload_web(allowed_origins: str = "", hsts: str = ""):
-    """Re-import ui.web with environment overrides applied. Yields (client,
-    app). Caller is responsible for the outer patch() context."""
-    os.environ.pop("AZIRO_ALLOWED_ORIGINS", None)
-    os.environ.pop("AZIRO_ENABLE_HSTS", None)
+def _reload_web(monkeypatch, allowed_origins: str = "", hsts: str = "",
+                proxy_hops: str = "1"):
+    """Re-import ui.web with environment overrides applied via monkeypatch
+    so values are automatically restored at test teardown. Most Origin/HSTS
+    tests need ProxyFix active to see X-Forwarded-Proto, so proxy_hops
+    defaults to "1"."""
+    # delenv with raising=False is a no-op if the var wasn't set.
+    monkeypatch.delenv("AZIRO_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.delenv("AZIRO_ENABLE_HSTS", raising=False)
+    monkeypatch.delenv("AZIRO_PROXY_HOPS", raising=False)
     if allowed_origins:
-        os.environ["AZIRO_ALLOWED_ORIGINS"] = allowed_origins
+        monkeypatch.setenv("AZIRO_ALLOWED_ORIGINS", allowed_origins)
     if hsts:
-        os.environ["AZIRO_ENABLE_HSTS"] = hsts
+        monkeypatch.setenv("AZIRO_ENABLE_HSTS", hsts)
+    monkeypatch.setenv("AZIRO_PROXY_HOPS", proxy_hops)
     sys.modules.pop("ui.web", None)
     import ui.web as web
     web.app.config["TESTING"] = True
@@ -86,19 +92,19 @@ class TestGunicornConfig:
 # ── H-03 HSTS ────────────────────────────────────────────────────────────────
 
 class TestHSTS:
-    def test_hsts_absent_by_default(self, webapp):
-        c, _ = _reload_web()
+    def test_hsts_absent_by_default(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch)
         r = c.get("/api/v1/healthz")
         assert "Strict-Transport-Security" not in r.headers
 
-    def test_hsts_absent_over_http_even_when_enabled(self, webapp):
-        c, _ = _reload_web(hsts="1")
+    def test_hsts_absent_over_http_even_when_enabled(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch, hsts="1")
         # Flask test client defaults to http scheme — no X-Forwarded-Proto.
         r = c.get("/api/v1/healthz")
         assert "Strict-Transport-Security" not in r.headers
 
-    def test_hsts_present_when_enabled_and_https(self, webapp):
-        c, _ = _reload_web(hsts="1")
+    def test_hsts_present_when_enabled_and_https(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch, hsts="1")
         # ProxyFix reads X-Forwarded-Proto; setting it makes request.is_secure
         # return True, which is the HSTS gate.
         r = c.get("/api/v1/healthz",
@@ -110,8 +116,8 @@ class TestHSTS:
 # ── ProxyFix wiring ──────────────────────────────────────────────────────────
 
 class TestProxyFix:
-    def test_x_forwarded_proto_honored(self, webapp):
-        c, _ = _reload_web()
+    def test_x_forwarded_proto_honored(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch)
         # Without the header, request.is_secure is False.
         r = c.get("/api/v1/healthz")
         assert r.status_code == 200
@@ -123,16 +129,16 @@ class TestProxyFix:
 # ── H-08 Origin / Referer CSRF check ─────────────────────────────────────────
 
 class TestOriginCheck:
-    def test_get_bypasses_origin_check(self, webapp):
-        c, _ = _reload_web()
+    def test_get_bypasses_origin_check(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch)
         # GET has no Origin — must pass regardless.
         r = c.get("/api/v1/healthz")
         assert r.status_code == 200
 
-    def test_probe_path_bypasses(self, webapp):
+    def test_probe_path_bypasses(self, webapp, monkeypatch):
         """healthz/readyz are GETs anyway, but if some orchestrator sent
         a POST to healthz it still must not 403."""
-        c, _ = _reload_web()
+        c, _ = _reload_web(monkeypatch)
         # Simulate a same-host POST to a probe (doesn't route, but Origin
         # check runs before routing).
         r = c.post("/api/v1/healthz",
@@ -140,39 +146,39 @@ class TestOriginCheck:
         # Either 405 (method not allowed) or 200-ish — must NOT be 403.
         assert r.status_code != 403
 
-    def test_post_same_host_allowed(self, webapp):
-        c, _ = _reload_web()
+    def test_post_same_host_allowed(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch)
         r = c.post("/api/v1/targets",
                    headers={"Origin": "http://localhost"},
                    json={"name": "x", "type": "kubernetes", "config": {}})
         assert r.status_code != 403
 
-    def test_post_cross_origin_rejected(self, webapp):
-        c, _ = _reload_web()
+    def test_post_cross_origin_rejected(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch)
         r = c.post("/api/v1/targets",
                    headers={"Origin": "https://evil.example.com"},
                    json={"name": "x", "type": "kubernetes", "config": {}})
         assert r.status_code == 403
         assert b"origin" in r.data.lower()
 
-    def test_allowlist_honored(self, webapp):
-        c, _ = _reload_web(allowed_origins="https://app.example.com,https://admin.example.com")
+    def test_allowlist_honored(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch, allowed_origins="https://app.example.com,https://admin.example.com")
         r = c.post("/api/v1/targets",
                    headers={"Origin": "https://app.example.com"},
                    json={"name": "x", "type": "kubernetes", "config": {}})
         assert r.status_code != 403
 
-    def test_no_origin_no_referer_allowed(self, webapp):
+    def test_no_origin_no_referer_allowed(self, webapp, monkeypatch):
         """Server-side clients (curl, CI) carry no Origin/Referer. They
         rely on AZIRO_API_KEY, which auth already validated."""
-        c, _ = _reload_web()
+        c, _ = _reload_web(monkeypatch)
         r = c.post("/api/v1/targets",
                    json={"name": "x", "type": "kubernetes", "config": {}})
         # Should not be 403 from Origin check (may be 200/400 from handler).
         assert r.status_code != 403
 
-    def test_referer_fallback_rejected_when_cross_origin(self, webapp):
-        c, _ = _reload_web()
+    def test_referer_fallback_rejected_when_cross_origin(self, webapp, monkeypatch):
+        c, _ = _reload_web(monkeypatch)
         r = c.post("/api/v1/targets",
                    headers={"Referer": "https://evil.example.com/some/path"},
                    json={"name": "x", "type": "kubernetes", "config": {}})

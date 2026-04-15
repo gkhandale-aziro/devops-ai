@@ -61,16 +61,17 @@ _metric_collector = MetricCollector(_store)
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
 
-# Trust X-Forwarded-* headers from one reverse-proxy hop (nginx, caddy,
-# cloud LB, etc.). Without this, request.scheme is "http" even when the
-# client hit HTTPS on the proxy — which would break HSTS gating and
-# Origin-scheme comparisons. Number of trusted hops is configurable;
-# keep at 1 by default (the single proxy in front of the container).
-_PROXY_HOPS = int(os.environ.get("AZIRO_PROXY_HOPS", "1"))
-app.wsgi_app = ProxyFix(
-    app.wsgi_app, x_for=_PROXY_HOPS, x_proto=_PROXY_HOPS,
-    x_host=_PROXY_HOPS, x_port=_PROXY_HOPS,
-)
+# Trust X-Forwarded-* headers from N reverse-proxy hops (nginx, caddy,
+# cloud LB, etc.). Default is 0 — ProxyFix is opt-in because trusting
+# forwarded headers on a direct-exposed server lets clients spoof
+# X-Forwarded-For to evade rate limiting. Set AZIRO_PROXY_HOPS=1 only
+# when deploying behind a known reverse proxy.
+_PROXY_HOPS = int(os.environ.get("AZIRO_PROXY_HOPS", "0"))
+if _PROXY_HOPS > 0:
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, x_for=_PROXY_HOPS, x_proto=_PROXY_HOPS,
+        x_host=_PROXY_HOPS, x_port=_PROXY_HOPS,
+    )
 
 
 # ── Observability: request-ID + structured access log ───────────────────────

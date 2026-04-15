@@ -40,10 +40,12 @@ keepalive = 5
 max_requests = 1000
 max_requests_jitter = 100
 
-# Emit access and error logs to stderr so our JSON formatter (configured
-# in observability/logging.py at ui.web import time) picks them up
-# alongside application logs in the container log stream.
-accesslog = "-"
+# Disable gunicorn's access log — ui.web's _request_log_middleware()
+# already emits a structured "request" log per /api/ call with richer
+# fields (request_id, duration_ms) and skips static-asset noise. Two
+# access logs per request would just clutter the stream and double the
+# cost of log ingestion.
+accesslog = None
 errorlog = "-"
 loglevel = os.environ.get("AZIRO_GUNICORN_LOGLEVEL", "info")
 
