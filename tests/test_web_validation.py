@@ -237,6 +237,28 @@ class TestApiTargetsValidation:
         assert r.status_code in (400, 415)
 
 
+# ── Docker test command (M-02) ────────────────────────────────────────────────
+
+class TestDockerTestCommand:
+    """Regression: the Go template must be quoted so shells can't reinterpret
+    the braces. Unquoted {{.ServerVersion}} broke Docker target health checks
+    under PowerShell (scriptblock syntax) and certain Windows shells."""
+
+    def test_docker_format_is_single_quoted(self):
+        from ui.web import _TEST_COMMANDS
+        cmd = _TEST_COMMANDS["docker"]
+        assert "'{{.ServerVersion}}'" in cmd, (
+            f"Docker test command must single-quote the Go template, got: {cmd}"
+        )
+
+    def test_docker_format_not_bare(self):
+        from ui.web import _TEST_COMMANDS
+        cmd = _TEST_COMMANDS["docker"]
+        # The bare, unquoted form must not reappear.
+        assert " {{.ServerVersion}} " not in cmd
+        assert "--format {{" not in cmd
+
+
 # ── Per-message length cap (H-02) ─────────────────────────────────────────────
 
 class TestMessageLengthCap:

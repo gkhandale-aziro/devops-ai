@@ -458,7 +458,10 @@ def api_delete(tid):
 
 _TEST_COMMANDS = {
     "kubernetes": "kubectl cluster-info 2>&1",
-    "docker":     "docker info --format {{.ServerVersion}} 2>&1",
+    # Single-quote the Go template so the shell can't touch the braces.
+    # Unquoted {{.ServerVersion}} breaks under PowerShell (scriptblock) and
+    # some Windows shells, making every Docker target report offline.
+    "docker":     "docker info --format '{{.ServerVersion}}' 2>&1",
     "aws":        "aws sts get-caller-identity 2>&1",
     "gcp":        "gcloud config get-value project 2>&1",
     "azure":      "az account show --query name -o tsv 2>&1",
