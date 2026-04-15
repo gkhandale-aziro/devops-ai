@@ -52,7 +52,7 @@ class AgentSession:
     def _evict(self):
         """Drop TTL-expired entries, then cap the dict size. Must be called
         under self._lock."""
-        now = time.time()
+        now = time.monotonic()
         expired = [tid for tid, (_, ts) in self._sessions.items()
                    if now - ts > SESSION_TTL_SEC]
         for tid in expired:
@@ -63,7 +63,9 @@ class AgentSession:
 
     def get(self, target_id):
         with self._lock:
-            now = time.time()
+            # monotonic clock: NTP adjustments or manual clock changes must
+            # not evict sessions early or let them linger past TTL.
+            now = time.monotonic()
             # Drop TTL-expired entries first (cheap and keeps the dict honest
             # about what a "cache hit" means). Size-cap eviction runs after
             # the insert below so we never overflow before trimming.
@@ -115,7 +117,7 @@ class AgentSession:
 
     def set(self, target_id, messages):
         with self._lock:
-            self._sessions[target_id] = (messages, time.time())
+            self._sessions[target_id] = (messages, time.monotonic())
             self._sessions.move_to_end(target_id)
             self._evict()
 

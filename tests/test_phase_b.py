@@ -204,21 +204,31 @@ from unittest.mock import patch
 
 @pytest.fixture
 def client():
-    """Flask test client with every startup singleton patched.
+    """Flask test client with startup singletons fully suppressed.
 
-    Patching _llm as well is important: ui/web.py's module-level init runs
-    `LLMClient(); _llm.start_health_monitor()` at first import. Without
-    patching _llm, any route that touches the client (e.g. model health
-    status) will hit the real health monitor thread started on first import.
+    ui/web.py's module-level init calls `LLMClient().start_health_monitor()`
+    and `_auto_register_localhost()` at import time. Patching
+    `ui.web._llm`/`ui.web._targets` after-the-fact can't undo those side
+    effects — the health-monitor thread has already started and a real
+    target may have been written to disk. So we evict ui.web from
+    sys.modules, patch the *source* classes, and re-import fresh so the
+    new module binds to mocks.
     """
-    with patch("ui.web._targets") as mock_targets, \
-         patch("ui.web._tools"), \
-         patch("ui.web._llm"), \
-         patch("ui.web._session"), \
-         patch("ui.web._sessions"), \
-         patch("ui.web._auto_register_localhost"):
+    sys.modules.pop("ui.web", None)
+    with patch("providers.LLMClient"), \
+         patch("tools.ToolExecutor"), \
+         patch("sessions.SessionManager"), \
+         patch("targets.TargetManager") as MockTargets, \
+         patch("agent.Agent"), \
+         patch("agent.AgentSession"), \
+         patch("store.EventStore"), \
+         patch("store.metrics.MetricCollector"):
+        mock_targets = MockTargets.return_value
         mock_targets.get.return_value = None
         mock_targets.load_safe.return_value = []
+        # has_local()=True short-circuits _auto_register_localhost before
+        # it can call .add()/.update_status() on the mock.
+        mock_targets.has_local.return_value = True
         from ui.web import app
         app.config["TESTING"] = True
         with app.test_client() as c:
