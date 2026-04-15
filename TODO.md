@@ -5,7 +5,56 @@ commits or file paths instead of re-describing context.
 
 ## In progress
 
-Post-v0.0.1 — hardening and deploy
+Post-v0.0.1 — Track B hardening & v1.0 ship prep.
+Source: `Aziro_Ops_Priority_Roadmap.docx` (2026-04-08). UI (Track A) is
+complete through Week 5; Track B below is what's left for v1.0.0 tag.
+
+### Security baseline
+- [ ] **SEC-1** Flask-Login + `users` table + bcrypt; roles: admin, viewer (M)
+- [ ] **SEC-2** Audit log table: user, timestamp, target_id, command, result (S)
+- [ ] **SEC-3** Flask-Limiter rate limits on `/api/v1/chat/*/stream` — LLM cost cap (S)
+- [ ] **SEC-4** CSRF protection + security headers (CSP, HSTS, X-Frame-Options) (S)
+- [ ] **SEC-5** SSH host key verification — replace `AutoAddPolicy` with `RejectPolicy` (S)
+- [ ] **SEC-6** PII scrubbing on stored incident snapshots + retention policy (M)
+- [ ] **SEC-7** Feature flag / kill switch for experimental paths (S)
+
+### Runtime hardening
+- [ ] **RUN-1** Gunicorn + gevent workers behind nginx (drop Flask dev server) (S)
+- [ ] **RUN-2** `/healthz` (liveness) + `/readyz` (DB + LLM reachability) (S)
+- [ ] **RUN-3** Prometheus `/metrics` — request counts, LLM tokens, tool-call latencies (M)
+- [ ] **RUN-4** structlog JSON logging + Sentry SDK integration (S)
+- [ ] **RUN-5** Graceful shutdown: SIGTERM drains SSE + kills kubectl subprocesses (S)
+
+### Durable state
+- [ ] **DB-1** Postgres 16 + Alembic migrations (keep SQLite as dev default) (M)
+- [ ] **DB-2** Redis 7 for sessions + SSE pub/sub fan-out (M)
+- [ ] **DB-3** Migrate events/snapshots/analyses tables from SQLite → Postgres (M)
+- [ ] **DB-4** Backup cron: `pg_dump` daily + retention + verified restore drill (S)
+
+### Deploy & CI
+- [x] **OPS-1** Dockerfile (multi-stage) + docker-compose.yml (app + postgres + redis) — shipped pre-v0.0.1
+- [ ] **OPS-2** GitHub Actions CI: pytest + ruff + pip-audit + Trivy on every PR (S)
+- [ ] **OPS-3** Load test with k6: 50 concurrent users, 10 SSE streams, sustained chat (M)
+- [ ] **OPS-4** LLM cost controls: per-user token budgets + circuit breaker on agent loops (M)
+
+### Docs & release
+- [ ] **DOCS-1** Deploy guide, ops runbook, backup/restore, SLO definitions (M)
+- [ ] **REL-1** Chaos test — kill postgres, verify graceful degradation (M)
+- [ ] **REL-2** Tag v1.0.0 + changelog + release notes (S)
+- [ ] **REL-3** Onboard 2–3 internal pilot users; collect feedback (S)
+- [ ] **REL-4** Post-launch monitoring dashboard (errors, p95, cost) live (S)
+
+### v1.0 exit criteria (from priority roadmap)
+All must be true to tag v1.0.0:
+- [ ] Two roles enforced on every route (SEC-1)
+- [ ] Running under gunicorn + nginx (RUN-1)
+- [ ] Postgres-backed with daily backups + verified restore (DB-1, DB-4)
+- [ ] Deployable via `docker compose up` or single-replica Helm chart
+- [ ] `/healthz`, `/readyz`, `/metrics` green under k6 load test (RUN-2/3, OPS-3)
+- [ ] Sentry capturing errors; Prometheus scraping metrics (RUN-3/4)
+- [ ] CI green: tests, lint, pip-audit, Trivy (OPS-2)
+- [ ] Deploy guide + ops runbook + LLM cost controls documented (DOCS-1, OPS-4)
+- [ ] v1.0.0 tagged on main with changelog (REL-2)
 
 ---
 
@@ -169,10 +218,29 @@ A new engineer must complete using only keyboard:
 12. Open Settings via Cmd+K (not sidebar)
 
 ### Phase 2 — Post-v1.0 (deferred, becomes priority after launch)
+
+Ranked priorities from `Aziro_Ops_Priority_Roadmap.docx` §10 (competitive
+analysis). Each is 5–7 days; order = adoption blocker severity.
+- [ ] **#1** Web terminal — xterm.js + WebSocket wrapping `kubectl exec` (debug workflow blocker)
+- [ ] **#2** Inline YAML editor — Monaco + diff view + `kubectl apply` (read-only UI limits usage to monitoring)
+- [ ] **#3** Notification channels — Slack, PagerDuty, email + routing rules (on-call adoption blocker)
+- [ ] **#4** Fleet dashboard — multi-cluster grid overview (replaces click-through-targets)
+- [ ] **#5** Change tracking timeline — deploys + config + events on one axis
+
+Smaller deferred items:
 - [ ] Multi-pod log aggregation with regex + severity coloring
 - [ ] Incident timeline component
 - [x] Advanced topology (pulled forward — shipped in Week 4: `bf26c6a`, `316c040`)
-- [ ] Framer Motion animations
+- [ ] Framer Motion animations with `prefers-reduced-motion`
+
+Deferred infra (post-v1.0, triggered by scale/customer need):
+- [ ] FastAPI migration (trigger: Gunicorn+Flask hits load ceiling)
+- [ ] Keycloak / OIDC SSO (trigger: customer ask)
+- [ ] Classical ML anomaly detection (trigger: stable v1.0 baseline + data flywheel)
+- [ ] Kubernetes / Helm HA (trigger: single-replica compose insufficient)
+- [ ] TimescaleDB (trigger: plain Postgres struggles on event volume)
+- [ ] Celery / ARQ task queue (trigger: 3rd async job type appears)
+- [ ] Vault / HashiCorp secrets (trigger: multi-tenant or compliance)
 
 ### Rejected (do not revisit without customer need)
 - Dashboard builder / plugin system
