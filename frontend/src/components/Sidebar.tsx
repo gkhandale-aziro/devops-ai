@@ -720,8 +720,8 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
           </>
         )}
 
-        {/* User chip + logout — only visible when signed in */}
-        {currentUser && (collapsed ? (
+        {/* User chip + logout — only visible when signed in AND logout is wired */}
+        {currentUser && onLogout && (collapsed ? (
           <SidebarTooltip label={`${currentUser.username} — sign out`}>
             <button
               onClick={onLogout}
