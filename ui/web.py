@@ -26,7 +26,8 @@ from providers import LLMClient
 from tools     import ToolExecutor
 from sessions  import SessionManager
 from targets   import TargetManager
-from agent     import needs_tools, AgentSession, Agent
+from agent         import needs_tools, AgentSession, Agent
+from agent.manager import _trim
 from monitor   import EventWatcher, Triage
 from store     import EventStore
 from store.metrics import MetricCollector
@@ -162,15 +163,7 @@ def _add_security_headers(response):
         response.headers["Cache-Control"] = "no-store"
     return response
 
-MAX_HISTORY = 20
-
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def _trim(messages):
-    system  = [m for m in messages if m["role"] == "system"]
-    history = [m for m in messages if m["role"] != "system"]
-    return system + history[-MAX_HISTORY:]
-
 
 def _generate_session_title(user_msg, ai_response):
     """Generate a short title from the first chat exchange using the AI model."""
@@ -419,7 +412,7 @@ def api_delete(tid):
 
 _TEST_COMMANDS = {
     "kubernetes": "kubectl cluster-info 2>&1",
-    "docker":     "docker info --format {{.ServerVersion}} 2>&1",
+    "docker":     "docker info --format '{{.ServerVersion}}' 2>&1",
     "aws":        "aws sts get-caller-identity 2>&1",
     "gcp":        "gcloud config get-value project 2>&1",
     "azure":      "az account show --query name -o tsv 2>&1",
