@@ -82,8 +82,13 @@ _MAX_TARGET_NAME_LEN = 64
 _SAFE_TARGET_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 ._\-]*$')
 
 
-def _validate_target_name(name: str):
-    """Return a (response, status) tuple if the name is invalid, else None."""
+def _validate_target_name(name):
+    """Return a (response, status) tuple if the name is invalid, else None.
+    Accepts any input (including non-strings / None) — a non-string payload
+    returns 400 rather than 500ing downstream."""
+    if not isinstance(name, str):
+        return jsonify({"error": "name must be a string"}), 400
+    name = name.strip()
     if not name:
         return jsonify({"error": "name is required"}), 400
     if len(name) > _MAX_TARGET_NAME_LEN:
@@ -434,11 +439,12 @@ def _persist_inline_content(tid, config):
 @app.route("/api/v1/targets", methods=["POST"])
 def api_add():
     d = request.json or {}
-    name = (d.get("name") or "").strip()
-    ttype = (d.get("type") or "").strip()
+    name = d.get("name")
+    ttype = (d.get("type") or "").strip() if isinstance(d.get("type"), str) else ""
     err = _validate_target_name(name)
     if err:
         return err
+    name = name.strip()
     valid_types = {"ssh", "kubernetes", "docker", "aws", "gcp", "azure", "terraform", "local"}
     if ttype not in valid_types:
         return jsonify({"error": f"invalid type: {ttype}"}), 400
@@ -460,10 +466,10 @@ def api_update(tid):
     d = request.json or {}
     name = d.get("name")
     if name is not None:
-        name = name.strip()
         err = _validate_target_name(name)
         if err:
             return err
+        name = name.strip()
     config = d.get("config")
     if config:
         _persist_inline_content(tid, config)

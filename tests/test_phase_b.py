@@ -145,6 +145,57 @@ class TestTargetNameValidation:
             assert _validate_target_name("prod-k8s") is None
             assert _validate_target_name("my cluster 01") is None
 
+    def test_validator_rejects_non_string(self):
+        """Non-string payloads (e.g. {"name": 123}) must 400, not 500."""
+        from ui.web import app, _validate_target_name
+        with app.app_context():
+            for bad in [123, None, [], {}, True]:
+                result = _validate_target_name(bad)
+                assert result is not None, f"accepted non-string: {bad!r}"
+                _, status = result
+                assert status == 400
+
+
+# ── Structured target metadata (prompt-injection hardening) ──────────────────
+
+class TestStructuredTargetMetadata:
+    """Target metadata (name, cluster, project, etc.) must be serialized as
+    JSON inside the system prompt with an explicit 'treat as data' directive
+    so existing config values can't act as instructions — this closes the
+    gap that the regex alone can't cover (plain-English injection)."""
+
+    def test_system_prompt_embeds_json_block(self):
+        import agent.manager as am
+        am.MAX_CACHED_SESSIONS = 64
+        am.SESSION_TTL_SEC     = 3600
+        sess = am.AgentSession()
+        msgs = sess.get("nonexistent-target-id")
+        system_content = msgs[0]["content"]
+        assert "```json" in system_content
+        assert "treat as data" in system_content.lower()
+        # Default name is "server" when target is missing.
+        assert '"name": "server"' in system_content
+
+    def test_metadata_values_land_in_json_not_prose(self):
+        import agent.manager as am
+        sess = am.AgentSession()
+        msgs = sess.get("another-missing-target")
+        system_content = msgs[0]["content"]
+        # Old prose format ("You are connected to: …") must not leak back in.
+        assert "You are connected to:" not in system_content
+
+
+# ── CR fix: api_add with non-string name ─────────────────────────────────────
+
+class TestApiTargetsNonStringName:
+    def test_add_rejects_integer_name(self, client):
+        c, _ = client
+        r = c.post("/api/v1/targets",
+                   json={"name": 123, "type": "kubernetes", "config": {}},
+                   content_type="application/json")
+        assert r.status_code == 400
+        assert b"string" in r.data
+
 
 # ── M-08 end-to-end on /api/v1/targets ───────────────────────────────────────
 
@@ -153,8 +204,18 @@ from unittest.mock import patch
 
 @pytest.fixture
 def client():
+    """Flask test client with every startup singleton patched.
+
+    Patching _llm as well is important: ui/web.py's module-level init runs
+    `LLMClient(); _llm.start_health_monitor()` at first import. Without
+    patching _llm, any route that touches the client (e.g. model health
+    status) will hit the real health monitor thread started on first import.
+    """
     with patch("ui.web._targets") as mock_targets, \
          patch("ui.web._tools"), \
+         patch("ui.web._llm"), \
+         patch("ui.web._session"), \
+         patch("ui.web._sessions"), \
          patch("ui.web._auto_register_localhost"):
         mock_targets.get.return_value = None
         mock_targets.load_safe.return_value = []
