@@ -18,6 +18,25 @@ MAX_SESSIONS = 100
 _BASE = os.environ.get("AZIRO_DATA_DIR", os.path.join(os.path.dirname(__file__), ".."))
 
 
+def _atomic_write_json(path, data):
+    """Write `data` as JSON to `path` atomically.
+
+    Writes to a sibling .tmp file, flushes + fsyncs, then os.replace()'s
+    it onto the target — so a crash mid-write can leave the .tmp behind
+    but never corrupts the canonical file. Matches the pattern used by
+    targets/manager.py._save.
+    """
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except (OSError, AttributeError):
+            pass
+    os.replace(tmp, path)
+
+
 class SessionManager:
     """
     Manages chat sessions — create, delete, load, save messages.
@@ -45,8 +64,7 @@ class SessionManager:
 
     def _save(self, sessions):
         with self._lock:
-            with open(self._file, "w", encoding="utf-8") as f:
-                json.dump(sessions, f, indent=2)
+            _atomic_write_json(self._file, sessions)
 
     # ── message persistence ──────────────────────────────────────────────────
 
@@ -63,8 +81,7 @@ class SessionManager:
 
     def _save_messages(self, all_msgs):
         with self._lock:
-            with open(self._msg_file, "w", encoding="utf-8") as f:
-                json.dump(all_msgs, f, indent=2)
+            _atomic_write_json(self._msg_file, all_msgs)
 
     # ── session lifecycle ────────────────────────────────────────────────────
 

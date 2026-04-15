@@ -12,6 +12,7 @@ import sqlite3
 import json
 import os
 import datetime
+import threading
 
 DB_FILE        = os.path.join(
     os.environ.get("AZIRO_DATA_DIR", os.path.join(os.path.dirname(__file__), "..")),
@@ -34,8 +35,29 @@ class EventStore:
 
     def __init__(self, db_file=DB_FILE):
         self._db = db_file
+        # Thread-local connection cache. Each thread gets its own sqlite3
+        # connection — reused across calls rather than opened every time.
+        # This is correct for sqlite3 (connections are not thread-safe) and
+        # avoids the "open, PRAGMA, close" overhead on every query.
+        self._tls = threading.local()
         self._init_schema()
         self._migrate()
+
+    def _thread_conn(self):
+        """Return this thread's cached connection, opening one if needed."""
+        conn = getattr(self._tls, "conn", None)
+        if conn is None:
+            # timeout= is sqlite3.connect's own busy-retry ceiling on the
+            # initial connect. busy_timeout (pragma below) is the per-
+            # statement ceiling — SQLite retries internally with adaptive
+            # backoff up to 5s before raising SQLITE_BUSY.
+            conn = sqlite3.connect(self._db, check_same_thread=False, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA busy_timeout = 5000")
+            self._tls.conn = conn
+        return conn
 
     # ── schema ────────────────────────────────────────────────────────────────
 
@@ -111,11 +133,11 @@ class EventStore:
                 pass  # column already exists
 
     def _conn(self):
-        conn = sqlite3.connect(self._db, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")    # safe concurrent reads
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
+        """Return this thread's connection. Used as `with self._conn() as c:`
+        — the context-manager __exit__ commits (or rolls back on exception),
+        but does NOT close the connection, so it stays cached for the
+        thread's next call."""
+        return self._thread_conn()
 
     # ── write ─────────────────────────────────────────────────────────────────
 
