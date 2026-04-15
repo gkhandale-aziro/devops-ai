@@ -13,7 +13,7 @@
  *     ProtectedRoute redirects on the next render. Login + /me itself
  *     are excluded from the hook in client.ts to avoid a loop.
  */
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 import { api } from "../api/client";
 
@@ -40,16 +40,23 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user,    setUser]    = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  // Monotonic request id so a late-resolving refresh() can't clobber a newer
+  // login() (or another refresh()). Incremented before each auth mutation;
+  // stale responses check the captured id against .current and bail out.
+  const reqIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     try {
       const me = await api.auth.me();
+      if (reqIdRef.current !== reqId) return;
       setUser({ id: me.id, username: me.username, role: me.role });
     } catch {
+      if (reqIdRef.current !== reqId) return;
       setUser(null);
     } finally {
-      setLoading(false);
+      if (reqIdRef.current === reqId) setLoading(false);
     }
   }, []);
 
@@ -62,12 +69,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
+    const reqId = ++reqIdRef.current;
     const { user: u } = await api.auth.login(username, password);
+    if (reqIdRef.current !== reqId) return;
     setUser({ id: u.id, username: u.username, role: u.role });
   }, []);
 
   const logout = useCallback(async () => {
-    try { await api.auth.logout(); } finally { setUser(null); }
+    const reqId = ++reqIdRef.current;
+    try { await api.auth.logout(); } finally {
+      if (reqIdRef.current === reqId) setUser(null);
+    }
   }, []);
 
   const value: AuthState = {

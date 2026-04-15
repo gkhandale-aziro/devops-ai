@@ -448,6 +448,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
             <button
               data-tour="add-connection"
               onClick={onAddClick}
+              aria-label="Add connection"
               className="hover-bg-accent-dim"
               style={{
                 width: 34, height: 34, margin: `${SPACE.xs}px auto 0`,
