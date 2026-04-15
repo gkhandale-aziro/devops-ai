@@ -1,0 +1,29 @@
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    # By default CodeRabbit only auto-reviews PRs into the repo's default
+    # branch (main). We use GitFlow-lite — most PRs land on develop — so
+    # list both explicitly.
+    base_branches:
+      - main
+      - develop
+  path_instructions:
+    - path: "frontend/src/**"
+      instructions: "React + TypeScript frontend using Tailwind, Lucide icons, and shadcn/ui primitives. Check for accessibility, proper error boundaries, and consistent use of the design system."
+    - path: "agent/**"
+      instructions: "Python agentic loop. Security-sensitive — check for command injection, prompt injection, and ensure sandbox safety filters are not bypassed."
+    - path: "sandbox/**"
+      instructions: "Command execution sandbox. This is the security boundary. Be strict about any changes that could allow dangerous commands through."
+    - path: "tools/**"
+      instructions: "Infrastructure tool executors (kubectl, docker, AWS, SSH, terraform). Validate that all commands go through the safety filter before execution."
+    - path: "targets/**"
+      instructions: "Multi-target connection management with encrypted credentials. Check for credential leaks and crypto issues."
+chat:
+  auto_reply: true
