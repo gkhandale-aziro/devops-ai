@@ -1,0 +1,34 @@
+Date,Task/Activity,Description,Status
+16-Mar-26,Installed k3s (Kubernetes) + kubectl,Installed k3s (Kubernetes) Ollama (LLM provider) and kubectl. Cloned the kubectl-ai repository and explored its code,Done
+17-Mar-26,Ran kubectl-ai with Ollama (qwen2.5:1.5b/7b),Discovered a parser crash when Ollama returned plain text instead of JSON. Noticed interactive mode was hanging due to lack of streaming support,Done
+18-Mar-26,Patched kubectl-ai parser + streaming,Investigated the parser crash in the ReAct response handler. Patched the code to fallback to plain-text answers if JSON was missing. Implemented real streaming in the Ollama provider for interactive mode. Added/updated unit tests to cover both JSON and plain-text fallback paths. Built the kubectl-ai binary with the new fixes. Deployed and tested on the VM. Validated that kubectl-ai worked in both quiet and interactive modes with Ollama. Confirmed the parser no longer crashed and streaming worked as expected,Done
+19-Mar-26,Ollama model benchmarking,Tested multiple Ollama models (qwen llama3) for tool-calling latency vs accuracy trade-offs,Done
+20-Mar-26,kubectl-ai edge cases,Exercised kubectl-ai against broken pods (OOMKill ImagePullBackOff); documented where pure rule-based matching fails,Done
+21-Mar-26,Ollama quantization tests,Compared q4 vs q8 vs fp16 Ollama variants for tool-calling accuracy on local hardware,Done
+22-Mar-26,k3s monitoring stack research,Researched Grafana + Prometheus Helm charts + ServiceMonitor patterns for k3s,Done
+23-Mar-26,AI practice — kubectl-ai + Ollama,Started practicing AI with kubectl-ai and various Ollama models,Done
+24-Mar-26,Grafana + Prometheus on k3s,Deployed Grafana and Prometheus on k3s cluster for monitoring,Done
+25-Mar-26,kubectl-ai internals doc,Created a document on kubectl-ai — how it works with AI,Done
+26-Mar-26,kubectl-ai diff module,Tried kubectl-ai with diff module and understood its constraints,Done
+27-Mar-26,Prototype devops-ai,Using Claude started a similar tool for devops in Python (Aziro Ops seed),Done
+28-Mar-26,Project scaffolding,Architecture planning for Flask + SQLite + React stack; sketched API endpoints,Done
+29-Mar-26,Dev environment setup,Set up local dev — Python venv Node.js 22 Docker Desktop; pinned dependencies,Done
+30-Mar-26,Initial Flask + Jinja2 prototype,First working commit of DevOps AI Dashboard — backend skeleton,Done
+31-Mar-26,Rebrand + streaming AI chat,Parallelized command execution renamed to Aziro Ops added SSE streaming ChatGPT-style saved sessions,Done
+1-Apr-26,Modular refactor,Refactored to modular package structure mirroring kubectl-ai layout,Done
+2-Apr-26,Architecture docs,Rewrote README architecture section; generated full data-flow diagram,Done
+3-Apr-26,Monitoring + React SPA,Added L1/L2/L3 severity monitoring SQLite event store; replaced Jinja2 templates with React + TypeScript,Done
+4-Apr-26,History page overhaul,11 history-page improvements — filters severity badges timeline layout,Done
+5-Apr-26,UI redesign marathon,Home page AI Chat AIDrawer History/Alerts rewrite; Refactoring UI polish on Sidebar; P1-P5 competitive features (Cmd+K topology AI badges theme switcher); a11y + perf pass,Done
+6-Apr-26,Audit fixes + API versioning,Resolved 9 code-review findings; moved all routes to /api/v1/; IDOR prevention command-injection fixes encryption at rest stream redaction; 153 safety-net tests,Done
+7-Apr-26,UX finesse audit,Centralized keyframes fixed animations polished separators; S1 security findings closed,Done
+8-Apr-26,Dashboard god-component split,Extracted primitives/tables/tabs modules; S2 reliability + a11y; Playwright visual regression suite,Done
+9-Apr-26,Dockerize + Tailwind,Multi-stage Docker build; Tailwind CSS + Lucide React; Day/Night theme system; removed fake sparklines,Done
+10-Apr-26,Primitives + MetricCollector,shadcn primitives (Button Badge Dialog Card DataTable); Settings page with model selector; Recharts + MetricCollector; Ollama fallback; OpenAI/Anthropic SDK refactor,Done
+11-Apr-26,Cheat sheet + Cmd+K actions,Keyboard shortcut cheat sheet behind '?'; Cmd+K palette actions (describe logs AI analyze); density pass (Home width → 1600px),Done
+12-Apr-26,v0.0.1 release,Onboarding tour (react-joyride) topology zoom/pan + SSE follow-up chips a11y landmarks tablet responsive (1024px+) axe-core tests Lighthouse 100; tagged v0.0.1; PR #4/#5 merged; README + CHANGELOG rewrite,Done
+13-Apr-26,Multi-target alerts + kebab,Multi-target monitoring with alerts grouped per target; silent auto-refresh; kebab menu fixes (6 iterations → state lifted to DataTable); incident history workload grouping with target info,Done
+14-Apr-26,Roadmap review + tracker,Database audit from senior engineering perspective; UIUX docx roadmap review; mapped current progress against 7-phase plan; created separate v1.0 todo list,Done
+15-Apr-26,Phase 1 design-system sweep,Tokenize remaining hardcoded colors/fontSize in tabs.tsx tables.tsx History.tsx AddTargetModal.tsx Settings.tsx CommandPalette.tsx AlertCard.tsx,Pending
+16-Apr-26,Workload Health Summary,Backend GET /api/v1/health/<tid> endpoint + frontend HealthSummary component on Home + Dashboard,Pending
+17-Apr-26,Polish pass,Time tooltips (relative + absolute) optimistic updates on ack/resolve restart-pod in Cmd+K multi-pod log aggregation with regex,Pending

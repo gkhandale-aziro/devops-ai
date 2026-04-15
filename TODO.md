@@ -9,6 +9,122 @@ Post-v0.0.1 — hardening and deploy
 
 ---
 
+## Remaining Work to v1.0 (verified against current code — 2026-04-15)
+
+> Sources reviewed: UI Roadmap Merged, Priority Roadmap, UIUX Audit, Technical Gap Analysis,
+> Tech Recommendations, Market Gap Analysis, ML Technical Spec (all dated April 8).
+>
+> ⚠️ **Audit doc is 7 days stale.** All items below are re-verified against current code.
+> Items that were in the audit but are now fixed have been moved to "Audit Items Already Fixed".
+
+### Already Fixed Since April 8 Audit (do not re-flag)
+
+| Finding | Fix location |
+|---|---|
+| C-01 SSE URL | [useSSE.ts:24](frontend/src/hooks/useSSE.ts#L24) uses `/api/v1/monitor/stream` |
+| H-02 body size limit | [web.py:56](ui/web.py#L56) `MAX_CONTENT_LENGTH` set |
+| H-04 targets.json atomic write | [targets/manager.py:60-68](targets/manager.py#L60-L68) `.tmp + os.replace` |
+| Rate limiting | [web.py:102-152](ui/web.py#L102-L152) `_rate_buckets` + middleware |
+| Basic security headers | [web.py:156](ui/web.py#L156) `_add_security_headers` (X-Frame, referrer) |
+| ErrorBoundary | App.tsx wraps routes |
+| Dockerfile + compose | Multi-stage build present |
+| .env in gitignore | Line 7 |
+| Per-target health | [web.py:1251](ui/web.py#L1251) `/api/v1/health/<tid>` |
+
+---
+
+### P0 — Critical & High Remaining (verified unfixed)
+
+- [ ] **C-02:** Thread-safe session state — `agent/manager.py`, `sessions/manager.py` still have no `Lock`. Add `threading.Lock()` around `_sessions` + `_messages` dicts OR construct per-request from DB.
+- [ ] **C-03:** Replace Flask dev server with Gunicorn — `gunicorn -w 4 -k gevent --timeout 120 app:app`. README + CHANGELOG both confirm still Flask dev.
+- [ ] **H-01:** Replace single shared `AZIRO_API_KEY` with per-user JWT (session expiry + revocation).
+- [ ] **H-03:** TLS termination — nginx/caddy reverse proxy + HSTS header + deployment docs.
+- [ ] **H-04 (remainder):** Atomic writes on `sessions/manager.py` (chat_sessions.json, chat_messages.json) — targets.json already done.
+- [ ] **H-05:** SQLite thread-local connection cache — `store/db.py._conn()` creates a new connection per operation. Add `threading.local()` + retry-on-busy with exponential backoff.
+- [ ] **H-06:** TTL caches for unbounded dicts — `_rate_buckets`, `_monitor_subs`, `_pod_seen`, `_node_seen`, `AgentSession._sessions`. Use `cachetools.TTLCache`.
+- [ ] **H-07:** Move LLM retry off request thread — [providers/client.py:720](providers/client.py#L720) still calls `time.sleep(TRANSIENT_DELAY)` on the worker thread.
+- [ ] **H-08:** CSRF — `Flask-WTF` tokens + Origin/Referer checks on state-changing routes.
+
+---
+
+### P1 — Medium Remaining (verified unfixed)
+
+- [ ] **M-01:** 🐞 CLI stats formatter is STILL BROKEN — [agent/conversation.py:446-448](agent/conversation.py#L446-L448) uses `counts.get('L1')` for SEV3 (wrong key AND wrong mapping). Users see zero incidents.
+- [ ] **M-02:** 🐞 Docker connectivity test STILL BROKEN — [web.py:422](ui/web.py#L422) `docker info --format {{.ServerVersion}}` (unquoted Go template). Docker targets misreport offline.
+- [ ] **M-03:** `_trim()` still duplicated — [web.py:169](ui/web.py#L169) and [agent/manager.py:12](agent/manager.py#L12). Delete from web.py, import from agent/manager.
+- [ ] **M-04:** Move chat messages to SQLite (eliminate per-token full-file rewrite of chat_messages.json).
+- [ ] **M-05:** Structured logging — only `store/metrics.py` uses Python `logging`. Rest of backend still `print()`. Add `structlog` + request-ID middleware + `LOG_LEVEL`.
+- [ ] **M-06 (remainder):** Generic `/healthz` + `/readyz` for k8s/LB liveness & readiness probes (per-target health already exists).
+- [ ] **M-08:** Target name sanitization — [web.py:375-377](ui/web.py#L375-L377) `api_add()` only does `.strip()`. Add 64-char limit + allowlist (prompt injection guard).
+- [ ] **M-09:** Content-Security-Policy header — not in `_add_security_headers`. Add `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'`.
+- [ ] **M-10:** `useChat.ts` error-path — [useChat.ts:70](frontend/src/hooks/useChat.ts#L70) placeholder has `cmds: [], tools: []`; error path leaves orphan arrays. Set full message object in catch.
+- [ ] **L-02:** `StreamRedactor` — track already-redacted tail to skip redundant regex pass.
+- [ ] **L-04:** Vite proxy startup check — ping `/api/v1/info`, surface error if unreachable.
+- [ ] **L-05:** `EventWatcher._pod_seen` TTL eviction — periodic cleanup > 2× `DEDUP_TTL`.
+- [ ] **L-06:** `requirements-lock.txt` — `pip freeze` for reproducible builds.
+
+### Frontend — Remaining UI Work
+
+- [ ] **Phase 1 sweep**: tokenize hardcoded colors/fontSize in remaining files —
+      `tabs.tsx`, `tables.tsx`, `History.tsx`, `AddTargetModal.tsx`, `Settings.tsx`,
+      `CommandPalette.tsx`, `AlertCard.tsx`, `AIDrawer.tsx`, `ResourceGraph.tsx`,
+      `LogStream.tsx`, `Chat.tsx`, `primitives.tsx`, `ModelStatusBanner.tsx`, `OnboardingTour.tsx`
+- [ ] **Phase 3: Health Summary (backend)** — `GET /api/v1/health/<tid>` in `web.py`
+      Returns `{ pods: {running,pending,failed,total}, deployments: {ready,total}, nodes: {ready,total} }`
+- [ ] **Phase 3: Health Summary (frontend)** — `HealthSummary` component + integrate on Home + Dashboard
+- [ ] **Restart pod** action in `CommandPalette.tsx` — add to `ACTION_VERBS`
+- [ ] **Multi-pod log aggregation** — `LogStream.tsx` currently single-pod + substring; needs multi-pod + regex
+- [ ] **Time tooltips** — relative ("2m ago") + absolute tooltip on all timestamps
+- [ ] **Optimistic updates** — ack/resolve should update UI before server confirms
+- [ ] **Fresh-OS bug bash** — full walkthrough on clean data/session/OS
+- [ ] **2–3 internal pilot users onboarded**
+
+### Backend — Security (Track B)
+
+- [ ] **SEC-1:** Flask-Login + `users` table + bcrypt, two roles (admin, viewer)
+- [ ] **SEC-2:** Audit log table — user, timestamp, target_id, command, result
+- [ ] **SEC-3:** Flask-Limiter rate limits on `/api/v1/chat/*/stream` (LLM cost cap)
+- [ ] **SEC-4:** CSRF + security headers (CSP, HSTS, X-Frame-Options)
+
+### Backend — Runtime Hardening (Track B)
+
+- [ ] **RUN-1:** Gunicorn + nginx — replace Flask dev server
+- [ ] **RUN-2:** `/healthz` (liveness) and `/readyz` (DB + LLM reachability) endpoints
+- [ ] **RUN-3:** Prometheus `/metrics` — request counts, LLM tokens, tool-call latencies
+- [ ] **RUN-4:** structlog JSON logging + Sentry SDK integration
+
+### Backend — Data & Infrastructure (Track B)
+
+- [ ] **DB-1:** Postgres 16 + Alembic migrations (keep SQLite as dev default)
+- [ ] **DB-2:** Redis 7 for sessions + SSE pub/sub fan-out
+- [ ] **OPS-1:** Dockerfile multi-stage + `docker-compose.yml` (app + postgres + redis)
+- [ ] **OPS-2:** GitHub Actions CI — pytest + ruff + pip-audit + Trivy on every PR
+- [ ] **OPS-3:** Load test with k6 — 50 concurrent users, 10 SSE streams
+
+### Ship
+
+- [ ] **BUG:** Bug bash — full walkthrough on fresh data/session/OS
+- [ ] **CI:** Lighthouse CI green on perf and a11y
+- [ ] **RELEASE:** UI freeze → v1.0.0 tag + changelog + release notes
+
+### Post-v1.0 — Phase 2 Priorities (immediate after launch)
+
+1. Web terminal (xterm.js + WebSocket wrapping kubectl exec) — 5-7 days
+2. Inline YAML editor (Monaco + diff view + kubectl apply) — 5-7 days
+3. Notification channels (Slack / PagerDuty / email + routing) — 5-7 days
+4. Fleet dashboard (multi-cluster grid overview) — 5-7 days
+5. Change tracking timeline (deploys + config + events on one axis) — 5-7 days
+6. Incident kanban board (New / Investigating / Remediated / Resolved) — 3-5 days
+7. Reliability score per service (SLO compliance + incident frequency) — 3-5 days
+
+### Post-v1.0 — Phase 3–4 (ML Intelligence)
+
+- Classical ML: adaptive baselines, memory trajectory warnings, log intelligence
+- Deep Learning: LSTM failure prediction, GNN root cause analysis
+- MLOps: shadow mode, model registry, drift detection, feedback loop
+
+---
+
 ## v1.0 UI Roadmap
 
 Sources: `Aziro_Ops_UI_Roadmap_Merged.docx` + `Aziro_Ops_UIUX_Audit.docx` (2026-04-08)
