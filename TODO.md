@@ -18,15 +18,12 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
       Tier-0 quick wins M-02+C-02+M-04 (#11)
 - [x] **Phase A — Data durability** — H-04 atomic JSON writes +
       H-05 thread-local sqlite conn + busy_timeout (#12)
-- [ ] **Phase B — In-memory & request-thread resilience**
-  - H-06: TTL/LRU eviction on `_rate_buckets`, `_monitor_subs`,
-    `_pod_seen`/`_node_seen`, `_sessions`
-  - H-07: LLM retry off request thread (ThreadPoolExecutor or 503 + Retry-After)
-  - M-03: dedupe `_trim()` (web.py ↔ agent/manager.py)
-  - M-08: sanitize target `name` before injection into system prompt
-  - M-10: useChat.ts orphaned placeholder on error (frontend)
+- [x] **Phase B — In-memory & request-thread resilience** — H-06 LRU+TTL on
+      AgentSession, M-03 `_trim` dedupe, M-08 target name validation +
+      JSON-serialized metadata block; H-07 retry cap and M-10 placeholder
+      regression-locked (#13)
 - [ ] **Phase C — Observability**
-  - M-05: structlog + request-id middleware (replace all `print()`)
+  - M-05: structured JSON logs + request-ID middleware (replace `print()`)
   - M-06: `/api/v1/healthz` + `/readyz` (covers RUN-2)
 - [ ] **Phase D — Production server & edge hardening**
   - C-03 / RUN-1: gunicorn + gevent

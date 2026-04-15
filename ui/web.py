@@ -33,6 +33,14 @@ from store     import EventStore
 from store.metrics import MetricCollector
 from sandbox.redact import StreamRedactor
 from tools.kubectl  import setup_kubeconfig, check_cloud_auth
+from observability import (
+    configure_logging, get_logger,
+    current_request_id, new_request_id, bind_request_id, clear_request_id,
+    REQUEST_ID_HEADER,
+)
+
+configure_logging()
+log = get_logger("aziro.web")
 
 # ── singletons ───────────────────────────────────────────────────────────────
 # One instance of each class for the lifetime of the web server.
@@ -50,6 +58,49 @@ _metric_collector = MetricCollector(_store)
 
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
+
+
+# ── Observability: request-ID + structured access log ───────────────────────
+# Registered first so every downstream middleware (auth, rate limit, handler)
+# logs under a stable request_id. Inbound X-Request-ID is honored if present
+# and matches a conservative shape; otherwise we mint a fresh UUID4.
+
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._\-]{1,128}$")
+
+
+@app.before_request
+def _request_id_middleware():
+    inbound = request.headers.get(REQUEST_ID_HEADER, "")
+    rid = inbound if _REQUEST_ID_RE.match(inbound) else new_request_id()
+    bind_request_id(rid)
+    request.environ["aziro.request_start"] = time.monotonic()
+
+
+@app.after_request
+def _request_log_middleware(response):
+    start = request.environ.get("aziro.request_start")
+    duration_ms = int((time.monotonic() - start) * 1000) if start else -1
+    rid = current_request_id()
+    if rid:
+        response.headers[REQUEST_ID_HEADER] = rid
+    # Skip noisy static-asset access logs — /api/ only.
+    if request.path.startswith("/api/"):
+        log.info(
+            "request",
+            extra={
+                "method":      request.method,
+                "path":        request.path,
+                "status":      response.status_code,
+                "duration_ms": duration_ms,
+                "remote_addr": request.remote_addr,
+            },
+        )
+    return response
+
+
+@app.teardown_request
+def _request_id_teardown(_exc):
+    clear_request_id()
 
 # Cap request body size (1 MB). Prevents memory exhaustion from clients
 # posting arbitrarily large JSON. Override via AZIRO_MAX_BODY_MB env var.
@@ -139,11 +190,19 @@ def _check_auth():
     return None
 
 
+# Unauthenticated probe paths — k8s liveness/readiness probes never
+# carry API keys, and 401ing them would cause the orchestrator to kill
+# the pod on every check. These return process/dep status only.
+_UNAUTH_PROBE_PATHS = frozenset({"/api/v1/healthz", "/api/v1/readyz"})
+
+
 @app.before_request
 def _auth_middleware():
     """Enforce auth on all /api/ endpoints."""
     if not request.path.startswith("/api/"):
         return None  # static files — no auth
+    if request.path in _UNAUTH_PROBE_PATHS:
+        return None
     return _check_auth()
 
 
@@ -195,6 +254,8 @@ def _rate_limit_middleware():
     """Enforce rate limiting on /api/ endpoints."""
     if not request.path.startswith("/api/"):
         return None
+    if request.path in _UNAUTH_PROBE_PATHS:
+        return None  # k8s probes run every few seconds — don't rate-limit
     ip = request.remote_addr or "unknown"
     if _is_rate_limited(ip):
         return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
@@ -251,7 +312,7 @@ def _generate_session_title(user_msg, ai_response):
         if title:
             return title[:50]
     except Exception as e:
-        print(f"  [Chat] title generation failed: {e}")
+        log.warning("chat.title_generation_failed", extra={"error": str(e)})
     # Fallback: use first user message
     return user_msg[:50] + ("..." if len(user_msg) > 50 else "")
 
@@ -273,6 +334,40 @@ def _run_many(target, cmds):
             except Exception as e:
                 results[key] = f"[TIMEOUT or ERROR] {e}"
     return results
+
+
+# ── health probes (M-06) ─────────────────────────────────────────────────────
+# /healthz is liveness only — returns 200 if Flask is responsive. Used by the
+# container orchestrator to decide whether to restart the process.
+# /readyz is readiness — returns 200 only when dependencies (sqlite, session
+# store) are usable. Routed through /api/ so auth + rate limits still apply.
+
+@app.route("/api/v1/healthz", methods=["GET"])
+def api_healthz():
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route("/api/v1/readyz", methods=["GET"])
+def api_readyz():
+    checks: dict = {}
+    ok = True
+
+    try:
+        _store._conn().execute("SELECT 1").fetchone()
+        checks["sqlite"] = "ok"
+    except Exception as e:
+        checks["sqlite"] = f"fail: {str(e)[:80]}"
+        ok = False
+
+    try:
+        _sessions.load()
+        checks["sessions"] = "ok"
+    except Exception as e:
+        checks["sessions"] = f"fail: {str(e)[:80]}"
+        ok = False
+
+    payload = {"status": "ok" if ok else "unavailable", "checks": checks}
+    return jsonify(payload), (200 if ok else 503)
 
 
 # ── server info ──────────────────────────────────────────────────────────────
@@ -680,7 +775,7 @@ def _auto_register_localhost():
         return
     t = _targets.add(f"This Server ({socket.gethostname()})", "local", {})
     _targets.update_status(t["id"], "online")
-    print(f"  Auto-registered local target: {socket.gethostname()}")
+    log.info("target.auto_registered", extra={"hostname": socket.gethostname()})
 
 _auto_register_localhost()
 
@@ -868,7 +963,7 @@ def api_chat_stream(tid):
             else:
                 yield from _agent.run(messages, target, _session, tid)
         except Exception as e:
-            print(f"  [Chat] target stream error: {str(e)[:200]}")
+            log.error("chat.target_stream_error", extra={"target_id": tid, "error": str(e)[:200]})
             # Retry with fallback if available
             if _llm.health.status == "fallback":
                 try:
@@ -1168,16 +1263,16 @@ def api_sessions_chat_stream(sid):
                 yield f"data: {json.dumps({'t': chunk})}\n\n"
         except Exception as e:
             err_msg = str(e)[:200]
-            print(f"  [Chat] stream error: {err_msg}")
+            log.error("chat.stream_error", extra={"session_id": sid, "error": err_msg})
             # If fallback was activated, retry with fallback model
             if _llm.health.status == "fallback" and not full:
-                print(f"  [Chat] Retrying with fallback model...")
+                log.info("chat.fallback_retry", extra={"session_id": sid})
                 try:
                     for chunk in _llm.chat_stream(msgs, use_tools=False):
                         full += chunk
                         yield f"data: {json.dumps({'t': chunk})}\n\n"
                 except Exception as e2:
-                    print(f"  [Chat] Fallback also failed: {e2}")
+                    log.error("chat.fallback_failed", extra={"session_id": sid, "error": str(e2)[:200]})
                     yield f"data: {json.dumps({'error': f'AI model error: {str(e2)[:200]}'})}\n\n"
             else:
                 yield f"data: {json.dumps({'error': f'AI model error: {err_msg}'})}\n\n"
