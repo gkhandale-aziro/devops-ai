@@ -9,6 +9,32 @@ Post-v0.0.1 — Track B hardening & v1.0 ship prep.
 Source: `Aziro_Ops_Priority_Roadmap.docx` (2026-04-08). UI (Track A) is
 complete through Week 5; Track B below is what's left for v1.0.0 tag.
 
+### Tier 0 gap-analysis fixes (themed phases)
+
+Source: `Aziro_Ops_Technical_Gap_Analysis.docx` (2026-04-08). Each phase
+ships as one themed PR — bundle related fixes, don't split per-bug.
+
+- [x] **Phase 0 — Hotfix drops** — H-02 (#8), M-01 (#9), M-09 (#10),
+      Tier-0 quick wins M-02+C-02+M-04 (#11)
+- [x] **Phase A — Data durability** — H-04 atomic JSON writes +
+      H-05 thread-local sqlite conn + busy_timeout (#12)
+- [ ] **Phase B — In-memory & request-thread resilience**
+  - H-06: TTL/LRU eviction on `_rate_buckets`, `_monitor_subs`,
+    `_pod_seen`/`_node_seen`, `_sessions`
+  - H-07: LLM retry off request thread (ThreadPoolExecutor or 503 + Retry-After)
+  - M-03: dedupe `_trim()` (web.py ↔ agent/manager.py)
+  - M-08: sanitize target `name` before injection into system prompt
+  - M-10: useChat.ts orphaned placeholder on error (frontend)
+- [ ] **Phase C — Observability**
+  - M-05: structlog + request-id middleware (replace all `print()`)
+  - M-06: `/api/v1/healthz` + `/readyz` (covers RUN-2)
+- [ ] **Phase D — Production server & edge hardening**
+  - C-03 / RUN-1: gunicorn + gevent
+  - H-03: HSTS header + TLS-behind-proxy deploy doc
+  - H-08 / SEC-4: CSRF / Origin+Referer checks
+- [ ] **Phase E — Auth baseline** (biggest, own track)
+  - H-01 / SEC-1 / SEC-2: Flask-Login, users table, audit log
+
 ### Security baseline
 - [ ] **SEC-1** Flask-Login + `users` table + bcrypt; roles: admin, viewer (M)
 - [ ] **SEC-2** Audit log table: user, timestamp, target_id, command, result (S)
