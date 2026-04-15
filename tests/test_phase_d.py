@@ -28,9 +28,12 @@ def _reload_web(monkeypatch, allowed_origins: str = "", hsts: str = "",
     tests need ProxyFix active to see X-Forwarded-Proto, so proxy_hops
     defaults to "1"."""
     # delenv with raising=False is a no-op if the var wasn't set.
-    monkeypatch.delenv("AZIRO_ALLOWED_ORIGINS", raising=False)
-    monkeypatch.delenv("AZIRO_ENABLE_HSTS", raising=False)
-    monkeypatch.delenv("AZIRO_PROXY_HOPS", raising=False)
+    # AZIRO_API_KEY must be cleared too — on CI/dev machines that export
+    # it, the auth middleware would return 401 before our Origin check
+    # has a chance to return 403, flipping test expectations.
+    for key in ("AZIRO_ALLOWED_ORIGINS", "AZIRO_ENABLE_HSTS",
+                "AZIRO_PROXY_HOPS", "AZIRO_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
     if allowed_origins:
         monkeypatch.setenv("AZIRO_ALLOWED_ORIGINS", allowed_origins)
     if hsts:
@@ -71,7 +74,15 @@ def webapp():
 # ── C-03 / RUN-1 gunicorn config ─────────────────────────────────────────────
 
 class TestGunicornConfig:
-    def test_config_is_importable(self):
+    def test_config_is_importable(self, monkeypatch):
+        # Strip any ambient AZIRO_* gunicorn tuning vars so the defaults
+        # asserted below can't be silently overridden by CI/dev env.
+        for key in ("AZIRO_HOST", "AZIRO_PORT",
+                    "AZIRO_GUNICORN_WORKERS",
+                    "AZIRO_GUNICORN_WORKER_CONNECTIONS",
+                    "AZIRO_GUNICORN_TIMEOUT",
+                    "AZIRO_GUNICORN_LOGLEVEL"):
+            monkeypatch.delenv(key, raising=False)
         # Path trick: gunicorn.conf.py at repo root isn't on the package
         # path by default, but importlib from file works.
         import importlib.util
