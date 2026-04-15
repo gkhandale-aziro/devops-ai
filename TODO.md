@@ -35,8 +35,8 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
   - [x] E2 frontend: login page, AuthContext, ProtectedRoute, 401→redirect, role-gated target add/remove, logout
 
 ### Security baseline
-- [ ] **SEC-1** Flask-Login + `users` table + bcrypt; roles: admin, viewer (M)
-- [ ] **SEC-2** Audit log table: user, timestamp, target_id, command, result (S)
+- [x] **SEC-1** Flask-Login + `users` table + bcrypt; roles: admin, viewer (M) — shipped in Phase E1
+- [x] **SEC-2** Audit log table: user, timestamp, target_id, command, result (S) — shipped in Phase E1
 - [ ] **SEC-3** Flask-Limiter rate limits on `/api/v1/chat/*/stream` — LLM cost cap (S)
 - [ ] **SEC-4** CSRF protection + security headers (CSP, HSTS, X-Frame-Options) (S)
 - [ ] **SEC-5** SSH host key verification — replace `AutoAddPolicy` with `RejectPolicy` (S)

@@ -317,7 +317,7 @@ export function Sidebar({ targets, activeId, onSelect, onRemove, onEdit, onAddCl
               <Wifi size={16} stroke={C.text.faint} strokeWidth={1.5} />
             </div>
             <div style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, color: C.text.secondary, marginBottom: 3 }}>No connections yet</div>
-            <div style={{ fontSize: FONT_SIZE.xs, color: C.text.faint, lineHeight: 1.5 }}>Add a target below</div>
+            <div style={{ fontSize: FONT_SIZE.xs, color: C.text.faint, lineHeight: 1.5 }}>{onAddClick ? "Add a target below" : "No targets available"}</div>
           </div>
         )}
 

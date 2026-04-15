@@ -15,6 +15,8 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     return (
       <div
         data-testid="auth-loading"
+        role="status"
+        aria-live="polite"
         style={{
           height: "100vh",
           display: "flex",

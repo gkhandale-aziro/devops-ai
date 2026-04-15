@@ -85,6 +85,20 @@ describe("Login page", () => {
     });
   });
 
+  it("redirects to / when already authenticated", async () => {
+    // /auth/me resolves as logged-in → Login should immediately <Navigate> home.
+    mockFetch.mockResolvedValueOnce(jsonResponse({
+      id: 1, username: "alice", role: "admin",
+    }));
+
+    renderLogin();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("home")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("heading", { name: /sign in/i })).not.toBeInTheDocument();
+  });
+
   it("shows an inline error on bad credentials", async () => {
     const user = userEvent.setup();
     mockFetch

@@ -150,8 +150,12 @@ function AppShell() {
   const targetName = targets.find(t => t.id === confirmRemove)?.name ?? "";
 
   async function handleLogout() {
-    await logout();
-    // AuthProvider will redirect on next render since user becomes null.
+    try {
+      await logout();
+      // AuthProvider will redirect on next render since user becomes null.
+    } catch (err) {
+      toast.error(`Sign out failed: ${(err as Error)?.message ?? "unknown error"}`);
+    }
   }
 
   return (
@@ -205,7 +209,7 @@ function AppShell() {
           <Route path="/settings" element={<ErrorBoundary><Settings targetCount={targets.length} /></ErrorBoundary>} />
           <Route path="*"        element={
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "var(--c-text-muted)" }}>
-              <div style={{ fontSize: 48, color: "var(--c-border)" }}>404</div>
+              <h1 style={{ fontSize: 48, color: "var(--c-border)", margin: 0, fontWeight: 400 }}>404</h1>
               <div style={{ fontSize: 14 }}>Page not found</div>
             </div>
           } />

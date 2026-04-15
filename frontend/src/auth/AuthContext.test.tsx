@@ -83,6 +83,32 @@ describe("AuthContext", () => {
     expect(screen.getByTestId("user").textContent).toBe("bob:viewer");
   });
 
+  it("clears user on logout()", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ id: 1, username: "alice", role: "admin" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    render(<AuthProvider><Probe /></AuthProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("auth").textContent).toBe("true");
+    });
+
+    await act(async () => {
+      screen.getByText("logout").click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("auth").textContent).toBe("false");
+    });
+    expect(screen.getByTestId("user").textContent).toBe("none");
+    // logout POST was issued
+    const logoutCall = mockFetch.mock.calls.find(
+      ([url]) => String(url).endsWith("/api/v1/auth/logout")
+    );
+    expect(logoutCall).toBeDefined();
+  });
+
   it("clears user on `aziro:unauthorized` event", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({
       id: 1, username: "alice", role: "admin",

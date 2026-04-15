@@ -89,11 +89,12 @@ export function Login() {
           </h1>
         </div>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label htmlFor="login-username" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)" }}>
             Username
           </span>
           <input
+            id="login-username"
             type="text"
             autoComplete="username"
             autoFocus
@@ -105,11 +106,12 @@ export function Login() {
           />
         </label>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label htmlFor="login-password" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: FONT_SIZE.xs, color: "var(--c-text-muted)" }}>
             Password
           </span>
           <input
+            id="login-password"
             type="password"
             autoComplete="current-password"
             required
