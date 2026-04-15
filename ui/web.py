@@ -21,6 +21,8 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, Response
+from werkzeug.middleware.proxy_fix import ProxyFix
+from urllib.parse import urlparse
 
 from providers import LLMClient
 from tools     import ToolExecutor
@@ -58,6 +60,18 @@ _metric_collector = MetricCollector(_store)
 
 _DIST = os.path.join(os.path.dirname(__file__), "..", "frontend_dist")
 app = Flask(__name__, static_folder=None)
+
+# Trust X-Forwarded-* headers from N reverse-proxy hops (nginx, caddy,
+# cloud LB, etc.). Default is 0 — ProxyFix is opt-in because trusting
+# forwarded headers on a direct-exposed server lets clients spoof
+# X-Forwarded-For to evade rate limiting. Set AZIRO_PROXY_HOPS=1 only
+# when deploying behind a known reverse proxy.
+_PROXY_HOPS = int(os.environ.get("AZIRO_PROXY_HOPS", "0"))
+if _PROXY_HOPS > 0:
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, x_for=_PROXY_HOPS, x_proto=_PROXY_HOPS,
+        x_host=_PROXY_HOPS, x_port=_PROXY_HOPS,
+    )
 
 
 # ── Observability: request-ID + structured access log ───────────────────────
@@ -281,6 +295,13 @@ _DEFAULT_CSP = (
 _CSP = os.environ.get("AZIRO_CSP", _DEFAULT_CSP).strip()
 
 
+# HSTS is opt-in: only safe when the deployment actually terminates TLS.
+# Setting it over plain HTTP would poison browsers that hit the server
+# directly during local dev. Enable in production via AZIRO_ENABLE_HSTS=1.
+_HSTS_ENABLED = os.environ.get("AZIRO_ENABLE_HSTS", "").strip() in ("1", "true", "yes")
+_HSTS_VALUE = "max-age=31536000; includeSubDomains"
+
+
 @app.after_request
 def _add_security_headers(response):
     response.headers["X-API-Version"] = "1"
@@ -291,7 +312,75 @@ def _add_security_headers(response):
         response.headers["Content-Security-Policy"] = _CSP
     if response.content_type and "json" in response.content_type:
         response.headers["Cache-Control"] = "no-store"
+    # Only send HSTS over HTTPS (request.is_secure sees ProxyFix's
+    # X-Forwarded-Proto). Spec: browsers MUST ignore HSTS over HTTP,
+    # but being explicit avoids accidentally locking in a broken header.
+    if _HSTS_ENABLED and request.is_secure:
+        response.headers["Strict-Transport-Security"] = _HSTS_VALUE
     return response
+
+
+# ── Origin / Referer CSRF check (H-08 / SEC-4) ───────────────────────────────
+# Bearer-token clients (AZIRO_API_KEY) aren't vulnerable to CSRF — the token
+# is never cookie-bound. But if/when Phase E adds session cookies, a
+# state-changing POST from a malicious origin would ride the session. Check
+# now so we don't regress later.
+#
+# Bypass: GET/HEAD (read-only), probe paths (no state change), and requests
+# that already failed auth (they never hit a handler).
+
+_STATE_CHANGING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+# Comma-separated list of allowed Origin values (scheme://host[:port]).
+# Empty string = only same-host (derived per-request from Host header).
+_ALLOWED_ORIGINS = frozenset(
+    o.strip() for o in os.environ.get("AZIRO_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+)
+
+
+def _origin_is_allowed(origin: str) -> bool:
+    if not origin:
+        return False
+    if origin in _ALLOWED_ORIGINS:
+        return True
+    # Same-host fallback: compare against request.host_url (which reflects
+    # ProxyFix-adjusted scheme + host). Strip trailing slash for equality.
+    same = request.host_url.rstrip("/")
+    return origin == same
+
+
+@app.before_request
+def _origin_csrf_middleware():
+    if request.method not in _STATE_CHANGING:
+        return None
+    if not request.path.startswith("/api/"):
+        return None
+    if request.path in _UNAUTH_PROBE_PATHS:
+        return None
+
+    origin = request.headers.get("Origin", "")
+    if origin:
+        if _origin_is_allowed(origin):
+            return None
+        return jsonify({"error": "origin not allowed"}), 403
+
+    # No Origin header (some clients strip it). Fall back to Referer.
+    referer = request.headers.get("Referer", "")
+    if referer:
+        try:
+            p = urlparse(referer)
+            ref_origin = f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else ""
+        except ValueError:
+            ref_origin = ""
+        if ref_origin and _origin_is_allowed(ref_origin):
+            return None
+        return jsonify({"error": "referer not allowed"}), 403
+
+    # Neither Origin nor Referer: non-browser clients (curl, CI, server-side
+    # integrations). Those carry AZIRO_API_KEY — which auth already verified
+    # — so allowing them through is correct.
+    return None
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 # _trim() and MAX_HISTORY are imported from agent.manager — keep the single

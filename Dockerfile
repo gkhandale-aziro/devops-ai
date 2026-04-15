@@ -158,6 +158,9 @@ USER aziro
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -fs http://localhost:5000/ || exit 1
+    CMD curl -fs http://localhost:5000/api/v1/healthz || exit 1
 
-CMD ["python", "app.py"]
+# Production WSGI server. gunicorn + gevent handles SSE streams (chat,
+# monitor) without tying up a worker per connection. app.py (Flask dev
+# server) is still used for local development.
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "ui.web:app"]
