@@ -249,8 +249,8 @@ class EventStore:
     def get_stats(self) -> dict:
         """
         Returns:
-          counts      — {L1: n, L2: n, L3: n}
-          top_failing — top 10 objects by L2/L3 event count
+          counts      — {SEV1: n, SEV2: n, SEV3: n}
+          top_failing — top 10 objects by SEV1/SEV2 event count
           recent      — last 5 events
         """
         with self._conn() as c:

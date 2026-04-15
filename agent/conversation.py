@@ -443,9 +443,9 @@ def _format_stats(stats):
     recent  = stats.get("recent", [])
 
     lines = ["Cluster incident stats\n" + "─" * 40]
-    lines.append(f"  SEV3 (info):   {counts.get('L1', 0)}")
-    lines.append(f"  SEV2 (warning): {counts.get('L2', 0)}")
-    lines.append(f"  SEV1 (critical): {counts.get('L3', 0)}")
+    lines.append(f"  SEV1 (critical): {counts.get('SEV1', 0)}")
+    lines.append(f"  SEV2 (warning):  {counts.get('SEV2', 0)}")
+    lines.append(f"  SEV3 (info):     {counts.get('SEV3', 0)}")
 
     if failing:
         lines.append("\nTop failing objects:")
