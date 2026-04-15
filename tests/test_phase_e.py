@@ -128,7 +128,7 @@ class TestAuthStore:
 
 class TestLoginFlow:
     def test_me_401_when_anonymous(self, fresh):
-        web, c = fresh
+        _, c = fresh
         r = c.get("/api/v1/auth/me")
         assert r.status_code == 401
 
@@ -155,12 +155,12 @@ class TestLoginFlow:
         assert web._auth.is_locked_out("alice") is False  # one failure < limit
 
     def test_login_validates_payload_types(self, fresh):
-        web, c = fresh
+        _, c = fresh
         r = c.post("/api/v1/auth/login", json={"username": 1, "password": 2})
         assert r.status_code == 400
 
     def test_logout_requires_session(self, fresh):
-        web, c = fresh
+        _, c = fresh
         r = c.post("/api/v1/auth/logout")
         assert r.status_code == 401
 
@@ -187,21 +187,21 @@ class TestAuthModeMatrix:
             # No Authorization → 401
             r = c.get("/api/v1/targets")
             assert r.status_code == 401
-            # With valid Bearer → passes auth (handler returns 200 since
-            # TargetManager.load_safe is mocked to [])
+            # With valid Bearer → handler returns 200 since
+            # TargetManager.load_safe is mocked to [].
             r = c.get("/api/v1/targets",
                       headers={"Authorization": "Bearer secret123"})
-            assert r.status_code != 401
+            assert r.status_code == 200
 
     def test_session_mode_rejects_bearer(self, fresh):
         """Session mode means Bearer is NOT enough — must have a session."""
-        web, c = fresh
+        _, c = fresh
         r = c.get("/api/v1/info",
                   headers={"Authorization": "Bearer anything"})
         assert r.status_code == 401
 
-    def test_probe_paths_open_in_all_modes(self, fresh):
-        web, c = fresh
+    def test_probe_paths_open_in_session_mode(self, fresh):
+        _, c = fresh
         r = c.get("/api/v1/healthz")
         assert r.status_code == 200
 
@@ -229,14 +229,15 @@ class TestRoleEnforcement:
         r = c.post("/api/v1/targets",
                    headers={"Origin": "http://localhost"},
                    json={"name": "x", "type": "kubernetes", "config": {}})
-        # Handler may 500 in mocked env, but must NOT be 403.
-        assert r.status_code != 403
+        # Handler may 500 in mocked env if deeper wiring asserts, but auth
+        # + role checks must both pass — so 401/403 would be a regression.
+        assert r.status_code not in (401, 403)
 
     def test_viewer_can_read(self, fresh):
         web, c = fresh
         self._login(web, c, "bob", "correct-horse-battery", "viewer")
         r = c.get("/api/v1/targets")
-        assert r.status_code != 403
+        assert r.status_code == 200
 
 
 # ── audit log ────────────────────────────────────────────────────────────────

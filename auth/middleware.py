@@ -19,6 +19,7 @@ Audit log:
 """
 from __future__ import annotations
 
+import logging
 import os
 from functools import wraps
 from typing import Optional
@@ -28,6 +29,8 @@ from flask_login import LoginManager, current_user
 
 from auth.db import AuthStore
 from auth.models import User, ROLE_ADMIN, ROLE_VIEWER
+
+log = logging.getLogger("aziro.auth")
 
 AUTH_MODE_APIKEY  = "apikey"
 AUTH_MODE_SESSION = "session"
@@ -155,8 +158,8 @@ def audit_after_request(store: AuthStore, response):
             request_id=rid,
         )
     except Exception:
-        # Audit log must never fail a request. Swallow and let the user
-        # see their normal response; ops should monitor the log for
-        # missing audit coverage separately.
-        pass
+        # Audit log must never fail a request. Log the exception so gaps
+        # are visible in ops, but always let the user's response through.
+        log.exception("audit.write_failed",
+                      extra={"method": request.method, "path": request.path})
     return response

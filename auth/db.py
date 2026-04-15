@@ -41,6 +41,13 @@ FAILED_LOGIN_LOCKOUT  = int(os.environ.get("AZIRO_LOGIN_FAIL_LOCKOUT",  "900"))
 # Password policy — minimum length enforced at creation time.
 MIN_PASSWORD_LEN = int(os.environ.get("AZIRO_MIN_PASSWORD_LEN", "12"))
 
+# Module-level dummy hash for constant-time login. Generating salts inside
+# verify_password for missing users would use `gensalt(rounds=4)` which is
+# much faster than `_BCRYPT_ROUNDS` and gives attackers a timing oracle
+# for "does this username exist". Precomputing at import (at the real cost)
+# makes checkpw(b"x", _DUMMY_HASH) match the timing of a real check.
+_DUMMY_HASH = bcrypt.hashpw(b"x", bcrypt.gensalt(rounds=_BCRYPT_ROUNDS))
+
 
 def _now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
@@ -132,8 +139,8 @@ class AuthStore:
                     (username, pw_hash, role, _now()),
                 )
                 uid = cur.lastrowid
-        except sqlite3.IntegrityError:
-            raise ValueError(f"username {username!r} already exists")
+        except sqlite3.IntegrityError as e:
+            raise ValueError(f"username {username!r} already exists") from e
 
         return {"id": uid, "username": username, "role": role}
 
@@ -157,9 +164,10 @@ class AuthStore:
         """Return the user dict on success, None on failure. Constant-time."""
         row = self.get_user_by_name(username)
         if not row:
-            # Still do a dummy bcrypt check so timing doesn't leak
-            # whether the username exists.
-            bcrypt.checkpw(b"x", bcrypt.hashpw(b"x", bcrypt.gensalt(rounds=4)))
+            # Constant-time: verify against the module-level dummy hash
+            # (computed at the real _BCRYPT_ROUNDS cost) so the response
+            # timing doesn't reveal whether the username exists.
+            bcrypt.checkpw(b"x", _DUMMY_HASH)
             return None
         try:
             ok = bcrypt.checkpw(
