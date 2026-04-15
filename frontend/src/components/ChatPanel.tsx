@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Check, X as XIcon, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown, RotateCcw, Pencil } from "lucide-react";
-import type { ChatMsg, ToolCall } from "../hooks/useChat";
+import { MAX_MESSAGE_CHARS, type ChatMsg, type ToolCall } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 import { api } from "../api/client";
@@ -39,11 +39,17 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
   function submit() {
     const t = text.trim();
     if (!t || loading) return;
+    if (t.length > MAX_MESSAGE_CHARS) return;
     setText("");
     // Reset textarea height
     if (inputRef.current) inputRef.current.style.height = "auto";
     onSend(t);
   }
+
+  const charCount   = text.length;
+  const overCap     = charCount > MAX_MESSAGE_CHARS;
+  const nearCap     = charCount > MAX_MESSAGE_CHARS * 0.8;
+  const sendBlocked = loading || !text.trim() || overCap;
 
   function onInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setText(e.target.value);
@@ -312,7 +318,7 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
             rows={1}
             value={text}
             onChange={onInput}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!overCap) submit(); } }}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder={placeholder ?? "Ask anything… (Enter to send, Shift+Enter for new line)"}
@@ -326,13 +332,14 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
           <button
             onClick={submit}
             aria-label={loading ? "Sending message" : "Send message"}
-            disabled={loading || !text.trim()}
+            disabled={sendBlocked}
+            title={overCap ? `Message is ${charCount} chars — max is ${MAX_MESSAGE_CHARS}` : undefined}
             style={{
-              background: loading || !text.trim() ? C.border.muted : "var(--c-accent)",
+              background: sendBlocked ? C.border.muted : "var(--c-accent)",
               border: "none", borderRadius: RADIUS.lg,
               width: 32, height: 32, flexShrink: 0,
               color: "var(--c-text-on-accent, #fff)", fontWeight: FONT_WEIGHT.bold,
-              cursor: loading || !text.trim() ? "default" : "pointer",
+              cursor: sendBlocked ? "default" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "background .15s",
             }}
@@ -346,8 +353,17 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
             )}
           </button>
         </div>
-        <div style={{ fontSize: FONT_SIZE.xs, color: C.text.dim, marginTop: RADIUS.md, textAlign: "center" }}>
-          Enter to send · Shift+Enter for new line
+        <div style={{
+          fontSize: FONT_SIZE.xs,
+          color: overCap ? C.status.danger : C.text.dim,
+          marginTop: RADIUS.md,
+          textAlign: "center",
+        }}>
+          {overCap
+            ? `Message is too long — ${charCount} / ${MAX_MESSAGE_CHARS} chars. Shorten to send.`
+            : nearCap
+              ? `Enter to send · Shift+Enter for new line · ${charCount} / ${MAX_MESSAGE_CHARS}`
+              : "Enter to send · Shift+Enter for new line"}
         </div>
       </div>
     </div>

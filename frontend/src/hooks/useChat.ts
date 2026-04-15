@@ -20,6 +20,28 @@ export interface ChatMsg {
 /** Timeout for initial server response (covers AI model latency + failover). */
 const RESPONSE_TIMEOUT_MS = 120_000;
 
+/** Mirrors backend `AZIRO_MAX_MESSAGE_CHARS` (default 4000). Kept in sync by
+ *  convention — backend is the hard gate, this is UX polish. */
+export const MAX_MESSAGE_CHARS = 4000;
+
+/** Extract a human-readable reason from a non-OK response. Tries to parse
+ *  the JSON body so backend errors like "message too long" surface verbatim
+ *  instead of a bare "400 BAD REQUEST". */
+async function describeHttpError(res: Response): Promise<string> {
+  try {
+    const body = await res.clone().json();
+    if (body && typeof body.error === "string") {
+      if (typeof body.max_chars === "number" && typeof body.got_chars === "number") {
+        return `${body.error} (${body.got_chars} chars, max ${body.max_chars})`;
+      }
+      return body.error;
+    }
+  } catch {
+    /* not JSON — fall through */
+  }
+  return `${res.status} ${res.statusText}`;
+}
+
 /** Timeout for silence during SSE streaming (no data for this long = stall). */
 const STREAM_STALL_MS = 120_000;
 
@@ -74,7 +96,7 @@ export function useTargetChat(targetId: string | null) {
 
     try {
       const res = await api.chatStream(targetId, text, timedController.signal);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      if (!res.ok) throw new Error(await describeHttpError(res));
       let full = "";
       const cmds: string[] = [];
       const tools: ToolCall[] = [];
@@ -199,7 +221,7 @@ export function useSessionChat(sessionId: string | null) {
 
     try {
       const res = await api.sessions.chatStream(sessionId, text, timedController.signal);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      if (!res.ok) throw new Error(await describeHttpError(res));
       let full = "";
 
       for await (const evt of readSSE(res)) {
