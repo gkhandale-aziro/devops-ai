@@ -65,6 +65,30 @@ class TestSecurityHeaders:
         r = self.client.get("/api/v1/info")
         assert "no-store" in r.headers.get("Cache-Control", "")
 
+    def test_csp_header_present(self):
+        r = self.client.get("/api/v1/info")
+        csp = r.headers.get("Content-Security-Policy", "")
+        assert csp, "Content-Security-Policy header is missing"
+        # Sanity-check the tightest directives so a regression to a weaker
+        # default is caught.
+        assert "default-src 'self'" in csp
+        assert "object-src 'none'" in csp
+        assert "frame-ancestors 'none'" in csp
+        assert "base-uri 'self'" in csp
+
+    def test_csp_blocks_inline_scripts(self):
+        r = self.client.get("/api/v1/info")
+        csp = r.headers.get("Content-Security-Policy", "")
+        # script-src must NOT carry 'unsafe-inline' or 'unsafe-eval'.
+        # (Split on ';' so an 'unsafe-inline' appearing in style-src doesn't
+        # leak into this assertion.)
+        script_src = next(
+            (d for d in csp.split(";") if d.strip().startswith("script-src")),
+            "",
+        )
+        assert "'unsafe-inline'" not in script_src
+        assert "'unsafe-eval'" not in script_src
+
 
 class TestSecretMasking:
     """Ensure no secrets leak through API responses."""
