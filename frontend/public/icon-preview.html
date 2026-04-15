@@ -58,15 +58,19 @@
     // ---- Iconify API CDN ----
     // Pattern: https://api.iconify.design/<collection>/<icon>.svg?color=<hex>
     // Collections we use: simple-icons, fa6-brands, logos, lucide
+    // `iconColor` tints the Iconify glyph (null = use the slug's own colors,
+    // required for pre-colored logos like `logos:microsoft-azure`).
+    // `brandColor` is the canonical hex that targetIcons.tsx records; always
+    // shown in the swatch so visual review matches the source of truth.
     const brand = [
-      { label: "Kubernetes",  slug: "simple-icons:kubernetes", color: "326CE5", target: "kubernetes" },
-      { label: "Docker",      slug: "simple-icons:docker",     color: "2496ED", target: "docker"     },
-      { label: "AWS",         slug: "fa6-brands:aws",          color: "FF9900", target: "aws"        },
-      { label: "GCP",         slug: "simple-icons:googlecloud",color: "4285F4", target: "gcp"        },
-      { label: "Azure",       slug: "logos:microsoft-azure",   color: null,     target: "azure"      },
-      { label: "Terraform",   slug: "simple-icons:terraform",  color: "7B42BC", target: "terraform"  },
-      { label: "Linux / SSH", slug: "lucide:square-terminal",  color: "22C55E", target: "ssh"        },
-      { label: "Local",       slug: "lucide:laptop",           color: "22C55E", target: "local"      },
+      { label: "Kubernetes",  slug: "simple-icons:kubernetes", iconColor: "326CE5", brandColor: "326CE5", target: "kubernetes" },
+      { label: "Docker",      slug: "simple-icons:docker",     iconColor: "2496ED", brandColor: "2496ED", target: "docker"     },
+      { label: "AWS",         slug: "fa6-brands:aws",          iconColor: "FF9900", brandColor: "FF9900", target: "aws"        },
+      { label: "GCP",         slug: "simple-icons:googlecloud",iconColor: "4285F4", brandColor: "4285F4", target: "gcp"        },
+      { label: "Azure",       slug: "logos:microsoft-azure",   iconColor: null,     brandColor: "0078D4", target: "azure"      },
+      { label: "Terraform",   slug: "simple-icons:terraform",  iconColor: "7B42BC", brandColor: "7B42BC", target: "terraform"  },
+      { label: "Linux / SSH", slug: "lucide:square-terminal",  iconColor: "22C55E", brandColor: "22C55E", target: "ssh"        },
+      { label: "Local",       slug: "lucide:laptop",           iconColor: "22C55E", brandColor: "22C55E", target: "local"      },
     ];
 
     // Full Lucide set used in the app (76 icons)
@@ -91,9 +95,9 @@
       const card = document.createElement("div");
       card.className = "card";
       card.innerHTML = `
-        <div class="icon"><img src="${iconUrl(b.slug, b.color)}" alt="${b.label}" /></div>
+        <div class="icon"><img src="${iconUrl(b.slug, b.iconColor)}" alt="${b.label}" /></div>
         <div class="name">${b.label}</div>
-        <div class="meta"><span class="swatch" style="background:#${b.color || "888"}"></span>${b.target}</div>
+        <div class="meta"><span class="swatch" style="background:#${b.brandColor}"></span>${b.target}</div>
       `;
       brandHost.appendChild(card);
     }
