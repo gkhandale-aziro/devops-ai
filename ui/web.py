@@ -169,12 +169,34 @@ def _rate_limit_middleware():
         return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
 
 
+# Content-Security-Policy. The frontend loads Google Fonts (see
+# frontend/index.html) and React components use inline style attributes
+# extensively, so style-src/font-src are widened accordingly. Scripts
+# stay strict — only same-origin bundles are allowed. Override the whole
+# policy via AZIRO_CSP if a deployment needs a different profile.
+_DEFAULT_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+_CSP = os.environ.get("AZIRO_CSP", _DEFAULT_CSP).strip()
+
+
 @app.after_request
 def _add_security_headers(response):
     response.headers["X-API-Version"] = "1"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if _CSP:
+        response.headers["Content-Security-Policy"] = _CSP
     if response.content_type and "json" in response.content_type:
         response.headers["Cache-Control"] = "no-store"
     return response
