@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Aziro Ops — Icon Preview</title>
+  <style>
+    :root {
+      --bg: #0b0f14; --panel: #121821; --border: #1f2a37;
+      --text: #e5e7eb; --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 32px;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+    h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 32px; }
+    h2 {
+      margin: 40px 0 12px; font-size: 14px; font-weight: 600;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .grid {
+      display: grid; gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    }
+    .card {
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--panel); padding: 16px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .card:hover { border-color: #3b4a60; transform: translateY(-1px); }
+    .icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+    .icon svg, .icon img { width: 100%; height: 100%; }
+    .name { font-size: 13px; font-weight: 600; }
+    .meta { font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace; }
+    .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+    .sizes { display: flex; gap: 16px; align-items: flex-end; margin-top: 6px; }
+    .sizes .icon { width: auto; height: auto; }
+    .sizes img { width: auto; height: auto; }
+  </style>
+</head>
+<body>
+  <h1>Aziro Ops — Icon Preview</h1>
+  <div class="sub">All 8 target-type icons and the full Lucide set currently imported in the app.</div>
+
+  <h2>Target type icons (brand)</h2>
+  <div class="grid" id="brand"></div>
+
+  <h2>Target type icons — render sizes (Kubernetes example)</h2>
+  <div class="sizes" id="sizes"></div>
+
+  <h2>Lucide icons (generic UI)</h2>
+  <div class="grid" id="lucide"></div>
+
+  <script>
+    // ---- Iconify API CDN ----
+    // Pattern: https://api.iconify.design/<collection>/<icon>.svg?color=<hex>
+    // Collections we use: simple-icons, fa6-brands, logos, lucide
+    const brand = [
+      { label: "Kubernetes",  slug: "simple-icons:kubernetes", color: "326CE5", target: "kubernetes" },
+      { label: "Docker",      slug: "simple-icons:docker",     color: "2496ED", target: "docker"     },
+      { label: "AWS",         slug: "fa6-brands:aws",          color: "FF9900", target: "aws"        },
+      { label: "GCP",         slug: "simple-icons:googlecloud",color: "4285F4", target: "gcp"        },
+      { label: "Azure",       slug: "logos:microsoft-azure",   color: null,     target: "azure"      },
+      { label: "Terraform",   slug: "simple-icons:terraform",  color: "7B42BC", target: "terraform"  },
+      { label: "Linux / SSH", slug: "lucide:square-terminal",  color: "22C55E", target: "ssh"        },
+      { label: "Local",       slug: "lucide:laptop",           color: "22C55E", target: "local"      },
+    ];
+
+    // Full Lucide set used in the app (76 icons)
+    const lucide = [
+      "activity","alert-circle","alert-triangle","arrow-left","arrow-right","bar-chart-3","bell",
+      "bot","check","check-circle-2","chevron-down","chevron-left","chevron-right","chevron-up",
+      "chevrons-up-down","clipboard","clipboard-list","clock","cloud","cloud-cog","command",
+      "container","database","external-link","file-text","globe","grid-3x3","hard-drive","home",
+      "info","key-round","keyboard","laptop","layers","layout-grid","link-2","loader-2","lock",
+      "map","map-pin","message-square","monitor-cloud","moon","more-vertical","network","package",
+      "palette","pause","pencil","play","play-circle","plug","plus","radio","refresh-cw","rocket",
+      "rotate-ccw","search","server","settings","shield","sparkles","square-terminal","stop-circle",
+      "sun","tag","target","thumbs-down","thumbs-up","users","wifi","x","x-circle","zap","zoom-in","zoom-out"
+    ];
+
+    // ---- render ----
+    const iconUrl = (slug, color) =>
+      `https://api.iconify.design/${slug}.svg${color ? `?color=%23${color}` : ""}`;
+
+    const brandHost = document.getElementById("brand");
+    for (const b of brand) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="icon"><img src="${iconUrl(b.slug, b.color)}" alt="${b.label}" /></div>
+        <div class="name">${b.label}</div>
+        <div class="meta"><span class="swatch" style="background:#${b.color || "888"}"></span>${b.target}</div>
+      `;
+      brandHost.appendChild(card);
+    }
+
+    // render sizes row (kubernetes at 12/16/24/32/48)
+    const sizesHost = document.getElementById("sizes");
+    for (const s of [12, 16, 24, 32, 48]) {
+      const cell = document.createElement("div");
+      cell.innerHTML = `
+        <div style="text-align:center">
+          <img src="${iconUrl("simple-icons:kubernetes", "326CE5")}" width="${s}" height="${s}" />
+          <div class="meta" style="margin-top:6px">${s}px</div>
+        </div>
+      `;
+      sizesHost.appendChild(cell);
+    }
+
+    const lucideHost = document.getElementById("lucide");
+    for (const name of lucide) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="icon"><img src="${iconUrl("lucide:" + name, "94A3B8")}" alt="${name}" /></div>
+        <div class="name" style="font-size:12px">${name}</div>
+      `;
+      lucideHost.appendChild(card);
+    }
+  </script>
+</body>
+</html>
