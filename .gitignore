@@ -41,5 +41,5 @@ CLAUDE.md
 .coderabbit.yaml
 .agent/
 graphify-out/
-icon-preview.html
+/icon-preview.html
 frontend/tsconfig.node.tsbuildinfo
