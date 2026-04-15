@@ -22,9 +22,10 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
       AgentSession, M-03 `_trim` dedupe, M-08 target name validation +
       JSON-serialized metadata block; H-07 retry cap and M-10 placeholder
       regression-locked (#13)
-- [ ] **Phase C — Observability**
-  - M-05: structured JSON logs + request-ID middleware (replace `print()`)
-  - M-06: `/api/v1/healthz` + `/readyz` (covers RUN-2)
+- [x] **Phase C — Observability** — M-05 structured JSON logs +
+      request-ID ContextVar middleware + X-Request-ID echo, replaced
+      scattered `print()`; M-06 `/api/v1/healthz` + `/readyz` with
+      auth + rate-limit bypass (#14)
 - [ ] **Phase D — Production server & edge hardening**
   - C-03 / RUN-1: gunicorn + gevent
   - H-03: HSTS header + TLS-behind-proxy deploy doc

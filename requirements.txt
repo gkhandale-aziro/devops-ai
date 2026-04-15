@@ -4,3 +4,5 @@ anthropic>=0.40,<1.0
 paramiko>=3.0,<4.0
 pytest>=9.0,<10.0
 cryptography>=46.0.6,<47.0
+gunicorn>=23.0,<24.0
+gevent>=24.10,<25.0
