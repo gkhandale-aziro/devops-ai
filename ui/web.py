@@ -27,6 +27,7 @@ from tools     import ToolExecutor
 from sessions  import SessionManager
 from targets   import TargetManager
 from agent     import needs_tools, AgentSession, Agent
+from agent.manager import _trim, MAX_HISTORY
 from monitor   import EventWatcher, Triage
 from store     import EventStore
 from store.metrics import MetricCollector
@@ -69,6 +70,31 @@ def _reject_if_too_long(text: str, field: str):
             "error": f"{field} too long",
             "max_chars": _MAX_MESSAGE_CHARS,
             "got_chars": len(text),
+        }), 400
+    return None
+
+
+# Target `name` is injected verbatim into the agent system prompt
+# ("You are connected to: {name}"). Without an allowlist an attacker could
+# prompt-inject via the name field (e.g. "Ignore previous instructions…").
+# Allow alphanumerics, space, hyphen, dot, underscore. Cap at 64 chars.
+_MAX_TARGET_NAME_LEN = 64
+_SAFE_TARGET_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 ._\-]*$')
+
+
+def _validate_target_name(name: str):
+    """Return a (response, status) tuple if the name is invalid, else None."""
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    if len(name) > _MAX_TARGET_NAME_LEN:
+        return jsonify({
+            "error": "name too long",
+            "max_chars": _MAX_TARGET_NAME_LEN,
+            "got_chars": len(name),
+        }), 400
+    if not _SAFE_TARGET_NAME_RE.match(name):
+        return jsonify({
+            "error": "invalid name — use letters, digits, space, . _ -",
         }), 400
     return None
 
@@ -201,14 +227,9 @@ def _add_security_headers(response):
         response.headers["Cache-Control"] = "no-store"
     return response
 
-MAX_HISTORY = 20
-
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def _trim(messages):
-    system  = [m for m in messages if m["role"] == "system"]
-    history = [m for m in messages if m["role"] != "system"]
-    return system + history[-MAX_HISTORY:]
+# _trim() and MAX_HISTORY are imported from agent.manager — keep the single
+# source of truth there so CLI and Web can't diverge (M-03 in gap analysis).
 
 
 def _generate_session_title(user_msg, ai_response):
@@ -415,8 +436,9 @@ def api_add():
     d = request.json or {}
     name = (d.get("name") or "").strip()
     ttype = (d.get("type") or "").strip()
-    if not name:
-        return jsonify({"error": "name is required"}), 400
+    err = _validate_target_name(name)
+    if err:
+        return err
     valid_types = {"ssh", "kubernetes", "docker", "aws", "gcp", "azure", "terraform", "local"}
     if ttype not in valid_types:
         return jsonify({"error": f"invalid type: {ttype}"}), 400
@@ -437,6 +459,11 @@ def api_update(tid):
         return jsonify({"error": "not found"}), 404
     d = request.json or {}
     name = d.get("name")
+    if name is not None:
+        name = name.strip()
+        err = _validate_target_name(name)
+        if err:
+            return err
     config = d.get("config")
     if config:
         _persist_inline_content(tid, config)
