@@ -35,3 +35,11 @@ frontend/node_modules/
 
 # Planning artifacts
 docs/superpowers/
+
+# Local AI assistant context (not for version control)
+CLAUDE.md
+.coderabbit.yaml
+.agent/
+graphify-out/
+icon-preview.html
+frontend/tsconfig.node.tsbuildinfo
