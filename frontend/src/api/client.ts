@@ -27,16 +27,32 @@ function authHeaders(): Record<string, string> {
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
+// Paths that should NOT trigger the global 401→redirect hook. /auth/me is
+// the bootstrap probe — its whole job is to tell the AuthProvider "you're
+// anonymous", so a 401 there is expected, not a session expiry.
+const _UNAUTH_HOOK_SKIP = new Set<string>([
+  "/api/v1/auth/me",
+  "/api/v1/auth/login",
+]);
+
+function notifyUnauthorized(path: string) {
+  if (_UNAUTH_HOOK_SKIP.has(path)) return;
+  window.dispatchEvent(new CustomEvent("aziro:unauthorized", { detail: { path } }));
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = { ...authHeaders(), ...init?.headers };
   let res: Response;
   try {
-    res = await fetch(BASE + path, { ...init, headers });
+    // credentials: "include" ships the Flask-Login session cookie on
+    // same-origin + cross-origin requests. Needed for AZIRO_AUTH_MODE=session.
+    res = await fetch(BASE + path, { ...init, headers, credentials: "include" });
   } catch (e) {
     // fetch() throws TypeError on network failure (server down, DNS, offline,
     // CORS). Surface a clearer message than the default "Failed to fetch".
     throw new Error(`Network error — could not reach server (${(e as Error)?.message || "offline"})`);
   }
+  if (res.status === 401) notifyUnauthorized(path);
   if (!res.ok) {
     let detail = "";
     try { const b = await res.json(); detail = b?.error ?? b?.message ?? ""; } catch { /* ignore */ }
@@ -117,9 +133,10 @@ export const api = {
   chatStream: (targetId: string, message: string, signal?: AbortSignal) => {
     // useChat.ts manages its own timed abort; this is a safety net
     return fetch(`/api/v1/chat/${targetId}/stream`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body:    JSON.stringify({ message }),
+      method:      "POST",
+      headers:     { "Content-Type": "application/json", ...authHeaders() },
+      body:        JSON.stringify({ message }),
+      credentials: "include",
       signal,
     });
   },
@@ -133,10 +150,11 @@ export const api = {
       ? AbortSignal.any([signal, timeout])
       : timeout;
     return fetch("/api/v1/analyze/stream", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body:    JSON.stringify({ prompt }),
-      signal:  combined,
+      method:      "POST",
+      headers:     { "Content-Type": "application/json", ...authHeaders() },
+      body:        JSON.stringify({ prompt }),
+      credentials: "include",
+      signal:      combined,
     });
   },
 
@@ -156,9 +174,10 @@ export const api = {
       req<Array<{ role: string; content: string }>>(`/api/v1/sessions/${id}/messages`),
     chatStream: (id: string, message: string, signal?: AbortSignal) =>
       fetch(`/api/v1/sessions/${id}/chat/stream`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body:    JSON.stringify({ message }),
+        method:      "POST",
+        headers:     { "Content-Type": "application/json", ...authHeaders() },
+        body:        JSON.stringify({ message }),
+        credentials: "include",
         signal,
       }),
   },
@@ -239,6 +258,25 @@ export const api = {
         body: JSON.stringify({ url }),
       }),
     },
+  },
+
+  // ── Auth (Phase E) ────────────────────────────────────────────────────────
+  auth: {
+    me: () =>
+      req<{ id: number; username: string; role: "admin" | "viewer" }>(
+        "/api/v1/auth/me"
+      ),
+    login: (username: string, password: string) =>
+      req<{ user: { id: number; username: string; role: "admin" | "viewer" } }>(
+        "/api/v1/auth/login",
+        {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ username, password }),
+        }
+      ),
+    logout: () =>
+      req<{ status: string }>("/api/v1/auth/logout", { method: "POST" }),
   },
 
   // ── Search ────────────────────────────────────────────────────────────────

@@ -30,9 +30,9 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
   - C-03 / RUN-1: gunicorn + gevent
   - H-03: HSTS header + TLS-behind-proxy deploy doc
   - H-08 / SEC-4: CSRF / Origin+Referer checks
-- [~] **Phase E — Auth baseline** (biggest, own track)
+- [x] **Phase E — Auth baseline** (biggest, own track)
   - [x] E1 backend: H-01 / SEC-1 / SEC-2 — Flask-Login, users table, audit log, role model, AZIRO_AUTH_MODE switch
-  - [ ] E2 frontend: login page, 401→redirect, role-gated UI
+  - [x] E2 frontend: login page, AuthContext, ProtectedRoute, 401→redirect, role-gated target add/remove, logout
 
 ### Security baseline
 - [ ] **SEC-1** Flask-Login + `users` table + bcrypt; roles: admin, viewer (M)
