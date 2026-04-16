@@ -60,9 +60,12 @@ class TestSafeCommands:
         ok, _ = is_safe("journalctl -n 100 --no-pager")
         assert ok is True
 
-    def test_curl(self):
-        ok, _ = is_safe("curl -s http://example.com")
-        assert ok is True
+    def test_curl_blocked(self):
+        # Removed from allowlist in security fix ebc27b9 (B4/B5) — curl
+        # could reach cloud-metadata endpoints (169.254.169.254) → SSRF.
+        ok, reason = is_safe("curl -s http://example.com")
+        assert ok is False
+        assert reason
 
 
 class TestBlockedCommands:
