@@ -331,8 +331,8 @@ def _limit_key() -> str:
     try:
         if current_user.is_authenticated:
             return f"user:{current_user.get_id()}"
-    except Exception:  # outside request / not logged in
-        pass
+    except Exception as exc:  # outside request / not logged in
+        log.debug("limit_key.fallback_to_ip", extra={"error": str(exc)})
     return f"ip:{get_remote_address()}"
 
 

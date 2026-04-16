@@ -65,7 +65,7 @@ def app_with_tight_limits(tmp_path, monkeypatch):
 
 class TestDefaultLimit:
     def test_default_limit_blocks_once_exceeded(self, app_with_tight_limits):
-        web, client = app_with_tight_limits
+        _web, client = app_with_tight_limits
         # Under the 3/minute default, the 4th hit on the same endpoint
         # (keyed by IP since the caller is anonymous) must 429.
         for _ in range(3):
@@ -82,7 +82,7 @@ class TestDefaultLimit:
     def test_probe_paths_are_exempt(self, app_with_tight_limits):
         """k8s liveness/readiness probes run every few seconds and must
         never 429 — otherwise the orchestrator kills the pod."""
-        web, client = app_with_tight_limits
+        _web, client = app_with_tight_limits
         # Comfortably more than the 3/minute cap.
         for _ in range(10):
             rh = client.get("/api/v1/healthz")
@@ -93,7 +93,7 @@ class TestDefaultLimit:
     def test_non_api_paths_are_exempt(self, app_with_tight_limits):
         """Static asset + SPA routes don't go through /api/ — they should
         never be rate-limited (users can refresh the page freely)."""
-        web, client = app_with_tight_limits
+        _web, client = app_with_tight_limits
         # More hits than the default cap; none should 429 because they
         # aren't /api/ paths.
         for _ in range(10):
@@ -106,7 +106,7 @@ class TestChatStreamLimit:
         """Chat streams carry the _CHAT_STREAM_LIMITS cap (2/minute in
         this fixture). After 2 streams, the 3rd must 429 even though
         the default cap (3/minute) hasn't been hit yet."""
-        web, client = app_with_tight_limits
+        _web, client = app_with_tight_limits
         for _ in range(2):
             r = client.post("/api/v1/chat/nonexistent/stream",
                             json={"message": "hi"})
@@ -116,7 +116,7 @@ class TestChatStreamLimit:
         assert r.status_code == 429
 
     def test_analyze_stream_has_tighter_cap(self, app_with_tight_limits):
-        web, client = app_with_tight_limits
+        _web, client = app_with_tight_limits
         for _ in range(2):
             r = client.post("/api/v1/analyze/stream", json={"prompt": "x"})
             assert r.status_code != 429, r.data
@@ -126,7 +126,7 @@ class TestChatStreamLimit:
 
 class TestLoginLimit:
     def test_login_brute_force_is_capped(self, app_with_tight_limits):
-        web, client = app_with_tight_limits
+        _web, client = app_with_tight_limits
         # 3/minute cap on the auth blueprint. Wrong creds → 401 until
         # we exhaust the window, then 429.
         for _ in range(3):
@@ -140,7 +140,7 @@ class TestLoginLimit:
 
 class TestJSON429:
     def test_json_body_and_headers(self, app_with_tight_limits):
-        web, client = app_with_tight_limits
+        _web, client = app_with_tight_limits
         for _ in range(4):
             r = client.get("/api/v1/targets")
         assert r.status_code == 429
