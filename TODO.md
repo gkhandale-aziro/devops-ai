@@ -26,26 +26,27 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
       request-ID ContextVar middleware + X-Request-ID echo, replaced
       scattered `print()`; M-06 `/api/v1/healthz` + `/api/v1/readyz`
       with auth + rate-limit bypass (#14)
-- [ ] **Phase D — Production server & edge hardening**
-  - C-03 / RUN-1: gunicorn + gevent
-  - H-03: HSTS header + TLS-behind-proxy deploy doc
-  - H-08 / SEC-4: CSRF / Origin+Referer checks
+- [x] **Phase D — Production server & edge hardening** (#15)
+  - [x] C-03 / RUN-1: gunicorn + gevent
+  - [x] H-03: HSTS header + TLS-behind-proxy + ProxyFix
+  - [x] H-08 / SEC-4: Origin / Referer CSRF check + CSP / X-Frame-Options / Referrer-Policy
 - [x] **Phase E — Auth baseline** (biggest, own track)
-  - [x] E1 backend: H-01 / SEC-1 / SEC-2 — Flask-Login, users table, audit log, role model, AZIRO_AUTH_MODE switch
-  - [x] E2 frontend: login page, AuthContext, ProtectedRoute, 401→redirect, role-gated target add/remove, logout
+  - [x] E1 backend: H-01 / SEC-1 / SEC-2 — Flask-Login, users table, audit log, role model, AZIRO_AUTH_MODE switch (#16)
+  - [x] E2 frontend: login page, AuthContext, ProtectedRoute, 401→redirect, role-gated target add/remove, logout (#17)
+- [x] **Phase F — Rate limits / LLM cost cap** — SEC-3 Flask-Limiter, per-user + per-IP keying, stream endpoint caps, login brute-force cap
 
 ### Security baseline
 - [x] **SEC-1** Flask-Login + `users` table + bcrypt; roles: admin, viewer (M) — shipped in Phase E1
 - [x] **SEC-2** Audit log table: user, timestamp, target_id, command, result (S) — shipped in Phase E1
-- [ ] **SEC-3** Flask-Limiter rate limits on `/api/v1/chat/*/stream` — LLM cost cap (S)
-- [ ] **SEC-4** CSRF protection + security headers (CSP, HSTS, X-Frame-Options) (S)
+- [x] **SEC-3** Flask-Limiter rate limits on `/api/v1/chat/*/stream` — LLM cost cap (S) — shipped in Phase F
+- [x] **SEC-4** CSRF protection + security headers (CSP, HSTS, X-Frame-Options) (S) — shipped in Phase D
 - [ ] **SEC-5** SSH host key verification — replace `AutoAddPolicy` with `RejectPolicy` (S)
 - [ ] **SEC-6** PII scrubbing on stored incident snapshots + retention policy (M)
 - [ ] **SEC-7** Feature flag / kill switch for experimental paths (S)
 
 ### Runtime hardening
-- [ ] **RUN-1** Gunicorn + gevent workers behind nginx (drop Flask dev server) (S)
-- [ ] **RUN-2** `/healthz` (liveness) + `/readyz` (DB + LLM reachability) (S)
+- [x] **RUN-1** Gunicorn + gevent workers behind nginx (drop Flask dev server) (S) — shipped in Phase D
+- [x] **RUN-2** `/healthz` (liveness) + `/readyz` (DB + LLM reachability) (S) — shipped in Phase C
 - [ ] **RUN-3** Prometheus `/metrics` — request counts, LLM tokens, tool-call latencies (M)
 - [ ] **RUN-4** structlog JSON logging + Sentry SDK integration (S)
 - [ ] **RUN-5** Graceful shutdown: SIGTERM drains SSE + kills kubectl subprocesses (S)

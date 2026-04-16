@@ -17,10 +17,12 @@ import time
 import os
 import secrets
 import hmac
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, Response
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_login import current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from urllib.parse import urlparse
 
@@ -99,12 +101,12 @@ if not _SESSION_SECRET:
                 extra={"hint": "set AZIRO_SESSION_SECRET in production"})
 app.config["SECRET_KEY"] = _SESSION_SECRET
 
-# Flask-Login + blueprint + audit hook. Must happen before any
-# before_request hooks that reference current_user.
+# Flask-Login + audit hook. Must happen before any before_request hooks
+# that reference current_user. Blueprint registration is deferred until
+# after the Limiter is configured so login can get a brute-force cap.
 app.extensions = getattr(app, "extensions", {}) or {}
 app.extensions["aziro_auth_store"] = _auth
 init_login_manager(app, _auth)
-app.register_blueprint(auth_bp)
 
 
 @app.after_request
@@ -306,59 +308,73 @@ def _auth_middleware():
     return role_check()
 
 
-# ── Rate limiting ─────────────────────────────────────────────────────────────
-# Simple in-memory sliding window per IP. Prevents brute force / abuse.
-# Configurable via AZIRO_RATE_LIMIT (requests per minute, default 120).
+# ── Rate limiting (Flask-Limiter) ─────────────────────────────────────────────
+# SEC-3 — per-user + per-IP limits with stricter caps on LLM streams to
+# bound cost. In-memory storage is a single-process cap; swap to redis://
+# in Phase H when Redis lands. Use env vars to tune per deployment:
+#   AZIRO_RATE_LIMIT           default per-API limit       (default "120/minute")
+#   AZIRO_CHAT_STREAM_LIMITS   LLM chat/analyze stream cap (default "10/minute;100/hour")
+#   AZIRO_LOGIN_LIMITS         brute-force cap on /auth/login (default "10/minute;50/hour")
 
-_RATE_LIMIT   = int(os.environ.get("AZIRO_RATE_LIMIT", "120"))
-_RATE_WINDOW  = 60  # seconds
-_rate_buckets = defaultdict(list)  # ip → [timestamp, ...]
-_rate_lock    = threading.Lock()
-
-
-_RATE_LAST_PRUNE = [0.0]  # one-element list for mutable closure
-
-def _is_rate_limited(ip: str) -> bool:
-    """Check if IP has exceeded the rate limit. Thread-safe.
-
-    Also periodically drops stale IP entries so the bucket dict cannot
-    grow without bound on public-facing deployments.
-    """
-    now = time.time()
-    cutoff = now - _RATE_WINDOW
-    with _rate_lock:
-        bucket = _rate_buckets[ip]
-        # Prune old entries for this bucket
-        pruned = [t for t in bucket if t > cutoff]
-        if pruned:
-            _rate_buckets[ip] = pruned
-        else:
-            _rate_buckets.pop(ip, None)
-            _rate_buckets[ip] = []
-
-        # Every 60 s, sweep the whole dict and drop IPs with empty buckets.
-        if now - _RATE_LAST_PRUNE[0] > 60:
-            _RATE_LAST_PRUNE[0] = now
-            for stale_ip in [k for k, v in _rate_buckets.items()
-                             if not v or all(t <= cutoff for t in v)]:
-                _rate_buckets.pop(stale_ip, None)
-
-        if len(_rate_buckets[ip]) >= _RATE_LIMIT:
-            return True
-        _rate_buckets[ip].append(now)
-    return False
+_RATE_LIMIT           = os.environ.get("AZIRO_RATE_LIMIT", "120/minute")
+_CHAT_STREAM_LIMITS   = os.environ.get("AZIRO_CHAT_STREAM_LIMITS", "10/minute;100/hour")
+_LOGIN_LIMITS         = os.environ.get("AZIRO_LOGIN_LIMITS", "10/minute;50/hour")
+_LIMITER_STORAGE_URI  = os.environ.get("AZIRO_LIMITER_STORAGE", "memory://")
 
 
-@app.before_request
-def _rate_limit_middleware():
-    """Enforce rate limiting on /api/ endpoints."""
-    if not request.path.startswith("/api/"):
-        return None
-    if request.path in _UNAUTH_PROBE_PATHS:
-        return None  # k8s probes run every few seconds — don't rate-limit
-    ip = request.remote_addr or "unknown"
-    if _is_rate_limited(ip):
-        return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
+def _limit_key() -> str:
+    """Rate-limit key: prefer authenticated user id, else client IP.
+
+    Keying per-user means one abusive session can't be masked behind a
+    shared NAT IP, and legitimate users behind the same NAT don't starve
+    each other. Anonymous requests (probes, login) fall back to IP."""
+    try:
+        if current_user.is_authenticated:
+            return f"user:{current_user.get_id()}"
+    except Exception:  # outside request / not logged in
+        pass
+    return f"ip:{get_remote_address()}"
+
+
+# Probe paths are exempt — k8s liveness/readiness runs every few seconds
+# and must never 429, else the orchestrator kills the pod. Everything
+# else falls under the default, plus any endpoint-specific caps.
+def _default_limit_exempt() -> bool:
+    return (
+        request.path in _UNAUTH_PROBE_PATHS
+        or not request.path.startswith("/api/")
+    )
+
+
+limiter = Limiter(
+    app=app,
+    key_func=_limit_key,
+    default_limits=[_RATE_LIMIT],
+    default_limits_exempt_when=_default_limit_exempt,
+    storage_uri=_LIMITER_STORAGE_URI,
+    headers_enabled=True,  # emits X-RateLimit-* + Retry-After
+    strategy="fixed-window",
+)
+
+
+@app.errorhandler(429)
+def _rate_limit_exceeded(e):
+    """JSON 429 so frontend can show a friendly error instead of HTML."""
+    log.warning("rate_limit.exceeded",
+                extra={"path": request.path, "key": _limit_key(),
+                       "description": str(getattr(e, "description", ""))})
+    return jsonify({
+        "error": "Rate limit exceeded. Try again later.",
+        "detail": str(getattr(e, "description", "")),
+    }), 429
+
+
+# Tight brute-force cap on the auth blueprint (login/logout/me/users).
+# Stacks on top of the default limit — whichever is stricter wins. Must
+# be applied BEFORE register_blueprint, which is why blueprint registration
+# was deferred from the Flask-Login setup block above.
+limiter.limit(_LOGIN_LIMITS)(auth_bp)
+app.register_blueprint(auth_bp)
 
 
 # Content-Security-Policy. The frontend loads Google Fonts (see
@@ -1103,6 +1119,7 @@ def api_namespaces(tid):
 # ── AI chat — target-specific streaming ──────────────────────────────────────
 
 @app.route("/api/v1/chat/<tid>/stream", methods=["POST"])
+@limiter.limit(_CHAT_STREAM_LIMITS)
 def api_chat_stream(tid):
     target = _targets.get(tid)
     if not target:
@@ -1184,6 +1201,7 @@ _ANALYSIS_SYSTEM = (
 
 
 @app.route("/api/v1/analyze/stream", methods=["POST"])
+@limiter.limit(_CHAT_STREAM_LIMITS)
 def api_analyze_stream():
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
@@ -1408,6 +1426,7 @@ def api_sessions_messages(sid):
 
 
 @app.route("/api/v1/sessions/<sid>/chat/stream", methods=["POST"])
+@limiter.limit(_CHAT_STREAM_LIMITS)
 def api_sessions_chat_stream(sid):
     if not any(s["id"] == sid for s in _sessions.load()):
         return jsonify({"error": "not found"}), 404
