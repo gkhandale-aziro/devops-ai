@@ -271,7 +271,11 @@ class EventStore:
     def get_stats(self) -> dict:
         """
         Returns:
-          counts      — {SEV1: n, SEV2: n, SEV3: n}
+          counts      — {SEV1: n, SEV2: n, SEV3: n} — *active issues*,
+                        i.e. distinct (object, reason) pairs still open.
+                        A crashloop pod that fires 900 events in 9 days
+                        counts as ONE active issue, not 900, so the
+                        dashboard card matches the Live Alerts page.
           top_failing — top 10 objects by SEV1/SEV2 event count
           recent      — last 5 events
         """
@@ -279,7 +283,10 @@ class EventStore:
             counts = {
                 row[0]: row[1]
                 for row in c.execute(
-                    "SELECT level, COUNT(*) FROM events GROUP BY level"
+                    """SELECT level, COUNT(DISTINCT object || '|' || reason)
+                       FROM   events
+                       WHERE  status = 'open'
+                       GROUP  BY level"""
                 ).fetchall()
             }
             top_failing = [

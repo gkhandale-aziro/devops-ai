@@ -39,8 +39,30 @@ _VALID_MODES      = frozenset({AUTH_MODE_APIKEY, AUTH_MODE_SESSION, AUTH_MODE_BO
 
 
 def get_auth_mode() -> str:
-    mode = os.environ.get("AZIRO_AUTH_MODE", AUTH_MODE_APIKEY).strip().lower()
-    return mode if mode in _VALID_MODES else AUTH_MODE_APIKEY
+    """Resolve the active auth mode.
+
+    Precedence:
+      1. AZIRO_AUTH_MODE explicitly set to one of {apikey, session, both}.
+      2. Auto-infer from which credentials the operator actually provided:
+           AZIRO_API_KEY set, AZIRO_SESSION_SECRET unset → apikey
+           AZIRO_SESSION_SECRET set, AZIRO_API_KEY unset → session
+           both set                                      → both
+      3. Neither set → apikey (legacy default; startup warns auth is off).
+
+    This stops the common foot-gun where an operator sets AZIRO_SESSION_SECRET
+    + AZIRO_BOOTSTRAP_ADMIN_* expecting session auth, but forgets AZIRO_AUTH_MODE
+    and gets rejected with "Missing Authorization header".
+    """
+    explicit = os.environ.get("AZIRO_AUTH_MODE", "").strip().lower()
+    if explicit in _VALID_MODES:
+        return explicit
+    has_key     = bool(os.environ.get("AZIRO_API_KEY", "").strip())
+    has_session = bool(os.environ.get("AZIRO_SESSION_SECRET", "").strip())
+    if has_key and has_session:
+        return AUTH_MODE_BOTH
+    if has_session:
+        return AUTH_MODE_SESSION
+    return AUTH_MODE_APIKEY
 
 
 # State-changing HTTP methods trigger role checks + audit entries.

@@ -206,6 +206,56 @@ class TestAuthModeMatrix:
         assert r.status_code == 200
 
 
+# ── auth mode inference (foot-gun fix) ───────────────────────────────────────
+
+class TestAuthModeInference:
+    """get_auth_mode() must infer the right mode from whichever credentials
+    the operator actually provided, so setting AZIRO_SESSION_SECRET without
+    also remembering AZIRO_AUTH_MODE doesn't silently stay in apikey mode."""
+
+    def _reload_and_call(self, monkeypatch, **env):
+        for k in ("AZIRO_AUTH_MODE", "AZIRO_API_KEY", "AZIRO_SESSION_SECRET"):
+            monkeypatch.delenv(k, raising=False)
+        for k, v in env.items():
+            monkeypatch.setenv(k, v)
+        sys.modules.pop("auth.middleware", None)
+        from auth.middleware import get_auth_mode
+        return get_auth_mode()
+
+    def test_neither_defaults_to_apikey(self, monkeypatch):
+        assert self._reload_and_call(monkeypatch) == "apikey"
+
+    def test_session_secret_alone_picks_session(self, monkeypatch):
+        assert self._reload_and_call(monkeypatch,
+                                     AZIRO_SESSION_SECRET="x") == "session"
+
+    def test_api_key_alone_picks_apikey(self, monkeypatch):
+        assert self._reload_and_call(monkeypatch,
+                                     AZIRO_API_KEY="x") == "apikey"
+
+    def test_both_credentials_picks_both(self, monkeypatch):
+        assert self._reload_and_call(monkeypatch,
+                                     AZIRO_API_KEY="x",
+                                     AZIRO_SESSION_SECRET="y") == "both"
+
+    def test_explicit_mode_overrides_inference(self, monkeypatch):
+        """Operator-provided AZIRO_AUTH_MODE always wins, even when the
+        credential evidence would suggest a different mode."""
+        assert self._reload_and_call(monkeypatch,
+                                     AZIRO_AUTH_MODE="apikey",
+                                     AZIRO_SESSION_SECRET="y") == "apikey"
+        assert self._reload_and_call(monkeypatch,
+                                     AZIRO_AUTH_MODE="session",
+                                     AZIRO_API_KEY="x") == "session"
+
+    def test_invalid_explicit_mode_falls_back_to_inference(self, monkeypatch):
+        """Garbage AZIRO_AUTH_MODE should not break the app — fall through
+        to credential-based inference."""
+        assert self._reload_and_call(monkeypatch,
+                                     AZIRO_AUTH_MODE="nonsense",
+                                     AZIRO_SESSION_SECRET="y") == "session"
+
+
 # ── role enforcement ────────────────────────────────────────────────────────
 
 class TestRoleEnforcement:
