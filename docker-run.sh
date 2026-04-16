@@ -12,12 +12,23 @@
 #   ./docker-run.sh              # start
 #   ./docker-run.sh --rebuild    # rebuild image first
 #   docker rm -f aziro-ops       # stop
+#
+# Env overrides (for side-by-side main + develop deploys, CI, etc.):
+#   AZIRO_PORT          host port to publish (default 5000)
+#   AZIRO_NAME          container name      (default aziro-ops)
+#   AZIRO_IMAGE         image tag           (default aziro-ops)
+#   AZIRO_DATA_VOLUME   named volume        (default aziro-data)
+#
+#   AZIRO_PORT=4000 AZIRO_NAME=aziro-ops-dev AZIRO_IMAGE=aziro-ops-dev \
+#     AZIRO_DATA_VOLUME=aziro-data-dev ./docker-run.sh --rebuild
 # =============================================================================
 
 set -e
 
-IMAGE="aziro-ops"
-NAME="aziro-ops"
+IMAGE="${AZIRO_IMAGE:-aziro-ops}"
+NAME="${AZIRO_NAME:-aziro-ops}"
+PORT="${AZIRO_PORT:-5000}"
+DATA_VOLUME="${AZIRO_DATA_VOLUME:-aziro-data}"
 
 if [[ "$1" == "--rebuild" ]] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo "Building image..."
@@ -30,11 +41,11 @@ docker rm -f "$NAME" 2>/dev/null || true
 # any future writes (aws configure, gcloud auth login, etc.)
 mkdir -p ~/.kube ~/.aws ~/.config/gcloud ~/.azure ~/.ssh
 
-echo "Starting $NAME..."
+echo "Starting $NAME on port $PORT (volume: $DATA_VOLUME, image: $IMAGE)..."
 docker run -d --name "$NAME" \
-    -p 5000:5000 \
+    -p "$PORT:5000" \
     \
-    -v aziro-data:/app/data \
+    -v "$DATA_VOLUME:/app/data" \
     \
     -v "$HOME/.kube:/home/aziro/.host-kube:ro" \
     -v "$HOME/.aws:/home/aziro/.host-aws:ro" \
@@ -56,7 +67,7 @@ docker run -d --name "$NAME" \
     "$IMAGE"
 
 echo ""
-echo "Aziro Ops → http://localhost:5000"
+echo "Aziro Ops → http://localhost:$PORT"
 echo ""
 echo "Add credentials on the host anytime — no restart needed:"
 echo "  aws configure                  → AWS targets"
