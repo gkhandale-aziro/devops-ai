@@ -1,0 +1,93 @@
+// Alloy config — scrape Docker container logs and forward to Loki.
+//
+// Only containers labeled `com.aziro.logs=true` are collected. Set this label
+// on the aziro service in docker-compose.yml. Other containers on the host
+// are ignored, so this works safely even on multi-tenant Docker hosts.
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+// Discover running Docker containers.
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Keep only containers that opt-in via the com.aziro.logs=true label,
+// and lift useful labels onto the log stream so they're queryable in Loki.
+discovery.relabel "aziro_only" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_aziro_logs"]
+    regex         = "true"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "container"
+    regex         = "/(.*)"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_aziro_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "aziro"
+  }
+}
+
+// Tail stdout/stderr of the discovered containers.
+loki.source.docker "aziro" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.aziro_only.output
+  forward_to = [loki.process.aziro.receiver]
+}
+
+// Parse the JSON envelope emitted by observability/logging.py so Loki
+// indexes structured fields (level, logger, request_id) as labels/metadata.
+loki.process "aziro" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.json {
+    expressions = {
+      level      = "level",
+      logger     = "logger",
+      request_id = "request_id",
+      ts         = "ts",
+    }
+  }
+
+  stage.labels {
+    values = {
+      level  = "level",
+      logger = "logger",
+    }
+  }
+
+  // request_id is high-cardinality — keep it as structured metadata,
+  // not a label, so the index stays small but it's still queryable.
+  stage.structured_metadata {
+    values = {
+      request_id = "request_id",
+    }
+  }
+
+  stage.timestamp {
+    source = "ts"
+    format = "RFC3339Nano"
+    fallback_formats = ["RFC3339", "2006-01-02T15:04:05.000Z"]
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
