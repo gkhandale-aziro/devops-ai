@@ -10,9 +10,10 @@ app, `obs-run.sh` for the stack) running on plain Docker.
 | --- | --- | --- |
 | Loki | 3100 | Log store (filesystem chunks, 7d retention) |
 | Alloy | 12345 (internal) | Tails Docker container stdout/stderr, parses the JSON envelope, ships to Loki |
-| Grafana | 3000 | UI — pre-provisioned Loki datasource + starter `Aziro — Logs` dashboard |
+| Prometheus | 9090 | Scrapes `aziro:5000/metrics`, 15d retention |
+| Grafana | 3000 | UI — pre-provisioned Loki + Prometheus datasources, starter `Aziro — Logs` and `Aziro — Metrics` dashboards |
 
-All three run as plain `docker run` containers on the `aziro-net` network
+All four run as plain `docker run` containers on the `aziro-net` network
 shared with the app. They start/stop independently of the app, so you can
 enable obs on an existing deploy without bouncing Aziro.
 
@@ -82,12 +83,69 @@ to `aziro-net`) on any other container you want ingested.
 sum by (level) (rate({job="aziro"}[1m]))
 ```
 
+## Metrics (RUN-3)
+
+Prometheus scrapes the app's `/metrics` endpoint every 15s via in-network
+DNS (`aziro:5000`). Metrics surface through the pre-provisioned
+`Aziro — Metrics` dashboard in Grafana.
+
+```text
+aziro /metrics ── prometheus_client text format ─→ Prometheus ─→ Grafana
+                                                       │
+                                                       └── 15d retention
+```
+
+What's measured (label schemas are locked — see
+[observability/metrics.py](../observability/metrics.py)):
+
+- `aziro_http_requests_total{method,route,status}` — paths are normalized
+  (`/api/v1/targets/42` → `/api/v1/targets/:id`) so IDs don't blow up
+  cardinality
+- `aziro_http_request_duration_seconds_bucket{method,route}` — p50/p95/p99
+- `aziro_llm_calls_total{model,outcome}` — `outcome`: ok|quota|timeout|error
+- `aziro_llm_tokens_total{model,direction}` — prompt/completion/total
+- `aziro_llm_fallback_total{from_model,to_model,reason}` — quota-driven
+  primary→Ollama switches
+- `aziro_tool_calls_total{tool,outcome}` — agent tool dispatch
+
+### Useful PromQL queries
+
+```promql
+# Request rate by route
+sum by (route) (rate(aziro_http_requests_total[5m]))
+
+# p95 latency by route
+histogram_quantile(0.95, sum by (route, le) (rate(aziro_http_request_duration_seconds_bucket[5m])))
+
+# LLM fallback count over the last hour
+sum(increase(aziro_llm_fallback_total[1h]))
+
+# Tokens/sec by model
+sum by (model) (rate(aziro_llm_tokens_total[5m]))
+```
+
+### Auth for /metrics
+
+By default `/metrics` is open — Prometheus scrapes over the private
+`aziro-net` docker bridge, and the endpoint isn't exposed on the host.
+To lock it down, set `AZIRO_METRICS_TOKEN` on the app and add a matching
+`authorization: { type: Bearer, credentials_file: ... }` block to
+[prometheus/prometheus.yml](prometheus/prometheus.yml).
+
+### Multi-process mode
+
+`docker-run.sh` sets `PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc`
+so gunicorn workers write per-process metric shards and `/metrics`
+aggregates them on each scrape. Without this, scraping a random worker
+would return 1/N of reality.
+
 ## Retention
 
-168h (7 days), enforced by Loki's compactor. Increase
-`limits_config.retention_period` in [loki/config.yml](loki/config.yml) if
-you need longer history; note that filesystem chunks grow linearly with
-retention × log volume.
+- Loki: 168h (7 days), enforced by the compactor. Increase
+  `limits_config.retention_period` in [loki/config.yml](loki/config.yml)
+  if you need longer history.
+- Prometheus: 15 days, set via `--storage.tsdb.retention.time=15d` in
+  `obs-run.sh`. Chunks grow linearly with retention × time-series count.
 
 ## Environment overrides
 
@@ -99,6 +157,15 @@ All defined by `obs-run.sh`:
 | `GRAFANA_ADMIN_PASSWORD` | `admin` | Grafana admin password |
 | `GRAFANA_PORT` | `3000` | Host port for Grafana |
 | `LOKI_PORT` | `3100` | Host port for Loki |
+| `PROM_PORT` | `9090` | Host port for Prometheus |
+| `BIND_ADDR` | `127.0.0.1` | Interface the host ports bind to |
+
+And on the app side (`docker-run.sh`):
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `AZIRO_METRICS_TOKEN` | unset (open) | Bearer token required on `/metrics` |
+| `PROMETHEUS_MULTIPROC_DIR` | `/tmp/prometheus_multiproc` | Per-worker metric shard dir |
 
 ## Why this stack vs. SaaS?
 

@@ -36,8 +36,19 @@ try:
 except ImportError:
     _anthropic_mod = None
 
+from observability import record_fallback, record_llm_call
+
 # Force unbuffered output so Docker logs show [AI] lines immediately
 print = functools.partial(print, flush=True)
+
+
+def _classify_llm_error(exc: Exception) -> str:
+    """Map an exception to a Prometheus `outcome` label — bounded set only."""
+    if _is_quota_error(exc):
+        return "quota"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    return "error"
 
 # ── Tool definition ──────────────────────────────────────────────────────────
 
@@ -608,6 +619,8 @@ class LLMClient:
     # ── Fallback activation ──────────────────────────────────────────────────
 
     def _activate_fallback(self, error: Exception):
+        # Classify BEFORE consuming the exception — bounded enum for metrics.
+        reason = _classify_llm_error(error)
         ollama_models = _discover_ollama_models()
         if ollama_models:
             tool_fb = _pick_best_fallback(ollama_models, _PREFERRED_TOOL_FALLBACKS)
@@ -618,9 +631,19 @@ class LLMClient:
                 fallback_tool=f"ollama/{tool_fb}",
                 fallback_answer=f"ollama/{answer_fb}",
             )
+            record_fallback(
+                from_model=self.tool_model,
+                to_model=f"ollama/{tool_fb}",
+                reason=reason,
+            )
         else:
             print(f"  [AI] Quota exhausted — no Ollama available")
             self.health.set_degraded(str(error))
+            record_fallback(
+                from_model=self.tool_model,
+                to_model="none",
+                reason=reason,
+            )
 
     def _handle_error(self, error: Exception) -> bool:
         if _is_quota_error(error) or isinstance(error, TimeoutError):
@@ -647,36 +670,60 @@ class LLMClient:
         model = self._effective_model(use_tools)
 
         t0 = time.time()
+        outcome = "ok"
+        prompt_toks = completion_toks = total_toks = 0
         print(f"  [AI] Calling {model} | tools={'yes' if use_tools else 'no'}...")
 
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(
-                _call_api, model, messages,
-                tools=TOOLS if use_tools else None,
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(
+                    _call_api, model, messages,
+                    tools=TOOLS if use_tools else None,
+                )
+                try:
+                    response = future.result(timeout=TIMEOUT_CHAT + 5)
+                except FuturesTimeout:
+                    future.cancel()
+                    raise TimeoutError(f"AI call to {model} timed out after {TIMEOUT_CHAT}s")
+
+            elapsed = time.time() - t0
+            choice = response.choices[0]
+            usage = response.usage
+            if usage:
+                prompt_toks = getattr(usage, "prompt_tokens", 0) or 0
+                completion_toks = getattr(usage, "completion_tokens", 0) or 0
+                total_toks = getattr(usage, "total_tokens", 0) or 0
+            print(f"  [AI] {model} | {elapsed:.1f}s | tokens={total_toks or '?'}")
+
+            if self.health.status != ModelHealth.HEALTHY:
+                if model in (self.tool_model, self.answer_model):
+                    self.health.set_healthy()
+
+            if choice.message.tool_calls:
+                tool_call = choice.message.tool_calls[0]
+                args = tool_call.function.arguments
+                if isinstance(args, str):
+                    args = json.loads(args)
+                return choice.message.content or "", args.get("command"), tool_call.id
+
+            return choice.message.content or "", None, None
+        except Exception as e:
+            outcome = _classify_llm_error(e)
+            raise
+        finally:
+            # RUN-3: always record — success OR failure. `finally` ensures we
+            # don't drop a metric on the error path where it matters most.
+            record_llm_call(
+                model=model,
+                duration_s=time.time() - t0,
+                outcome=outcome,
+                stream=False,
+                prompt_tokens=prompt_toks,
+                completion_tokens=completion_toks,
+                # Only emit `total` when the provider didn't split prompt/completion
+                # (e.g. Anthropic's combined figure) so we don't double-count.
+                total_tokens=total_toks if not (prompt_toks or completion_toks) else 0,
             )
-            try:
-                response = future.result(timeout=TIMEOUT_CHAT + 5)
-            except FuturesTimeout:
-                future.cancel()
-                raise TimeoutError(f"AI call to {model} timed out after {TIMEOUT_CHAT}s")
-
-        elapsed = time.time() - t0
-        choice = response.choices[0]
-        tokens = response.usage.total_tokens if response.usage else "?"
-        print(f"  [AI] {model} | {elapsed:.1f}s | tokens={tokens}")
-
-        if self.health.status != ModelHealth.HEALTHY:
-            if model in (self.tool_model, self.answer_model):
-                self.health.set_healthy()
-
-        if choice.message.tool_calls:
-            tool_call = choice.message.tool_calls[0]
-            args = tool_call.function.arguments
-            if isinstance(args, str):
-                args = json.loads(args)
-            return choice.message.content or "", args.get("command"), tool_call.id
-
-        return choice.message.content or "", None, None
 
     # ── Streaming ────────────────────────────────────────────────────────────
 
@@ -697,21 +744,35 @@ class LLMClient:
     def _stream_once(self, model, messages):
         """Single streaming call. Yields text chunks."""
         t0 = time.time()
+        outcome = "ok"
         print(f"  [AI] Calling {model} | stream...")
 
-        stream = _call_api(model, messages, stream=True)
+        try:
+            stream = _call_api(model, messages, stream=True)
 
-        for chunk in stream:
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                yield delta.content
+            for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    yield delta.content
 
-        elapsed = time.time() - t0
-        print(f"  [AI] {model} | stream | {elapsed:.1f}s")
+            elapsed = time.time() - t0
+            print(f"  [AI] {model} | stream | {elapsed:.1f}s")
 
-        if self.health.status != ModelHealth.HEALTHY:
-            if model in (self.tool_model, self.answer_model):
-                self.health.set_healthy()
+            if self.health.status != ModelHealth.HEALTHY:
+                if model in (self.tool_model, self.answer_model):
+                    self.health.set_healthy()
+        except Exception as e:
+            outcome = _classify_llm_error(e)
+            raise
+        finally:
+            # Streaming providers don't surface token counts mid-stream on the
+            # OpenAI-compatible SDK path, so we record calls + latency only.
+            record_llm_call(
+                model=model,
+                duration_s=time.time() - t0,
+                outcome=outcome,
+                stream=True,
+            )
 
     # ── Transient retry helper ───────────────────────────────────────────────
 

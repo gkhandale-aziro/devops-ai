@@ -31,11 +31,13 @@ set -e
 LOKI_IMAGE="grafana/loki:3.2.0"
 ALLOY_IMAGE="grafana/alloy:v1.4.2"
 GRAFANA_IMAGE="grafana/grafana:11.2.2"
+PROM_IMAGE="prom/prometheus:v2.55.1"
 
 NETWORK="aziro-net"
 LOKI_NAME="aziro-loki"
 ALLOY_NAME="aziro-alloy"
 GRAFANA_NAME="aziro-grafana"
+PROM_NAME="aziro-prometheus"
 
 # Resolve absolute path to the obs config tree (script location, not $PWD)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,7 +48,7 @@ OBS_DIR="$SCRIPT_DIR/obs"
 # the whole file: the app's .env has AZIRO_* / cloud keys that don't belong
 # in this script's environment, and `source` would clobber shell overrides.
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
-    for _v in BIND_ADDR GRAFANA_PORT LOKI_PORT GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD; do
+    for _v in BIND_ADDR GRAFANA_PORT LOKI_PORT PROM_PORT GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD; do
         [[ -n "${!_v+x}" ]] && continue
         _line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?${_v}=" "$SCRIPT_DIR/.env" | head -n1 || true)
         [[ -z "$_line" ]] && continue
@@ -75,6 +77,7 @@ fi
 BIND_ADDR="${BIND_ADDR:-127.0.0.1}"
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 LOKI_PORT="${LOKI_PORT:-3100}"
+PROM_PORT="${PROM_PORT:-9090}"
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-admin}"
 
@@ -96,6 +99,7 @@ cmd_up() {
         docker pull "$LOKI_IMAGE"
         docker pull "$ALLOY_IMAGE"
         docker pull "$GRAFANA_IMAGE"
+        docker pull "$PROM_IMAGE"
     fi
 
     # Fail-closed on remote bind with default credentials. Localhost-only
@@ -117,7 +121,7 @@ cmd_up() {
     ensure_network
 
     # Remove any prior containers (named volumes persist)
-    docker rm -f "$LOKI_NAME" "$ALLOY_NAME" "$GRAFANA_NAME" 2>/dev/null || true
+    docker rm -f "$LOKI_NAME" "$ALLOY_NAME" "$GRAFANA_NAME" "$PROM_NAME" 2>/dev/null || true
 
     # Rollback: if any of the three `docker run` commands below fail, tear
     # down anything we already started so the host isn't left half-up.
@@ -153,6 +157,20 @@ cmd_up() {
         /etc/alloy/config.alloy >/dev/null
     started+=("$ALLOY_NAME")
 
+    echo "Starting Prometheus (bound to ${BIND_ADDR}:${PROM_PORT})..."
+    docker run -d --name "$PROM_NAME" \
+        --network "$NETWORK" \
+        --network-alias prometheus \
+        -p "${BIND_ADDR}:${PROM_PORT}:9090" \
+        -v "$OBS_DIR/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+        -v aziro-prometheus-data:/prometheus \
+        --restart unless-stopped \
+        "$PROM_IMAGE" \
+        --config.file=/etc/prometheus/prometheus.yml \
+        --storage.tsdb.retention.time=15d \
+        --web.enable-lifecycle >/dev/null
+    started+=("$PROM_NAME")
+
     echo "Starting Grafana (bound to ${BIND_ADDR}:${GRAFANA_PORT})..."
     docker run -d --name "$GRAFANA_NAME" \
         --network "$NETWORK" \
@@ -173,8 +191,9 @@ cmd_up() {
 
     echo ""
     echo "Obs stack up."
-    echo "  Grafana:  http://${BIND_ADDR}:${GRAFANA_PORT}  (user: ${GRAFANA_ADMIN_USER})"
-    echo "  Loki:     http://${BIND_ADDR}:${LOKI_PORT}"
+    echo "  Grafana:     http://${BIND_ADDR}:${GRAFANA_PORT}  (user: ${GRAFANA_ADMIN_USER})"
+    echo "  Loki:        http://${BIND_ADDR}:${LOKI_PORT}"
+    echo "  Prometheus:  http://${BIND_ADDR}:${PROM_PORT}"
     echo ""
 
     if [[ "$GRAFANA_ADMIN_PASSWORD" == "admin" ]]; then
@@ -187,16 +206,20 @@ cmd_up() {
 
     echo "App container must be on the '$NETWORK' network and labeled"
     echo "com.aziro.logs=true for Alloy to scrape it. docker-run.sh handles that."
+    echo ""
+    echo "Prometheus scrapes http://aziro:5000/metrics (in-network DNS)."
+    echo "If the app binds only localhost, the scrape still works — both"
+    echo "containers share '$NETWORK'."
 }
 
 cmd_down() {
-    docker rm -f "$LOKI_NAME" "$ALLOY_NAME" "$GRAFANA_NAME" 2>/dev/null || true
+    docker rm -f "$LOKI_NAME" "$ALLOY_NAME" "$GRAFANA_NAME" "$PROM_NAME" 2>/dev/null || true
     echo "Obs stack stopped. Named volumes kept (use 'wipe' to delete data)."
 }
 
 cmd_wipe() {
     cmd_down
-    docker volume rm aziro-loki-data aziro-alloy-data aziro-grafana-data 2>/dev/null || true
+    docker volume rm aziro-loki-data aziro-alloy-data aziro-grafana-data aziro-prometheus-data 2>/dev/null || true
     echo "Obs volumes deleted."
 }
 
@@ -205,16 +228,18 @@ cmd_status() {
         --filter "name=$LOKI_NAME" \
         --filter "name=$ALLOY_NAME" \
         --filter "name=$GRAFANA_NAME" \
+        --filter "name=$PROM_NAME" \
         --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 }
 
 cmd_logs() {
     local svc="$1"
     case "$svc" in
-        loki)    docker logs -f "$LOKI_NAME" ;;
-        alloy)   docker logs -f "$ALLOY_NAME" ;;
-        grafana) docker logs -f "$GRAFANA_NAME" ;;
-        *)       echo "usage: $0 logs {loki|alloy|grafana}"; exit 2 ;;
+        loki)       docker logs -f "$LOKI_NAME" ;;
+        alloy)      docker logs -f "$ALLOY_NAME" ;;
+        grafana)    docker logs -f "$GRAFANA_NAME" ;;
+        prometheus) docker logs -f "$PROM_NAME" ;;
+        *)          echo "usage: $0 logs {loki|alloy|grafana|prometheus}"; exit 2 ;;
     esac
 }
 
