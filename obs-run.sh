@@ -73,6 +73,22 @@ cmd_up() {
         docker pull "$GRAFANA_IMAGE"
     fi
 
+    # Fail-closed on remote bind with default credentials. Localhost-only
+    # bind is fine with admin/admin (dev laptop scenario); exposing the
+    # stack externally with the default password is the actual footgun.
+    if [[ "$BIND_ADDR" != "127.0.0.1" ]] && [[ "$GRAFANA_ADMIN_PASSWORD" == "admin" ]]; then
+        echo "ERROR: BIND_ADDR=$BIND_ADDR exposes Grafana externally, but"
+        echo "       GRAFANA_ADMIN_PASSWORD is still the default 'admin'."
+        echo ""
+        echo "       Set a strong password in .env or the shell before retrying:"
+        echo "         export GRAFANA_ADMIN_PASSWORD='<something-strong>'"
+        echo "         ./obs-run.sh up"
+        echo ""
+        echo "       (Localhost-only is safer — leave BIND_ADDR unset and use"
+        echo "        'ssh -L 3000:127.0.0.1:3000 <host>' to reach Grafana.)"
+        exit 1
+    fi
+
     ensure_network
 
     # Remove any prior containers (named volumes persist)
