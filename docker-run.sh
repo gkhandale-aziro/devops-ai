@@ -45,6 +45,9 @@ echo "Starting $NAME on port $PORT (volume: $DATA_VOLUME, image: $IMAGE)..."
 docker run -d --name "$NAME" \
     -p "$PORT:5000" \
     \
+    --label com.aziro.logs=true \
+    --label com.aziro.service=aziro \
+    \
     -v "$DATA_VOLUME:/app/data" \
     \
     -v "$HOME/.kube:/home/aziro/.host-kube:ro" \

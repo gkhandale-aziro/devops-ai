@@ -1,6 +1,11 @@
 services:
   aziro:
     build: .
+    # Labels picked up by Alloy (obs profile) to opt this container's
+    # stdout/stderr into Loki. No effect when the obs profile is off.
+    labels:
+      com.aziro.logs: "true"
+      com.aziro.service: "aziro"
     ports:
       - "5000:5000"
     volumes:
@@ -50,5 +55,59 @@ services:
           cpus: "2.0"
     restart: unless-stopped
 
+  # ── Observability stack (opt-in) ────────────────────────────────────────────
+  # Start with:  docker compose --profile obs up -d
+  # Access:      Grafana at http://localhost:3000  (admin / admin — change on
+  #              first login or set GF_SECURITY_ADMIN_PASSWORD in .env).
+  # All three services are self-hosted; no telemetry leaves this machine.
+  loki:
+    image: grafana/loki:3.2.0
+    profiles: ["obs"]
+    command: -config.file=/etc/loki/config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./obs/loki/config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.4.2
+    profiles: ["obs"]
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./obs/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    profiles: ["obs"]
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - ./obs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./obs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+    restart: unless-stopped
+
 volumes:
   aziro-data:
+  loki-data:
+  alloy-data:
+  grafana-data:

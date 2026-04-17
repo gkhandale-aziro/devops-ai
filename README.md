@@ -332,6 +332,21 @@ See [`docs/setup-guide.md`](docs/setup-guide.md) for the full Docker reference a
 
 ---
 
+## Observability (opt-in)
+
+Aziro ships with a self-hosted log stack — Loki + Alloy + Grafana — gated behind the `obs` Compose profile. Nothing runs unless you ask for it; nothing leaves your host when it does.
+
+```bash
+docker compose --profile obs up -d
+# Grafana: http://localhost:3000  (admin / admin by default)
+```
+
+The app emits one JSON log line per event with a per-request `request_id` so you can trace a client-side error to a server log line. Alloy tails the `aziro` container's stdout, parses the JSON envelope, and pushes to Loki; the `Aziro — Logs` dashboard is pre-provisioned.
+
+See [`obs/README.md`](obs/README.md) for query examples, retention tuning, and how the pipeline is wired. A Helm mirror of this stack (`observability.enabled`) lands in v1.1.
+
+---
+
 ## Architecture
 
 ### Project structure
