@@ -40,7 +40,7 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 - [x] **SEC-2** Audit log table: user, timestamp, target_id, command, result (S) — shipped in Phase E1
 - [x] **SEC-3** Flask-Limiter rate limits on `/api/v1/chat/*/stream` — LLM cost cap (S) — shipped in Phase F
 - [x] **SEC-4** CSRF protection + security headers (CSP, HSTS, X-Frame-Options) (S) — shipped in Phase D
-- [ ] **SEC-5** SSH host key verification — replace `AutoAddPolicy` with `RejectPolicy` (S)
+- [x] **SEC-5** SSH host key verification — pinned-key strict mode (PR #22, `bbe42ec`)
 - [ ] **SEC-6** PII scrubbing on stored incident snapshots + retention policy (M)
 - [ ] **SEC-7** Feature flag / kill switch for experimental paths (S)
 
