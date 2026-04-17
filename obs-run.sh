@@ -157,11 +157,22 @@ cmd_up() {
         /etc/alloy/config.alloy >/dev/null
     started+=("$ALLOY_NAME")
 
-    echo "Starting Prometheus (bound to ${BIND_ADDR}:${PROM_PORT})..."
+    # Prometheus has no auth and exposes /-/reload (lifecycle). Grafana
+    # reaches it over docker DNS (`http://prometheus:9090`), so we don't
+    # need the host port for the normal UI flow. Default to localhost-only
+    # regardless of $BIND_ADDR; set PROM_EXPOSE=1 to publish externally
+    # (debugging only — put a reverse-proxy + auth in front before doing so).
+    local prom_bind="127.0.0.1"
+    if [[ "${PROM_EXPOSE:-0}" == "1" ]]; then
+        prom_bind="$BIND_ADDR"
+        echo "WARNING: PROM_EXPOSE=1 — publishing Prometheus on ${prom_bind}:${PROM_PORT}"
+        echo "         (no auth; /-/reload is reachable. Add a reverse proxy before production use.)"
+    fi
+    echo "Starting Prometheus (bound to ${prom_bind}:${PROM_PORT})..."
     docker run -d --name "$PROM_NAME" \
         --network "$NETWORK" \
         --network-alias prometheus \
-        -p "${BIND_ADDR}:${PROM_PORT}:9090" \
+        -p "${prom_bind}:${PROM_PORT}:9090" \
         -v "$OBS_DIR/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
         -v aziro-prometheus-data:/prometheus \
         --restart unless-stopped \
@@ -193,7 +204,7 @@ cmd_up() {
     echo "Obs stack up."
     echo "  Grafana:     http://${BIND_ADDR}:${GRAFANA_PORT}  (user: ${GRAFANA_ADMIN_USER})"
     echo "  Loki:        http://${BIND_ADDR}:${LOKI_PORT}"
-    echo "  Prometheus:  http://${BIND_ADDR}:${PROM_PORT}"
+    echo "  Prometheus:  http://${prom_bind}:${PROM_PORT}"
     echo ""
 
     if [[ "$GRAFANA_ADMIN_PASSWORD" == "admin" ]]; then

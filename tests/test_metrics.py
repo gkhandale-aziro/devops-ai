@@ -162,13 +162,21 @@ class TestMetricsHandlerAuth:
 
 # ── /metrics Flask route integration ─────────────────────────────────────────
 
-@pytest.fixture
-def fresh_app(tmp_path, monkeypatch):
+def _reload_web(tmp_path, monkeypatch, *, api_key: str | None = None):
+    """Import ui.web fresh with env fully applied first.
+
+    ui.web snapshots `_API_KEY` and similar globals at import time, so any
+    `monkeypatch.setenv(...)` that affects auth MUST happen before the import.
+    """
     monkeypatch.setenv("AZIRO_DATA_DIR", str(tmp_path))
-    for key in ("AZIRO_API_KEY", "AZIRO_AUTH_MODE", "AZIRO_SESSION_SECRET",
+    for key in ("AZIRO_AUTH_MODE", "AZIRO_SESSION_SECRET",
                 "AZIRO_BOOTSTRAP_ADMIN_USER", "AZIRO_BOOTSTRAP_ADMIN_PASSWORD",
                 "AZIRO_METRICS_TOKEN", "AZIRO_RATE_LIMIT"):
         monkeypatch.delenv(key, raising=False)
+    if api_key is None:
+        monkeypatch.delenv("AZIRO_API_KEY", raising=False)
+    else:
+        monkeypatch.setenv("AZIRO_API_KEY", api_key)
     for m in ("ui.web", "store", "store.db", "store.metrics",
               "sessions", "sessions.manager",
               "targets", "targets.manager",
@@ -178,6 +186,17 @@ def fresh_app(tmp_path, monkeypatch):
     import ui.web as web_mod
     web_mod.app.config["TESTING"] = True
     return web_mod, web_mod.app.test_client()
+
+
+@pytest.fixture
+def fresh_app(tmp_path, monkeypatch):
+    return _reload_web(tmp_path, monkeypatch, api_key=None)
+
+
+@pytest.fixture
+def auth_required_app(tmp_path, monkeypatch):
+    """Flask app imported with AZIRO_API_KEY set, so /api/ auth is real."""
+    return _reload_web(tmp_path, monkeypatch, api_key="test-api-key-xyz")
 
 
 class TestMetricsRoute:
@@ -195,11 +214,21 @@ class TestMetricsRoute:
         # Our HTTP counter should be present after the healthz call above.
         assert "aziro_http_requests_total" in body
 
-    def test_metrics_endpoint_bypasses_api_auth(self, fresh_app, monkeypatch):
+    def test_api_auth_actually_enforced(self, auth_required_app):
+        """Sanity check for the auth-bypass test below: with AZIRO_API_KEY set
+        and no Authorization header, /api/ routes must return 401. If this
+        ever stops holding, the bypass assertion becomes trivially true.
+
+        Note: /api/v1/healthz and /readyz are explicitly auth-exempt as
+        k8s probes, so we pick a real auth-gated route (/targets)."""
+        _, c = auth_required_app
+        r = c.get("/api/v1/targets")
+        assert r.status_code == 401
+
+    def test_metrics_endpoint_bypasses_api_auth(self, auth_required_app):
         """/metrics is scraped by Prometheus — it must not require API key
         or session auth, which are enforced only on /api/ routes."""
-        monkeypatch.setenv("AZIRO_API_KEY", "should-not-matter-for-metrics")
-        _, c = fresh_app
+        _, c = auth_required_app
         r = c.get("/metrics")
         # No API key in the request, yet /metrics must still succeed.
         assert r.status_code == 200

@@ -37,17 +37,16 @@ from prometheus_client import (
 # ── Registry ──────────────────────────────────────────────────────────────────
 # Single-process: prometheus_client's default REGISTRY is fine, but we use an
 # explicit one so tests can reset state without touching globals.
-# Multi-process: MultiProcessCollector reads shard files on every scrape.
+# Multi-process: each worker writes shard files (mmap-backed values) because
+# PROMETHEUS_MULTIPROC_DIR is set; on scrape we build a *fresh* registry with
+# MultiProcessCollector attached — doing that here on `_registry` in addition
+# to `registry=_registry` on each metric would double every series. See
+# https://prometheus.github.io/client_python/multiprocess/
 _registry = CollectorRegistry()
-
-if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
-    # This collector pulls from the shard dir; workers still write to the
-    # default global collectors, which look up the env var themselves.
-    multiprocess.MultiProcessCollector(_registry)
 
 
 def registry() -> CollectorRegistry:
-    """Expose the registry for the /metrics handler and tests."""
+    """Expose the registry for tests and direct callers."""
     return _registry
 
 
@@ -230,7 +229,16 @@ def metrics_handler(authorization_header: Optional[str]) -> tuple[bytes, int, di
         if not hmac.compare_digest(supplied, _METRICS_TOKEN):
             return b"Unauthorized", 401, {"Content-Type": "text/plain; charset=utf-8"}
 
-    body = generate_latest(_registry)
+    # In multi-process mode, aggregate from shard files via a scrape-only
+    # registry. Reading from `_registry` directly would return only this
+    # worker's view AND duplicate series if a MultiProcessCollector was also
+    # attached to it.
+    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        scrape_registry = CollectorRegistry()
+        multiprocess.MultiProcessCollector(scrape_registry)
+        body = generate_latest(scrape_registry)
+    else:
+        body = generate_latest(_registry)
     return body, 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
 

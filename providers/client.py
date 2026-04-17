@@ -32,11 +32,30 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from openai import OpenAI
 
 try:
+    from openai import APITimeoutError as _OpenAITimeout
+except ImportError:
+    _OpenAITimeout = None
+
+try:
     import anthropic as _anthropic_mod
+    from anthropic import APITimeoutError as _AnthropicTimeout
 except ImportError:
     _anthropic_mod = None
+    _AnthropicTimeout = None
 
 from observability import record_fallback, record_llm_call
+
+
+# SDK timeouts (OpenAI, Anthropic) do NOT inherit from built-in TimeoutError,
+# so naive isinstance(exc, TimeoutError) misses them. This tuple captures
+# every timeout we might see from our providers.
+_TIMEOUT_TYPES: tuple = tuple(
+    t for t in (TimeoutError, _OpenAITimeout, _AnthropicTimeout) if t is not None
+)
+
+
+def _is_timeout(exc: Exception) -> bool:
+    return isinstance(exc, _TIMEOUT_TYPES)
 
 # Force unbuffered output so Docker logs show [AI] lines immediately
 print = functools.partial(print, flush=True)
@@ -46,7 +65,7 @@ def _classify_llm_error(exc: Exception) -> str:
     """Map an exception to a Prometheus `outcome` label — bounded set only."""
     if _is_quota_error(exc):
         return "quota"
-    if isinstance(exc, TimeoutError):
+    if _is_timeout(exc):
         return "timeout"
     return "error"
 
@@ -618,9 +637,12 @@ class LLMClient:
 
     # ── Fallback activation ──────────────────────────────────────────────────
 
-    def _activate_fallback(self, error: Exception):
+    def _activate_fallback(self, error: Exception, failing_model: str | None = None):
         # Classify BEFORE consuming the exception — bounded enum for metrics.
         reason = _classify_llm_error(error)
+        # Which primary actually failed? Non-tool calls can fail on answer_model;
+        # default to tool_model so legacy callers still get a value.
+        from_model = failing_model or self.tool_model
         ollama_models = _discover_ollama_models()
         if ollama_models:
             tool_fb = _pick_best_fallback(ollama_models, _PREFERRED_TOOL_FALLBACKS)
@@ -632,7 +654,7 @@ class LLMClient:
                 fallback_answer=f"ollama/{answer_fb}",
             )
             record_fallback(
-                from_model=self.tool_model,
+                from_model=from_model,
                 to_model=f"ollama/{tool_fb}",
                 reason=reason,
             )
@@ -640,15 +662,15 @@ class LLMClient:
             print(f"  [AI] Quota exhausted — no Ollama available")
             self.health.set_degraded(str(error))
             record_fallback(
-                from_model=self.tool_model,
+                from_model=from_model,
                 to_model="none",
                 reason=reason,
             )
 
-    def _handle_error(self, error: Exception) -> bool:
-        if _is_quota_error(error) or isinstance(error, TimeoutError):
+    def _handle_error(self, error: Exception, failing_model: str | None = None) -> bool:
+        if _is_quota_error(error) or _is_timeout(error):
             if self.health.status == ModelHealth.HEALTHY:
-                self._activate_fallback(error)
+                self._activate_fallback(error, failing_model=failing_model)
             return self.health.status == ModelHealth.FALLBACK
         return False
 
@@ -660,11 +682,14 @@ class LLMClient:
             return self._chat_once(messages, use_tools)
         except Exception as e:
             print(f"  [AI] Chat error ({type(e).__name__}): {str(e)[:150]}")
-            if self._handle_error(e):
+            if self._handle_error(e, failing_model=self._effective_model(use_tools)):
                 return self._chat_once(messages, use_tools)
             if _is_quota_error(e):
                 raise
-            return self._retry_transient(lambda: self._chat_once(messages, use_tools), e)
+            return self._retry_transient(
+                lambda: self._chat_once(messages, use_tools), e,
+                failing_model=self._effective_model(use_tools),
+            )
 
     def _chat_once(self, messages, use_tools):
         model = self._effective_model(use_tools)
@@ -738,7 +763,7 @@ class LLMClient:
         except Exception as e:
             print(f"  [AI] Stream error ({type(e).__name__}): {str(e)[:150]}")
             # Activate fallback so next call uses Ollama
-            self._handle_error(e)
+            self._handle_error(e, failing_model=model)
             raise
 
     def _stream_once(self, model, messages):
@@ -776,7 +801,7 @@ class LLMClient:
 
     # ── Transient retry helper ───────────────────────────────────────────────
 
-    def _retry_transient(self, fn, original_error):
+    def _retry_transient(self, fn, original_error, failing_model: str | None = None):
         for attempt in range(TRANSIENT_RETRIES):
             time.sleep(TRANSIENT_DELAY)
             print(f"  [AI] Transient retry {attempt + 1}/{TRANSIENT_RETRIES}")
@@ -784,7 +809,7 @@ class LLMClient:
                 return fn()
             except Exception as e:
                 if _is_quota_error(e):
-                    if self._handle_error(e):
+                    if self._handle_error(e, failing_model=failing_model):
                         return fn()
                     raise
                 original_error = e

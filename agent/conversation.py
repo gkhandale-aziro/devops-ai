@@ -241,7 +241,9 @@ class Agent:
                 yield {"type": "cmd", "cmd": command}
                 # RUN-3: instrument tool execution. `tool` label is the fixed
                 # function name ("run_command") — NEVER the command text,
-                # which would explode Prometheus cardinality.
+                # which would explode Prometheus cardinality. Metrics
+                # emission is best-effort: a Prometheus-side failure must
+                # never mask the original tool exception or abort success.
                 _tool_t0 = time.monotonic()
                 _tool_outcome = "ok"
                 try:
@@ -249,9 +251,16 @@ class Agent:
                               else self._tools.execute(target, command))
                 except Exception:
                     _tool_outcome = "error"
-                    record_tool_call("run_command", time.monotonic() - _tool_t0, _tool_outcome)
                     raise
-                record_tool_call("run_command", time.monotonic() - _tool_t0, _tool_outcome)
+                finally:
+                    try:
+                        record_tool_call(
+                            "run_command",
+                            time.monotonic() - _tool_t0,
+                            _tool_outcome,
+                        )
+                    except Exception:
+                        pass
                 yield {"type": "tool_output", "output": output}
                 commands_run += 1
                 ran_commands.add(command)
