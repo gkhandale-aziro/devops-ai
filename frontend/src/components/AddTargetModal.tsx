@@ -25,6 +25,7 @@ const TYPE_CARDS: { type: TargetType; label: string; color: string }[] = [
   { type: "gcp",        label: "GCP",          color: "#4285F4" },
   { type: "azure",      label: "Azure",        color: "#0078D4" },
   { type: "terraform",  label: "Terraform",    color: "#7B42BC" },
+  { type: "jenkins",    label: "Jenkins",      color: "#D33833" },
 ];
 
 const K8S_PROVIDERS: { id: K8sProvider; label: string; desc: string; icon: ReactNode; color: string }[] = [
@@ -423,6 +424,13 @@ export function AddTargetModal({ onClose, onAdd, editTarget, onUpdate }: Props) 
     terraform: <>
       {hint("Workspace is the directory containing your .tf files. Terraform's -chdir flag will be injected automatically.")}
       {field("Workspace directory", "workspace", "/path/to/terraform/project")}
+    </>,
+    jenkins: <>
+      {hint("Use your Jenkins user + an API token (User → Configure → API Token). The token is stored encrypted.")}
+      {field("Jenkins URL *", "url", "https://jenkins.example.com")}
+      {field("Username *", "username", "admin")}
+      {field("API Token *", "api_token", "paste token here", "password")}
+      {field("Verify TLS", "verify_ssl", "1 to enforce TLS verification (blank = on)")}
     </>,
   };
 

@@ -2,7 +2,8 @@
 
 export type TargetType =
   | "ssh" | "kubernetes" | "docker"
-  | "aws" | "gcp" | "azure" | "terraform" | "local";
+  | "aws" | "gcp" | "azure" | "terraform" | "local"
+  | "jenkins";
 
 export type TargetStatus = "online" | "offline" | "unknown";
 
@@ -195,7 +196,8 @@ export type TabId =
   | "account" | "ec2" | "s3" | "eks" | "rds"                   // aws
   | "compute" | "gke" | "iam"                                   // gcp
   | "vms" | "aks" | "groups"                                    // azure
-  | "state" | "plan" | "outputs";                               // terraform
+  | "state" | "plan" | "outputs"                                // terraform
+  | "pipelines" | "builds" | "queue" | "agents";                // jenkins
 
 export interface Tab {
   id:    TabId;
@@ -290,5 +292,11 @@ export const TABS_BY_TYPE: Record<TargetType, Tab[]> = {
     { id: "state",   label: "State"   },
     { id: "plan",    label: "Plan"    },
     { id: "outputs", label: "Outputs" },
+  ],
+  jenkins: [
+    { id: "pipelines", label: "Pipelines" },
+    { id: "builds",    label: "Builds"    },
+    { id: "queue",     label: "Queue"     },
+    { id: "agents",    label: "Agents"    },
   ],
 };

@@ -12,6 +12,7 @@ import {
   MonitorCloud,
   Blocks,
   Laptop,
+  Hammer,
 } from "lucide-react";
 import type { TargetType } from "../types";
 
@@ -31,4 +32,5 @@ export const TARGET_META: Record<TargetType, TypeMeta> = {
   azure:      { icon: MonitorCloud,   color: "#0078D4", label: "Azure" },
   terraform:  { icon: Blocks,         color: "#7B42BC", label: "Terraform" },
   local:      { icon: Laptop,         color: "#22c55e", label: "Local" },
+  jenkins:    { icon: Hammer,         color: "#D33833", label: "Jenkins" },
 };

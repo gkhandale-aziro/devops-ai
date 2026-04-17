@@ -16,7 +16,7 @@ from targets.crypto import encrypt, decrypt, is_encrypted
 
 _SENSITIVE_KEYS = {
     "password", "private_key", "secret_key", "secret_access_key",
-    "api_key", "token", "auth_token", "access_token", "client_secret",
+    "api_key", "api_token", "token", "auth_token", "access_token", "client_secret",
     "service_account_key", "credentials", "key_passphrase",
     "access_key_id", "session_token",
     "kubeconfig_data", "service_account_key",
