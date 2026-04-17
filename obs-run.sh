@@ -48,12 +48,22 @@ OBS_DIR="$SCRIPT_DIR/obs"
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
     for _v in BIND_ADDR GRAFANA_PORT LOKI_PORT GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD; do
         [[ -n "${!_v+x}" ]] && continue
-        _val=$(grep -E "^[[:space:]]*(export[[:space:]]+)?${_v}=" "$SCRIPT_DIR/.env" \
-               | head -n1 \
-               | sed -E "s/^[[:space:]]*(export[[:space:]]+)?${_v}=//; s/^\"(.*)\"\$/\1/; s/^'(.*)'\$/\1/")
+        _line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?${_v}=" "$SCRIPT_DIR/.env" | head -n1 || true)
+        [[ -z "$_line" ]] && continue
+        _raw=$(sed -E "s/^[[:space:]]*(export[[:space:]]+)?${_v}=//" <<<"$_line")
+        # Quoted values keep their contents verbatim; unquoted values get any
+        # inline `# comment` stripped (and trailing whitespace trimmed).
+        if [[ "$_raw" =~ ^\"(.*)\"[[:space:]]*(#.*)?$ ]]; then
+            _val="${BASH_REMATCH[1]}"
+        elif [[ "$_raw" =~ ^\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
+            _val="${BASH_REMATCH[1]}"
+        else
+            _val="${_raw%%[[:space:]]#*}"
+            _val="${_val%"${_val##*[![:space:]]}"}"
+        fi
         [[ -n "$_val" ]] && export "${_v}=${_val}"
     done
-    unset _v _val
+    unset _v _line _raw _val
 fi
 
 # Host-binding address:
