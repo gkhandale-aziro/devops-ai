@@ -14,7 +14,7 @@
 #   ./obs-run.sh status       # show container state
 #   ./obs-run.sh logs <svc>   # tail logs for loki|alloy|grafana
 #
-# Env overrides:
+# Env overrides (read from ./.env next to this script, or the shell — shell wins):
 #   BIND_ADDR                host iface to bind (default 127.0.0.1 — localhost
 #                            only; set 0.0.0.0 only for remote access + strong
 #                            GRAFANA_ADMIN_PASSWORD, since Loki itself is
@@ -37,6 +37,35 @@ LOKI_NAME="aziro-loki"
 ALLOY_NAME="aziro-alloy"
 GRAFANA_NAME="aziro-grafana"
 
+# Resolve absolute path to the obs config tree (script location, not $PWD)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OBS_DIR="$SCRIPT_DIR/obs"
+
+# Pull the 5 obs vars from ./.env if not already set in the shell. Shell
+# exports win — we skip any var that's already present. We don't `source`
+# the whole file: the app's .env has AZIRO_* / cloud keys that don't belong
+# in this script's environment, and `source` would clobber shell overrides.
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    for _v in BIND_ADDR GRAFANA_PORT LOKI_PORT GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD; do
+        [[ -n "${!_v+x}" ]] && continue
+        _line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?${_v}=" "$SCRIPT_DIR/.env" | head -n1 || true)
+        [[ -z "$_line" ]] && continue
+        _raw=$(sed -E "s/^[[:space:]]*(export[[:space:]]+)?${_v}=//" <<<"$_line")
+        # Quoted values keep their contents verbatim; unquoted values get any
+        # inline `# comment` stripped (and trailing whitespace trimmed).
+        if [[ "$_raw" =~ ^\"(.*)\"[[:space:]]*(#.*)?$ ]]; then
+            _val="${BASH_REMATCH[1]}"
+        elif [[ "$_raw" =~ ^\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
+            _val="${BASH_REMATCH[1]}"
+        else
+            _val="${_raw%%[[:space:]]#*}"
+            _val="${_val%"${_val##*[![:space:]]}"}"
+        fi
+        [[ -n "$_val" ]] && export "${_v}=${_val}"
+    done
+    unset _v _line _raw _val
+fi
+
 # Host-binding address:
 #   Default 127.0.0.1 — Loki/Grafana reachable from localhost only. Other
 #   containers on aziro-net reach them via DNS regardless of this setting.
@@ -48,10 +77,6 @@ GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 LOKI_PORT="${LOKI_PORT:-3100}"
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-admin}"
-
-# Resolve absolute path to the obs config tree (script location, not $PWD)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OBS_DIR="$SCRIPT_DIR/obs"
 
 ensure_network() {
     if ! docker network inspect "$NETWORK" >/dev/null 2>&1; then
