@@ -15,8 +15,12 @@
 #   ./obs-run.sh logs <svc>   # tail logs for loki|alloy|grafana
 #
 # Env overrides:
-#   GRAFANA_ADMIN_USER       default admin
-#   GRAFANA_ADMIN_PASSWORD   default admin
+#   BIND_ADDR                host iface to bind (default 127.0.0.1 — localhost
+#                            only; set 0.0.0.0 only for remote access + strong
+#                            GRAFANA_ADMIN_PASSWORD, since Loki itself is
+#                            unauthenticated and should stay behind Grafana)
+#   GRAFANA_ADMIN_USER       default admin      (change before sharing access)
+#   GRAFANA_ADMIN_PASSWORD   default admin      (script warns on this default)
 #   GRAFANA_PORT             host port for Grafana (default 3000)
 #   LOKI_PORT                host port for Loki    (default 3100)
 # =============================================================================
@@ -33,6 +37,13 @@ LOKI_NAME="aziro-loki"
 ALLOY_NAME="aziro-alloy"
 GRAFANA_NAME="aziro-grafana"
 
+# Host-binding address:
+#   Default 127.0.0.1 — Loki/Grafana reachable from localhost only. Other
+#   containers on aziro-net reach them via DNS regardless of this setting.
+#   Set BIND_ADDR=0.0.0.0 only if you need external access (and then
+#   MUST set non-default GRAFANA_ADMIN_PASSWORD — auth is on Grafana side;
+#   Loki itself is unauthenticated, so prefer going through Grafana.)
+BIND_ADDR="${BIND_ADDR:-127.0.0.1}"
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 LOKI_PORT="${LOKI_PORT:-3100}"
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
@@ -67,16 +78,25 @@ cmd_up() {
     # Remove any prior containers (named volumes persist)
     docker rm -f "$LOKI_NAME" "$ALLOY_NAME" "$GRAFANA_NAME" 2>/dev/null || true
 
-    echo "Starting Loki..."
+    # Rollback: if any of the three `docker run` commands below fail, tear
+    # down anything we already started so the host isn't left half-up.
+    local started=()
+    _cleanup() {
+        [[ ${#started[@]} -gt 0 ]] && docker rm -f "${started[@]}" >/dev/null 2>&1 || true
+    }
+    trap _cleanup ERR
+
+    echo "Starting Loki (bound to ${BIND_ADDR}:${LOKI_PORT})..."
     docker run -d --name "$LOKI_NAME" \
         --network "$NETWORK" \
         --network-alias loki \
-        -p "$LOKI_PORT:3100" \
+        -p "${BIND_ADDR}:${LOKI_PORT}:3100" \
         -v "$OBS_DIR/loki/config.yml:/etc/loki/config.yml:ro" \
         -v aziro-loki-data:/loki \
         --restart unless-stopped \
         "$LOKI_IMAGE" \
         -config.file=/etc/loki/config.yml >/dev/null
+    started+=("$LOKI_NAME")
 
     echo "Starting Alloy..."
     docker run -d --name "$ALLOY_NAME" \
@@ -90,11 +110,12 @@ cmd_up() {
         --server.http.listen-addr=0.0.0.0:12345 \
         --storage.path=/var/lib/alloy/data \
         /etc/alloy/config.alloy >/dev/null
+    started+=("$ALLOY_NAME")
 
-    echo "Starting Grafana..."
+    echo "Starting Grafana (bound to ${BIND_ADDR}:${GRAFANA_PORT})..."
     docker run -d --name "$GRAFANA_NAME" \
         --network "$NETWORK" \
-        -p "$GRAFANA_PORT:3000" \
+        -p "${BIND_ADDR}:${GRAFANA_PORT}:3000" \
         -e "GF_SECURITY_ADMIN_USER=$GRAFANA_ADMIN_USER" \
         -e "GF_SECURITY_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD" \
         -e "GF_AUTH_ANONYMOUS_ENABLED=false" \
@@ -105,12 +126,24 @@ cmd_up() {
         -v aziro-grafana-data:/var/lib/grafana \
         --restart unless-stopped \
         "$GRAFANA_IMAGE" >/dev/null
+    started+=("$GRAFANA_NAME")
+
+    trap - ERR
 
     echo ""
     echo "Obs stack up."
-    echo "  Grafana:  http://localhost:$GRAFANA_PORT  ($GRAFANA_ADMIN_USER / $GRAFANA_ADMIN_PASSWORD)"
-    echo "  Loki:     http://localhost:$LOKI_PORT"
+    echo "  Grafana:  http://${BIND_ADDR}:${GRAFANA_PORT}  (user: ${GRAFANA_ADMIN_USER})"
+    echo "  Loki:     http://${BIND_ADDR}:${LOKI_PORT}"
     echo ""
+
+    if [[ "$GRAFANA_ADMIN_PASSWORD" == "admin" ]]; then
+        echo "  WARNING: Grafana admin password is the default ('admin')."
+        echo "           Set GRAFANA_ADMIN_PASSWORD in .env or the shell"
+        echo "           before first start — Grafana will prompt to reset"
+        echo "           otherwise. Do NOT leave this on a shared/VM host."
+        echo ""
+    fi
+
     echo "App container must be on the '$NETWORK' network and labeled"
     echo "com.aziro.logs=true for Alloy to scrape it. docker-run.sh handles that."
 }
