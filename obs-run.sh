@@ -41,13 +41,19 @@ GRAFANA_NAME="aziro-grafana"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OBS_DIR="$SCRIPT_DIR/obs"
 
-# Auto-source ./.env next to this script so BIND_ADDR / GRAFANA_ADMIN_* /
-# *_PORT can live there alongside the app's vars — shell exports still win.
+# Pull the 5 obs vars from ./.env if not already set in the shell. Shell
+# exports win — we skip any var that's already present. We don't `source`
+# the whole file: the app's .env has AZIRO_* / cloud keys that don't belong
+# in this script's environment, and `source` would clobber shell overrides.
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source "$SCRIPT_DIR/.env"
-    set +a
+    for _v in BIND_ADDR GRAFANA_PORT LOKI_PORT GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD; do
+        [[ -n "${!_v+x}" ]] && continue
+        _val=$(grep -E "^[[:space:]]*(export[[:space:]]+)?${_v}=" "$SCRIPT_DIR/.env" \
+               | head -n1 \
+               | sed -E "s/^[[:space:]]*(export[[:space:]]+)?${_v}=//; s/^\"(.*)\"\$/\1/; s/^'(.*)'\$/\1/")
+        [[ -n "$_val" ]] && export "${_v}=${_val}"
+    done
+    unset _v _val
 fi
 
 # Host-binding address:
