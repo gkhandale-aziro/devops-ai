@@ -1,6 +1,8 @@
 # Aziro — Observability stack (opt-in)
 
-Self-hosted log aggregation for Aziro Ops. No data leaves your host.
+Self-hosted log aggregation for Aziro Ops. No data leaves your host. No
+Docker Compose dependency — two shell scripts (`docker-run.sh` for the
+app, `obs-run.sh` for the stack) running on plain Docker.
 
 ## What's here
 
@@ -10,65 +12,59 @@ Self-hosted log aggregation for Aziro Ops. No data leaves your host.
 | Alloy | 12345 (internal) | Tails Docker container stdout/stderr, parses the JSON envelope, ships to Loki |
 | Grafana | 3000 | UI — pre-provisioned Loki datasource + starter `Aziro — Logs` dashboard |
 
-The stack is gated behind the `obs` Compose profile. The default
-`docker compose up` starts only the Aziro app; you opt in explicitly.
+All three run as plain `docker run` containers on the `aziro-net` network
+shared with the app. They start/stop independently of the app, so you can
+enable obs on an existing deploy without bouncing Aziro.
 
-## Prerequisite — Docker Compose v2
+## Requirements
 
-The obs stack ships as Compose services. On the VM, install the plugin once:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y docker-compose-plugin
-docker compose version   # Docker Compose version v2.x.x
-```
-
-Nothing else on the host changes — `docker-run.sh` keeps working as before.
+Docker only. Nothing else. Works on any Linux host (including your VM)
+with Docker installed — no Compose, no Helm, no k8s.
 
 ## Start / stop
 
-Aziro runs via `docker-run.sh` (raw `docker run`); the obs stack runs via
-Compose. Alloy finds the Aziro container through the Docker socket, so
-the two don't need to share a Compose project.
-
 ```bash
-# On the VM — start Aziro, then obs
-./docker-run.sh --rebuild                     # app (unchanged flow)
-docker compose up -d loki alloy grafana       # obs (one-time; survives app rebuilds)
+# Start the app (creates aziro-net, labels the container)
+./docker-run.sh --rebuild
 
-# Local dev only — compose brings up everything together
-docker compose --profile obs up -d
+# Start the obs stack on the same network
+./obs-run.sh up
 
-# Stop obs (keep Aziro running)
-docker compose stop loki alloy grafana
+# Everything
+./obs-run.sh status
+docker ps --filter network=aziro-net
 
-# Stop everything (removes obs containers but keeps volumes)
-docker compose down
+# Stop obs (keep app + data volumes)
+./obs-run.sh down
+
+# Destroy obs data (after down)
+./obs-run.sh wipe
 ```
 
 Grafana: <http://localhost:3000> (or <http://vm-sagarpoc:3000>) — default
 `admin` / `admin`. Set `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`
-in `.env` before first start to avoid the forced password-change prompt.
+in `.env` (or pass them in the shell) before first start to avoid the
+forced password-change prompt.
 
 ## How logs flow
 
 ```text
 aziro container stdout (JSON, one obj per line)
-        │  (Docker socket)
+        │  (Docker socket — host-level, works across networks)
         ▼
      Alloy  ── parses JSON → labels: level, logger
         │    ── request_id → structured metadata (not a label; avoid
         │                     high-cardinality index blowup)
         ▼
-      Loki  (filesystem chunks under loki-data volume)
+      Loki  (filesystem chunks under aziro-loki-data volume)
         │
         ▼
     Grafana Explore / dashboard
 ```
 
 Only containers labeled `com.aziro.logs=true` are scraped. The `aziro`
-service is pre-labeled in `docker-compose.yml`. Add the label to any
-other container you want ingested.
+container is pre-labeled by `docker-run.sh`. Add the label (and attach
+to `aziro-net`) on any other container you want ingested.
 
 ## Useful queries (Grafana → Explore → Loki)
 
@@ -93,6 +89,17 @@ sum by (level) (rate({job="aziro"}[1m]))
 you need longer history; note that filesystem chunks grow linearly with
 retention × log volume.
 
+## Environment overrides
+
+All defined by `obs-run.sh`:
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `GRAFANA_ADMIN_USER` | `admin` | Grafana admin username |
+| `GRAFANA_ADMIN_PASSWORD` | `admin` | Grafana admin password |
+| `GRAFANA_PORT` | `3000` | Host port for Grafana |
+| `LOKI_PORT` | `3100` | Host port for Loki |
+
 ## Why this stack vs. SaaS?
 
 Aziro Ops runs inside customer infrastructure and handles credentials,
@@ -101,8 +108,9 @@ vendor would leak that context. Loki + Alloy + Grafana gives us the
 "correlate a request, grep by level, chart error rates" workflow with
 zero external dependencies.
 
-## v1.1 — Helm chart
+## v1.1 — Kubernetes / Helm
 
-No Helm chart ships with v1.0 (Compose-only deploy). When the chart
-lands (OBS-1, v1.1), it will mirror this stack behind a single
-`observability.enabled` values flag.
+v1.0 covers the Docker deploy path only (VM, laptop, any Linux host with
+Docker). When we ship Helm charts (OBS-1, v1.1), the same `obs/` config
+tree (Loki config, Grafana provisioning, dashboards) ports over as-is —
+only Alloy's source stage changes from Docker to Kubernetes.

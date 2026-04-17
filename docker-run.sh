@@ -18,9 +18,14 @@
 #   AZIRO_NAME          container name      (default aziro-ops)
 #   AZIRO_IMAGE         image tag           (default aziro-ops)
 #   AZIRO_DATA_VOLUME   named volume        (default aziro-data)
+#   AZIRO_NETWORK       docker network      (default aziro-net — shared with obs)
 #
 #   AZIRO_PORT=4000 AZIRO_NAME=aziro-ops-dev AZIRO_IMAGE=aziro-ops-dev \
 #     AZIRO_DATA_VOLUME=aziro-data-dev ./docker-run.sh --rebuild
+#
+# Observability:
+#   Container is labeled com.aziro.logs=true and attached to $AZIRO_NETWORK
+#   so ./obs-run.sh (Loki + Alloy + Grafana) picks it up automatically.
 # =============================================================================
 
 set -e
@@ -29,6 +34,7 @@ IMAGE="${AZIRO_IMAGE:-aziro-ops}"
 NAME="${AZIRO_NAME:-aziro-ops}"
 PORT="${AZIRO_PORT:-5000}"
 DATA_VOLUME="${AZIRO_DATA_VOLUME:-aziro-data}"
+NETWORK="${AZIRO_NETWORK:-aziro-net}"
 
 if [[ "$1" == "--rebuild" ]] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo "Building image..."
@@ -37,12 +43,20 @@ fi
 
 docker rm -f "$NAME" 2>/dev/null || true
 
+# Ensure the shared network exists. The obs stack (obs-run.sh) joins the
+# same network so Grafana/Alloy/Loki can reach the app when needed.
+# Creating it here is idempotent and free when obs isn't in use.
+if ! docker network inspect "$NETWORK" >/dev/null 2>&1; then
+    docker network create "$NETWORK" >/dev/null
+fi
+
 # Ensure credential dirs exist — empty is fine, live bind mount picks up
 # any future writes (aws configure, gcloud auth login, etc.)
 mkdir -p ~/.kube ~/.aws ~/.config/gcloud ~/.azure ~/.ssh
 
 echo "Starting $NAME on port $PORT (volume: $DATA_VOLUME, image: $IMAGE)..."
 docker run -d --name "$NAME" \
+    --network "$NETWORK" \
     -p "$PORT:5000" \
     \
     --label com.aziro.logs=true \

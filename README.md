@@ -334,16 +334,17 @@ See [`docs/setup-guide.md`](docs/setup-guide.md) for the full Docker reference a
 
 ## Observability (opt-in)
 
-Aziro ships with a self-hosted log stack — Loki + Alloy + Grafana — gated behind the `obs` Compose profile. Nothing runs unless you ask for it; nothing leaves your host when it does.
+Aziro ships with a self-hosted log stack — Loki + Alloy + Grafana — run as plain `docker run` containers alongside the app. No Docker Compose, no Helm, no external dependencies. Nothing runs unless you ask for it; nothing leaves your host when it does.
 
 ```bash
-docker compose --profile obs up -d
+./docker-run.sh --rebuild   # app (creates aziro-net, labels container for scraping)
+./obs-run.sh up             # loki + alloy + grafana on the same network
 # Grafana: http://localhost:3000  (admin / admin by default)
 ```
 
-The app emits one JSON log line per event with a per-request `request_id` so you can trace a client-side error to a server log line. Alloy tails the `aziro` container's stdout, parses the JSON envelope, and pushes to Loki; the `Aziro — Logs` dashboard is pre-provisioned.
+The app emits one JSON log line per event with a per-request `request_id` so you can trace a client-side error to a server log line. Alloy tails the `aziro` container's stdout via the Docker socket, parses the JSON envelope, and pushes to Loki; the `Aziro — Logs` dashboard is pre-provisioned.
 
-See [`obs/README.md`](obs/README.md) for query examples, retention tuning, and how the pipeline is wired. A Helm mirror of this stack (`observability.enabled`) lands in v1.1.
+See [`obs/README.md`](obs/README.md) for query examples, retention tuning, and how the pipeline is wired. A Helm chart with `observability.enabled` lands in v1.1 (OBS-1) — the same Loki/Grafana configs port over, only Alloy's source stage changes.
 
 ---
 
