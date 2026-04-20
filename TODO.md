@@ -42,7 +42,7 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 - [x] **SEC-4** CSRF protection + security headers (CSP, HSTS, X-Frame-Options) (S) — shipped in Phase D
 - [x] **SEC-5** SSH host key verification — pinned-key strict mode (PR #22, `bbe42ec`)
 - [x] **SEC-6** PII scrubbing on stored incident snapshots + retention policy (M) — shipped: `sandbox.redact.redact_text` promoted to module-level so `store.save_snapshot` / `save_analysis` reuse the same detector set that `StreamRedactor` uses on SSE output; scrub applied at the write choke point (env opt-out `AZIRO_SNAPSHOT_REDACT=0`); event retention is env-driven via `AZIRO_EVENT_RETENTION_DAYS` (default 30, snapshots cascade via FK)
-- [ ] **SEC-7** Feature flag / kill switch for experimental paths (S)
+- [x] **SEC-7** Feature flag / kill switch for experimental paths (S) — shipped: `config/features.py` registry (env `AZIRO_FEATURE_<NAME>` + in-process runtime overrides, fail-closed on unknown names); gates `auto_monitor`, `agent_tools`, `analyze_endpoint`; admin API at `/api/v1/admin/features` (GET open to any authed user, POST/DELETE admin-only); disabled endpoints return 503 + Retry-After; agent loop short-circuits tool calls with a placeholder when `agent_tools` is off
 
 ### Runtime hardening
 - [x] **RUN-1** Gunicorn + gevent workers behind nginx (drop Flask dev server) (S) — shipped in Phase D
