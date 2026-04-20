@@ -13,6 +13,7 @@ import time
 import queue as _queue
 from tools.filter      import is_destructive
 from agent.needs_tools import needs_tools
+from observability    import record_tool_call
 
 MAX_STEPS = 5
 
@@ -238,8 +239,28 @@ class Agent:
                         continue
 
                 yield {"type": "cmd", "cmd": command}
-                output = (executor_fn(command) if executor_fn
-                          else self._tools.execute(target, command))
+                # RUN-3: instrument tool execution. `tool` label is the fixed
+                # function name ("run_command") — NEVER the command text,
+                # which would explode Prometheus cardinality. Metrics
+                # emission is best-effort: a Prometheus-side failure must
+                # never mask the original tool exception or abort success.
+                _tool_t0 = time.monotonic()
+                _tool_outcome = "ok"
+                try:
+                    output = (executor_fn(command) if executor_fn
+                              else self._tools.execute(target, command))
+                except Exception:
+                    _tool_outcome = "error"
+                    raise
+                finally:
+                    try:
+                        record_tool_call(
+                            "run_command",
+                            time.monotonic() - _tool_t0,
+                            _tool_outcome,
+                        )
+                    except Exception:
+                        pass
                 yield {"type": "tool_output", "output": output}
                 commands_run += 1
                 ran_commands.add(command)

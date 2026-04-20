@@ -41,6 +41,7 @@ from observability import (
     configure_logging, get_logger,
     current_request_id, new_request_id, bind_request_id, clear_request_id,
     REQUEST_ID_HEADER,
+    metrics_handler, record_http_request,
 )
 from auth import (
     AuthStore, auth_bp,
@@ -145,11 +146,12 @@ def _request_id_middleware():
 @app.after_request
 def _request_log_middleware(response):
     start = request.environ.get("aziro.request_start")
-    duration_ms = int((time.monotonic() - start) * 1000) if start else -1
+    duration_s = (time.monotonic() - start) if start else 0.0
+    duration_ms = int(duration_s * 1000) if start else -1
     rid = current_request_id()
     if rid:
         response.headers[REQUEST_ID_HEADER] = rid
-    # Skip noisy static-asset access logs — /api/ only.
+    # Skip noisy static-asset access logs / metrics scrape — /api/ only.
     if request.path.startswith("/api/"):
         log.info(
             "request",
@@ -160,6 +162,14 @@ def _request_log_middleware(response):
                 "duration_ms": duration_ms,
                 "remote_addr": request.remote_addr,
             },
+        )
+        # RUN-3: Prometheus counters/histograms. Scope is /api/ only so the
+        # /metrics endpoint itself and static assets don't pollute series.
+        record_http_request(
+            method=request.method,
+            path=request.path,
+            status=response.status_code,
+            duration_s=duration_s,
         )
     return response
 
@@ -344,6 +354,8 @@ def _default_limit_exempt() -> bool:
         request.path in _UNAUTH_PROBE_PATHS
         or not request.path.startswith("/api/")
     )
+    # Note: /metrics is non-/api/, so the final clause exempts it implicitly.
+    # A 15s Prometheus scrape would otherwise burn ~4/min of the default cap.
 
 
 limiter = Limiter(
@@ -536,6 +548,19 @@ def _run_many(target, cmds):
 @app.route("/api/v1/healthz", methods=["GET"])
 def api_healthz():
     return jsonify({"status": "ok"}), 200
+
+
+@app.route("/metrics", methods=["GET"])
+def prometheus_metrics():
+    """Prometheus scrape endpoint (RUN-3).
+
+    Auth bypass: `/metrics` is not under `/api/`, so `_auth_middleware` and
+    the rate limiter skip it. If AZIRO_METRICS_TOKEN is set, the handler
+    itself enforces a Bearer token — Prometheus scrape config needs a
+    matching `authorization` block. Unset = open (local dev / same-host).
+    """
+    body, status, headers = metrics_handler(request.headers.get("Authorization"))
+    return Response(body, status=status, headers=headers)
 
 
 @app.route("/api/v1/readyz", methods=["GET"])

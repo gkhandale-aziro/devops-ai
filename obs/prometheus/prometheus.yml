@@ -1,0 +1,38 @@
+# Prometheus scrape config for Aziro Ops (RUN-3).
+#
+# The `aziro` target uses the container's in-network DNS name (aziro-net is
+# the shared bridge between docker-run.sh and obs-run.sh). This intentionally
+# avoids the host-exposed port so /metrics isn't reachable off-host unless
+# the operator has also bound port 5000 publicly.
+#
+# If AZIRO_METRICS_TOKEN is set on the app side, uncomment the authorization
+# block below and set PROM_METRICS_TOKEN in .env — obs-run.sh injects it into
+# the env of the Prometheus container which substitutes it via file_sd or
+# an authorization block.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    deployment: aziro-ops
+
+scrape_configs:
+  - job_name: aziro
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - aziro:5000
+        labels:
+          service: aziro
+    # To enable token auth, also set AZIRO_METRICS_TOKEN on the app and
+    # add a matching Bearer token here (or via a mounted secret file):
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/metrics_token
+
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+        labels:
+          service: prometheus

@@ -9,3 +9,4 @@ gevent>=24.10,<25.0
 flask-login>=0.6,<0.7
 flask-limiter>=3.8,<4.0
 bcrypt>=4.2,<6.0
+prometheus-client>=0.21,<0.22

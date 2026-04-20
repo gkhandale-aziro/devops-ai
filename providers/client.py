@@ -32,12 +32,60 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from openai import OpenAI
 
 try:
+    from openai import APITimeoutError as _OpenAITimeout
+except ImportError:
+    _OpenAITimeout = None
+
+try:
     import anthropic as _anthropic_mod
+    from anthropic import APITimeoutError as _AnthropicTimeout
 except ImportError:
     _anthropic_mod = None
+    _AnthropicTimeout = None
+
+from observability import record_fallback as _record_fallback_raw
+from observability import record_llm_call as _record_llm_call_raw
+
+
+# SDK timeouts (OpenAI, Anthropic) do NOT inherit from built-in TimeoutError,
+# so naive isinstance(exc, TimeoutError) misses them. This tuple captures
+# every timeout we might see from our providers.
+_TIMEOUT_TYPES: tuple = tuple(
+    t for t in (TimeoutError, _OpenAITimeout, _AnthropicTimeout) if t is not None
+)
+
+
+def _is_timeout(exc: Exception) -> bool:
+    return isinstance(exc, _TIMEOUT_TYPES)
+
+
+# Best-effort wrappers — Prometheus emission must never mask provider errors,
+# break retry/fallback flow, or fail an otherwise-successful call. The same
+# guard pattern is used in agent/conversation.py for tool dispatch.
+def record_llm_call(*args, **kwargs):
+    try:
+        _record_llm_call_raw(*args, **kwargs)
+    except Exception:
+        pass
+
+
+def record_fallback(*args, **kwargs):
+    try:
+        _record_fallback_raw(*args, **kwargs)
+    except Exception:
+        pass
 
 # Force unbuffered output so Docker logs show [AI] lines immediately
 print = functools.partial(print, flush=True)
+
+
+def _classify_llm_error(exc: Exception) -> str:
+    """Map an exception to a Prometheus `outcome` label — bounded set only."""
+    if _is_quota_error(exc):
+        return "quota"
+    if _is_timeout(exc):
+        return "timeout"
+    return "error"
 
 # ── Tool definition ──────────────────────────────────────────────────────────
 
@@ -607,7 +655,12 @@ class LLMClient:
 
     # ── Fallback activation ──────────────────────────────────────────────────
 
-    def _activate_fallback(self, error: Exception):
+    def _activate_fallback(self, error: Exception, failing_model: str | None = None):
+        # Classify BEFORE consuming the exception — bounded enum for metrics.
+        reason = _classify_llm_error(error)
+        # Which primary actually failed? Non-tool calls can fail on answer_model;
+        # default to tool_model so legacy callers still get a value.
+        from_model = failing_model or self.tool_model
         ollama_models = _discover_ollama_models()
         if ollama_models:
             tool_fb = _pick_best_fallback(ollama_models, _PREFERRED_TOOL_FALLBACKS)
@@ -618,14 +671,24 @@ class LLMClient:
                 fallback_tool=f"ollama/{tool_fb}",
                 fallback_answer=f"ollama/{answer_fb}",
             )
+            record_fallback(
+                from_model=from_model,
+                to_model=f"ollama/{tool_fb}",
+                reason=reason,
+            )
         else:
-            print(f"  [AI] Quota exhausted — no Ollama available")
+            print("  [AI] Quota exhausted — no Ollama available")
             self.health.set_degraded(str(error))
+            record_fallback(
+                from_model=from_model,
+                to_model="none",
+                reason=reason,
+            )
 
-    def _handle_error(self, error: Exception) -> bool:
-        if _is_quota_error(error) or isinstance(error, TimeoutError):
+    def _handle_error(self, error: Exception, failing_model: str | None = None) -> bool:
+        if _is_quota_error(error) or _is_timeout(error):
             if self.health.status == ModelHealth.HEALTHY:
-                self._activate_fallback(error)
+                self._activate_fallback(error, failing_model=failing_model)
             return self.health.status == ModelHealth.FALLBACK
         return False
 
@@ -637,46 +700,73 @@ class LLMClient:
             return self._chat_once(messages, use_tools)
         except Exception as e:
             print(f"  [AI] Chat error ({type(e).__name__}): {str(e)[:150]}")
-            if self._handle_error(e):
+            if self._handle_error(e, failing_model=self._effective_model(use_tools)):
                 return self._chat_once(messages, use_tools)
             if _is_quota_error(e):
                 raise
-            return self._retry_transient(lambda: self._chat_once(messages, use_tools), e)
+            return self._retry_transient(
+                lambda: self._chat_once(messages, use_tools), e,
+                failing_model=self._effective_model(use_tools),
+            )
 
     def _chat_once(self, messages, use_tools):
         model = self._effective_model(use_tools)
 
         t0 = time.time()
+        outcome = "ok"
+        prompt_toks = completion_toks = total_toks = 0
         print(f"  [AI] Calling {model} | tools={'yes' if use_tools else 'no'}...")
 
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(
-                _call_api, model, messages,
-                tools=TOOLS if use_tools else None,
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(
+                    _call_api, model, messages,
+                    tools=TOOLS if use_tools else None,
+                )
+                try:
+                    response = future.result(timeout=TIMEOUT_CHAT + 5)
+                except FuturesTimeout:
+                    future.cancel()
+                    raise TimeoutError(f"AI call to {model} timed out after {TIMEOUT_CHAT}s")
+
+            elapsed = time.time() - t0
+            choice = response.choices[0]
+            usage = response.usage
+            if usage:
+                prompt_toks = getattr(usage, "prompt_tokens", 0) or 0
+                completion_toks = getattr(usage, "completion_tokens", 0) or 0
+                total_toks = getattr(usage, "total_tokens", 0) or 0
+            print(f"  [AI] {model} | {elapsed:.1f}s | tokens={total_toks or '?'}")
+
+            if self.health.status != ModelHealth.HEALTHY:
+                if model in (self.tool_model, self.answer_model):
+                    self.health.set_healthy()
+
+            if choice.message.tool_calls:
+                tool_call = choice.message.tool_calls[0]
+                args = tool_call.function.arguments
+                if isinstance(args, str):
+                    args = json.loads(args)
+                return choice.message.content or "", args.get("command"), tool_call.id
+
+            return choice.message.content or "", None, None
+        except Exception as e:
+            outcome = _classify_llm_error(e)
+            raise
+        finally:
+            # RUN-3: always record — success OR failure. `finally` ensures we
+            # don't drop a metric on the error path where it matters most.
+            record_llm_call(
+                model=model,
+                duration_s=time.time() - t0,
+                outcome=outcome,
+                stream=False,
+                prompt_tokens=prompt_toks,
+                completion_tokens=completion_toks,
+                # Only emit `total` when the provider didn't split prompt/completion
+                # (e.g. Anthropic's combined figure) so we don't double-count.
+                total_tokens=total_toks if not (prompt_toks or completion_toks) else 0,
             )
-            try:
-                response = future.result(timeout=TIMEOUT_CHAT + 5)
-            except FuturesTimeout:
-                future.cancel()
-                raise TimeoutError(f"AI call to {model} timed out after {TIMEOUT_CHAT}s")
-
-        elapsed = time.time() - t0
-        choice = response.choices[0]
-        tokens = response.usage.total_tokens if response.usage else "?"
-        print(f"  [AI] {model} | {elapsed:.1f}s | tokens={tokens}")
-
-        if self.health.status != ModelHealth.HEALTHY:
-            if model in (self.tool_model, self.answer_model):
-                self.health.set_healthy()
-
-        if choice.message.tool_calls:
-            tool_call = choice.message.tool_calls[0]
-            args = tool_call.function.arguments
-            if isinstance(args, str):
-                args = json.loads(args)
-            return choice.message.content or "", args.get("command"), tool_call.id
-
-        return choice.message.content or "", None, None
 
     # ── Streaming ────────────────────────────────────────────────────────────
 
@@ -691,31 +781,45 @@ class LLMClient:
         except Exception as e:
             print(f"  [AI] Stream error ({type(e).__name__}): {str(e)[:150]}")
             # Activate fallback so next call uses Ollama
-            self._handle_error(e)
+            self._handle_error(e, failing_model=model)
             raise
 
     def _stream_once(self, model, messages):
         """Single streaming call. Yields text chunks."""
         t0 = time.time()
+        outcome = "ok"
         print(f"  [AI] Calling {model} | stream...")
 
-        stream = _call_api(model, messages, stream=True)
+        try:
+            stream = _call_api(model, messages, stream=True)
 
-        for chunk in stream:
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                yield delta.content
+            for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    yield delta.content
 
-        elapsed = time.time() - t0
-        print(f"  [AI] {model} | stream | {elapsed:.1f}s")
+            elapsed = time.time() - t0
+            print(f"  [AI] {model} | stream | {elapsed:.1f}s")
 
-        if self.health.status != ModelHealth.HEALTHY:
-            if model in (self.tool_model, self.answer_model):
-                self.health.set_healthy()
+            if self.health.status != ModelHealth.HEALTHY:
+                if model in (self.tool_model, self.answer_model):
+                    self.health.set_healthy()
+        except Exception as e:
+            outcome = _classify_llm_error(e)
+            raise
+        finally:
+            # Streaming providers don't surface token counts mid-stream on the
+            # OpenAI-compatible SDK path, so we record calls + latency only.
+            record_llm_call(
+                model=model,
+                duration_s=time.time() - t0,
+                outcome=outcome,
+                stream=True,
+            )
 
     # ── Transient retry helper ───────────────────────────────────────────────
 
-    def _retry_transient(self, fn, original_error):
+    def _retry_transient(self, fn, original_error, failing_model: str | None = None):
         for attempt in range(TRANSIENT_RETRIES):
             time.sleep(TRANSIENT_DELAY)
             print(f"  [AI] Transient retry {attempt + 1}/{TRANSIENT_RETRIES}")
@@ -723,7 +827,7 @@ class LLMClient:
                 return fn()
             except Exception as e:
                 if _is_quota_error(e):
-                    if self._handle_error(e):
+                    if self._handle_error(e, failing_model=failing_model):
                         return fn()
                     raise
                 original_error = e

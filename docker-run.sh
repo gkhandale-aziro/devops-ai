@@ -78,6 +78,7 @@ docker run -d --name "$NAME" \
     -e AWS_CONFIG_FILE=/home/aziro/.host-aws/config \
     -e CLOUDSDK_CONFIG=/home/aziro/.host-gcloud \
     -e AZURE_CONFIG_DIR=/home/aziro/.host-azure \
+    -e PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc \
     \
     --add-host=host.docker.internal:host-gateway \
     --env-file .env \

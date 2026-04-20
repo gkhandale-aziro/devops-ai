@@ -17,10 +17,13 @@ Env overrides (read at boot):
   AZIRO_GUNICORN_WORKER_CONNECTIONS   default 1000
   AZIRO_GUNICORN_TIMEOUT        default 120 (seconds) — SSE streams
                                 need to exceed the default 30s
+  PROMETHEUS_MULTIPROC_DIR      if set, workers write metric shards here
+                                and /metrics aggregates them (RUN-3)
 
 The sync dev server (app.py) stays available for local iteration — this
 file is only read when someone runs `gunicorn -c gunicorn.conf.py ...`.
 """
+import glob
 import os
 
 bind = f"{os.environ.get('AZIRO_HOST', '0.0.0.0')}:{os.environ.get('AZIRO_PORT', '5000')}"
@@ -52,3 +55,39 @@ loglevel = os.environ.get("AZIRO_GUNICORN_LOGLEVEL", "info")
 # Where to locate the WSGI app. Gunicorn invocation:
 #   gunicorn -c gunicorn.conf.py ui.web:app
 wsgi_app = "ui.web:app"
+
+
+# ── Prometheus multi-process mode (RUN-3) ─────────────────────────────────────
+# Every gunicorn worker has its own in-memory metric registry. Scraping one
+# worker at random returns 1/N of reality. prometheus_client fixes this by
+# having workers write shard files to PROMETHEUS_MULTIPROC_DIR; the /metrics
+# handler uses MultiProcessCollector to aggregate them on each scrape.
+#
+# Our hooks:
+#   on_starting  — create the dir and clear stale shards from a prior boot.
+#                  Must happen BEFORE workers fork, hence `on_starting`.
+#   child_exit   — mark a worker's shards dead so histograms stop counting
+#                  it. Without this, crashed workers' data lingers forever.
+
+def on_starting(server):
+    mp_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if not mp_dir:
+        return
+    os.makedirs(mp_dir, exist_ok=True)
+    # Stale shards from a previous boot would be attributed to new PIDs.
+    for path in glob.glob(os.path.join(mp_dir, "*.db")):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass  # best-effort; a racing worker can recreate it
+
+
+def child_exit(server, worker):
+    if not os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        return
+    try:
+        from prometheus_client import multiprocess
+        multiprocess.mark_process_dead(worker.pid)
+    except Exception:
+        # Never let a metrics-side failure crash gunicorn's worker reaper.
+        pass
