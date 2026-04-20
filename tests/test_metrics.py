@@ -59,6 +59,15 @@ class TestNormalizeRoute:
 # ── Helper functions emit into the registry ─────────────────────────────────
 
 class TestRecordHelpers:
+    @pytest.fixture(autouse=True)
+    def _open_metrics(self, monkeypatch):
+        """Force /metrics open for these tests so a host-env AZIRO_METRICS_TOKEN
+        (e.g. on a shared CI runner) can't flip them to 401 and look flaky."""
+        monkeypatch.delenv("AZIRO_METRICS_TOKEN", raising=False)
+        for m in list(sys.modules):
+            if m.startswith("observability.metrics"):
+                sys.modules.pop(m, None)
+
     def _scrape(self):
         """Return /metrics body decoded to str."""
         from observability.metrics import metrics_handler

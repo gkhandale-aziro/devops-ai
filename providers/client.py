@@ -43,7 +43,8 @@ except ImportError:
     _anthropic_mod = None
     _AnthropicTimeout = None
 
-from observability import record_fallback, record_llm_call
+from observability import record_fallback as _record_fallback_raw
+from observability import record_llm_call as _record_llm_call_raw
 
 
 # SDK timeouts (OpenAI, Anthropic) do NOT inherit from built-in TimeoutError,
@@ -56,6 +57,23 @@ _TIMEOUT_TYPES: tuple = tuple(
 
 def _is_timeout(exc: Exception) -> bool:
     return isinstance(exc, _TIMEOUT_TYPES)
+
+
+# Best-effort wrappers — Prometheus emission must never mask provider errors,
+# break retry/fallback flow, or fail an otherwise-successful call. The same
+# guard pattern is used in agent/conversation.py for tool dispatch.
+def record_llm_call(*args, **kwargs):
+    try:
+        _record_llm_call_raw(*args, **kwargs)
+    except Exception:
+        pass
+
+
+def record_fallback(*args, **kwargs):
+    try:
+        _record_fallback_raw(*args, **kwargs)
+    except Exception:
+        pass
 
 # Force unbuffered output so Docker logs show [AI] lines immediately
 print = functools.partial(print, flush=True)
@@ -659,7 +677,7 @@ class LLMClient:
                 reason=reason,
             )
         else:
-            print(f"  [AI] Quota exhausted — no Ollama available")
+            print("  [AI] Quota exhausted — no Ollama available")
             self.health.set_degraded(str(error))
             record_fallback(
                 from_model=from_model,
