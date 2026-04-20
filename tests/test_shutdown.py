@@ -248,7 +248,7 @@ class TestReadyzDraining:
     def test_readyz_draining_returns_503_with_retry_after(self, fresh_app):
         """After `request_shutdown()`, /readyz must tell the LB to stop
         routing here, and to try again in ~30s."""
-        web_mod, c = fresh_app
+        _web_mod, c = fresh_app
         # The freshly imported ui.web re-imported observability.shutdown
         # from scratch, so our top-level `sd` handle is NOT the same
         # module the app sees. Flip the flag via the app's own module.
