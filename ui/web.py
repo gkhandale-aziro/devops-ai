@@ -42,6 +42,7 @@ from observability import (
     current_request_id, new_request_id, bind_request_id, clear_request_id,
     REQUEST_ID_HEADER,
     metrics_handler, record_http_request,
+    is_shutting_down, sse_stream, tracked_popen, untrack_popen,
 )
 from auth import (
     AuthStore, auth_bp,
@@ -565,6 +566,13 @@ def prometheus_metrics():
 
 @app.route("/api/v1/readyz", methods=["GET"])
 def api_readyz():
+    # During graceful shutdown, tell upstream LBs to stop routing here
+    # BEFORE we try to close DB connections. Retry-After gives the LB a
+    # hint to wait a round before giving up on this instance entirely.
+    if is_shutting_down():
+        return (jsonify({"status": "draining", "checks": {"shutdown": "in_progress"}}),
+                503, {"Retry-After": "30"})
+
     checks: dict = {}
     ok = True
 
@@ -1165,6 +1173,7 @@ def api_chat_stream(tid):
         messages = _trim(messages)
         _session.set(tid, messages)
 
+    @sse_stream
     def generate():
         try:
             # Send thinking event immediately so frontend knows we're alive
@@ -1237,7 +1246,12 @@ def api_analyze_stream():
     messages = [{"role": "system", "content": _ANALYSIS_SYSTEM},
                 {"role": "user",   "content": prompt}]
     redactor = StreamRedactor()
-    return Response(redactor.redact_stream(_agent.stream(messages)), mimetype="text/event-stream",
+
+    @sse_stream
+    def generate():
+        yield from _agent.stream(messages)
+
+    return Response(redactor.redact_stream(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
@@ -1387,6 +1401,7 @@ def api_monitor_stream():
     sub_q  = _queue.Queue()
     _monitor_subs[sub_id] = sub_q
 
+    @sse_stream
     def generate():
         try:
             while True:
@@ -1472,6 +1487,7 @@ def api_sessions_chat_stream(sid):
     # Check if this is the first user message (title still "New Chat")
     is_first_msg = any(s["id"] == sid and s["title"] == "New Chat" for s in _sessions.load())
 
+    @sse_stream
     def generate():
         full = ""
         try:
@@ -1789,26 +1805,32 @@ def api_logs_stream(tid):
     if container and _SAFE_NAME_RE.match(container):
         cmd += ["-c", container]
 
+    @sse_stream
     def generate():
         import subprocess
         proc = None
         try:
-            proc = subprocess.Popen(
+            # tracked_popen registers the child so worker_int can SIGTERM
+            # it on graceful shutdown even if the client never disconnects.
+            proc = tracked_popen(
                 cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
             )
             for line in proc.stdout:
                 yield f"data: {json.dumps({'line': line.rstrip()})}\n\n"
+            yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
         finally:
             # Terminate child process on client disconnect or stream end
-            if proc and proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-        yield "data: [DONE]\n\n"
+            if proc is not None:
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                untrack_popen(proc)
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

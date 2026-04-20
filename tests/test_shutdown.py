@@ -1,0 +1,225 @@
+"""
+Tests for observability/shutdown.py — RUN-5 graceful shutdown.
+
+Scope:
+  - `is_shutting_down()` toggles only after `request_shutdown()`
+  - `@sse_stream` decorator registers / deregisters / closes generators
+  - Draining mid-stream yields an `event: shutdown` frame and stops
+  - `tracked_popen` registers, `untrack_popen` removes, `request_shutdown`
+    terminates any that are still live
+  - `/api/v1/readyz` flips to 503 + Retry-After when draining
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import pytest
+
+from observability import shutdown as sd
+
+
+@pytest.fixture(autouse=True)
+def _reset_state():
+    """Every test starts with a clean registry and the flag cleared."""
+    sd._reset_for_tests()
+    yield
+    sd._reset_for_tests()
+
+
+# ── flag semantics ───────────────────────────────────────────────────────────
+
+class TestShutdownFlag:
+    def test_flag_false_by_default(self):
+        assert sd.is_shutting_down() is False
+
+    def test_flag_true_after_request(self):
+        sd.request_shutdown(sse_grace_seconds=0, popen_term_grace_seconds=0)
+        assert sd.is_shutting_down() is True
+
+    def test_request_shutdown_is_idempotent(self):
+        sd.request_shutdown(sse_grace_seconds=0, popen_term_grace_seconds=0)
+        # Second call must be a no-op, not raise.
+        sd.request_shutdown(sse_grace_seconds=0, popen_term_grace_seconds=0)
+        assert sd.is_shutting_down() is True
+
+
+# ── sse_stream decorator ─────────────────────────────────────────────────────
+
+class TestSseStream:
+    def test_registers_and_deregisters_on_normal_exit(self):
+        """`wrapper` is itself a generator (uses `yield`), so registration
+        happens on first `next()`, not on call. Deregistration runs in the
+        wrapper's `finally` once the generator is exhausted."""
+        @sd.sse_stream
+        def gen():
+            yield "a"
+            yield "b"
+
+        it = gen()
+        # Not yet started → no registration.
+        assert len(sd._streams) == 0
+        next(it)
+        assert len(sd._streams) == 1
+        # Drain fully; wrapper's finally runs.
+        rest = list(it)
+        assert rest == ["b"]
+        assert len(sd._streams) == 0
+
+    def test_deregisters_on_generator_exit(self):
+        @sd.sse_stream
+        def gen():
+            yield "a"
+            yield "b"
+
+        it = gen()
+        next(it)
+        assert len(sd._streams) == 1
+        it.close()
+        assert len(sd._streams) == 0
+
+    def test_drain_yields_shutdown_frame_and_stops(self):
+        """When the shutdown flag flips between yields, the wrapper should
+        emit one final `event: shutdown` frame and then stop iterating —
+        no matter how much the inner generator still wants to produce.
+
+        We flip the flag directly (instead of calling request_shutdown)
+        to isolate the wrapper's own drain behavior from request_shutdown's
+        force-close, which happens in a separate greenlet in production."""
+        @sd.sse_stream
+        def gen():
+            yield "data: 1\n\n"
+            yield "data: 2\n\n"
+            yield "data: 3\n\n"
+            yield "data: 4\n\n"
+
+        it = gen()
+        first = next(it)
+        assert first == "data: 1\n\n"
+        # Flip the flag directly.
+        sd._shutting_down = True
+        remaining = list(it)
+        # Expect: the in-flight frame (frame 2) + the shutdown notice.
+        # NOT frames 3 and 4 — they must be cut off.
+        assert any("event: shutdown" in f for f in remaining)
+        assert "data: 3\n\n" not in remaining
+        assert "data: 4\n\n" not in remaining
+
+    def test_request_shutdown_closes_registered_generator(self):
+        """`request_shutdown()` must raise GeneratorExit into every registered
+        generator so its `finally` blocks run (DB writes, subprocess cleanup)."""
+        finally_ran = {"yes": False}
+
+        @sd.sse_stream
+        def gen():
+            try:
+                while True:
+                    yield "tick"
+            finally:
+                finally_ran["yes"] = True
+
+        it = gen()
+        next(it)  # Prime it.
+        assert len(sd._streams) == 1
+        sd.request_shutdown(sse_grace_seconds=0, popen_term_grace_seconds=0)
+        # The inner generator's finally must have run — that's the invariant
+        # callers depend on (e.g. to release tracked subprocesses).
+        assert finally_ran["yes"] is True
+
+
+# ── tracked_popen / untrack_popen ────────────────────────────────────────────
+
+class TestTrackedPopen:
+    def test_tracked_popen_is_registered(self):
+        # Pick a tiny, cross-platform no-op.
+        cmd = [sys.executable, "-c", "import time; time.sleep(5)"]
+        proc = sd.tracked_popen(cmd)
+        try:
+            assert proc in sd._processes
+        finally:
+            proc.kill()
+            proc.wait(timeout=3)
+            sd.untrack_popen(proc)
+
+    def test_untrack_popen_is_idempotent(self):
+        cmd = [sys.executable, "-c", "pass"]
+        proc = sd.tracked_popen(cmd)
+        proc.wait(timeout=3)
+        sd.untrack_popen(proc)
+        # Second call must not raise.
+        sd.untrack_popen(proc)
+        assert proc not in sd._processes
+
+    def test_request_shutdown_terminates_tracked_popen(self):
+        """A long-lived tracked child must be SIGTERMed (or .terminate()'d
+        on Windows) by `request_shutdown()`. Give it a wide grace window
+        so we aren't racing the Python interpreter's own startup."""
+        cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
+        proc = sd.tracked_popen(cmd)
+        assert proc.poll() is None  # still running
+
+        sd.request_shutdown(sse_grace_seconds=0, popen_term_grace_seconds=5)
+        # After request_shutdown returns, the proc should be gone.
+        # (wait() is safe to call again — already reaped.)
+        t0 = time.monotonic()
+        while proc.poll() is None and time.monotonic() - t0 < 3:
+            time.sleep(0.05)
+        assert proc.poll() is not None
+
+
+# ── Flask /api/v1/readyz integration ─────────────────────────────────────────
+
+def _reload_web(tmp_path, monkeypatch):
+    """Same pattern as tests/test_metrics.py: ui.web snapshots env at
+    import time, so we must clear state and re-import fresh."""
+    monkeypatch.setenv("AZIRO_DATA_DIR", str(tmp_path))
+    for key in ("AZIRO_API_KEY", "AZIRO_AUTH_MODE", "AZIRO_SESSION_SECRET",
+                "AZIRO_BOOTSTRAP_ADMIN_USER", "AZIRO_BOOTSTRAP_ADMIN_PASSWORD",
+                "AZIRO_METRICS_TOKEN", "AZIRO_RATE_LIMIT"):
+        monkeypatch.delenv(key, raising=False)
+    for m in ("ui.web", "store", "store.db", "store.metrics",
+              "sessions", "sessions.manager",
+              "targets", "targets.manager",
+              "auth", "auth.db", "auth.middleware", "auth.routes",
+              "observability", "observability.metrics",
+              "observability.shutdown", "observability.logging"):
+        sys.modules.pop(m, None)
+    import ui.web as web_mod
+    web_mod.app.config["TESTING"] = True
+    return web_mod, web_mod.app.test_client()
+
+
+@pytest.fixture
+def fresh_app(tmp_path, monkeypatch):
+    return _reload_web(tmp_path, monkeypatch)
+
+
+class TestReadyzDraining:
+    def test_readyz_ok_when_not_draining(self, fresh_app):
+        _, c = fresh_app
+        r = c.get("/api/v1/readyz")
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["status"] == "ok"
+
+    def test_readyz_draining_returns_503_with_retry_after(self, fresh_app):
+        """After `request_shutdown()`, /readyz must tell the LB to stop
+        routing here, and to try again in ~30s."""
+        web_mod, c = fresh_app
+        # The freshly imported ui.web re-imported observability.shutdown
+        # from scratch, so our top-level `sd` handle is NOT the same
+        # module the app sees. Flip the flag via the app's own module.
+        from observability import shutdown as app_sd
+        app_sd.request_shutdown(sse_grace_seconds=0, popen_term_grace_seconds=0)
+        try:
+            r = c.get("/api/v1/readyz")
+            assert r.status_code == 503
+            assert r.headers.get("Retry-After") == "30"
+            body = r.get_json()
+            assert body["status"] == "draining"
+        finally:
+            app_sd._reset_for_tests()
