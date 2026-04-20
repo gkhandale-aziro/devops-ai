@@ -7,6 +7,7 @@ Two modes:
   run()       — Web: SSE generator per request
   stream()    — Web: direct streaming SSE, no tool calls
 """
+import os
 import re
 import json
 import time
@@ -16,6 +17,21 @@ from agent.needs_tools import needs_tools
 from observability    import record_tool_call
 
 MAX_STEPS = 5
+
+
+def _run_token_cap() -> int:
+    """OPS-4: max tokens a single agent run may consume before we abort.
+
+    MAX_STEPS alone isn't enough — a pathological loop that keeps appending
+    enormous tool outputs can blow through a user's daily budget inside one
+    request. The cap catches that case without waiting for the daily counter
+    to tick over. 0 disables the check.
+    """
+    try:
+        v = int(os.environ.get("AZIRO_AGENT_RUN_TOKEN_CAP", "50000"))
+        return max(v, 0)
+    except ValueError:
+        return 50000
 
 
 class Agent:
@@ -148,8 +164,15 @@ class Agent:
 
     # ── Web mode — SSE generators ─────────────────────────────────────────────
 
-    def run(self, messages, target, session, target_id):
-        """SSE generator for web streaming. Auto-proceeds on destructive commands."""
+    def run(self, messages, target, session, target_id,
+            user_id=None, session_db_id=None):
+        """SSE generator for web streaming. Auto-proceeds on destructive commands.
+
+        OPS-4: `user_id` / `session_db_id` flow through to the LLM client so
+        per-user token accounting and the per-run cap can attribute usage
+        correctly. `session_db_id` is distinct from `target_id` — target_id
+        is the cluster/target key, while session_db_id is the chat row.
+        """
         # Send thinking event immediately so frontend knows we're alive
         yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
         _current_cmd = None
@@ -157,7 +180,9 @@ class Agent:
         _full_text = ""
         _last_cmd = None  # most recent tool call, used by suggestion heuristics
 
-        for event in self._run_internal(messages, target, session, target_id):
+        for event in self._run_internal(messages, target, session, target_id,
+                                        user_id=user_id,
+                                        session_db_id=session_db_id):
             t = event["type"]
             if t == "cmd":
                 # Backward compat: old cmd event
@@ -203,21 +228,44 @@ class Agent:
     # ── Core agentic loop ─────────────────────────────────────────────────────
 
     def _run_internal(self, messages, target, session, target_id,
-                      confirm_q=None, executor_fn=None):
+                      confirm_q=None, executor_fn=None,
+                      user_id=None, session_db_id=None):
         """
         Core loop. Yields event dicts consumed by run_loop() or run().
 
         confirm_q   : Queue | None  — destructive commands pause for y/n (CLI only)
         executor_fn : callable | None — override ToolExecutor (CLI sandbox use)
+        user_id / session_db_id : OPS-4 attribution — passed to each chat()
+            call so the provider layer can record per-user token usage and
+            enforce the per-run token cap.
         """
         commands_run = 0
         ran_commands = set()
+        run_tokens = 0
+        token_cap = _run_token_cap()
 
         for _ in range(MAX_STEPS):
+            step_usage: dict = {}
             try:
-                reply, command, tool_call_id = self._llm.chat(messages, use_tools=True)
+                reply, command, tool_call_id = self._llm.chat(
+                    messages, use_tools=True,
+                    user_id=user_id, session_id=session_db_id,
+                    usage_out=step_usage,
+                )
             except Exception as e:
                 yield {"type": "error", "msg": str(e)}
+                return
+
+            run_tokens += step_usage.get("total_tokens", 0)
+            if token_cap and run_tokens > token_cap:
+                yield {
+                    "type": "error",
+                    "msg": (
+                        f"This run hit the per-request token cap "
+                        f"({run_tokens} > {token_cap}). Aborting the loop to "
+                        f"protect your daily budget. Try a narrower question."
+                    ),
+                }
                 return
 
             if command:
