@@ -212,6 +212,21 @@ class TestTrackedPopen:
 
 # ── Flask /api/v1/readyz integration ─────────────────────────────────────────
 
+# Modules that capture env or other process-level state at import time.
+# If ui.web gains a new dependency with import-time state (e.g. an env-gated
+# singleton), add it here so the fresh-import pattern below sees the new
+# AZIRO_* values. Mirror any change into tests/test_metrics.py, which uses
+# the same pattern.
+_RELOAD_MODULES = (
+    "ui.web", "store", "store.db", "store.metrics",
+    "sessions", "sessions.manager",
+    "targets", "targets.manager",
+    "auth", "auth.db", "auth.middleware", "auth.routes",
+    "observability", "observability.metrics",
+    "observability.shutdown", "observability.logging",
+)
+
+
 def _reload_web(tmp_path, monkeypatch):
     """Same pattern as tests/test_metrics.py: ui.web snapshots env at
     import time, so we must clear state and re-import fresh."""
@@ -220,12 +235,7 @@ def _reload_web(tmp_path, monkeypatch):
                 "AZIRO_BOOTSTRAP_ADMIN_USER", "AZIRO_BOOTSTRAP_ADMIN_PASSWORD",
                 "AZIRO_METRICS_TOKEN", "AZIRO_RATE_LIMIT"):
         monkeypatch.delenv(key, raising=False)
-    for m in ("ui.web", "store", "store.db", "store.metrics",
-              "sessions", "sessions.manager",
-              "targets", "targets.manager",
-              "auth", "auth.db", "auth.middleware", "auth.routes",
-              "observability", "observability.metrics",
-              "observability.shutdown", "observability.logging"):
+    for m in _RELOAD_MODULES:
         sys.modules.pop(m, None)
     import ui.web as web_mod
     web_mod.app.config["TESTING"] = True
@@ -336,9 +346,12 @@ class TestShutdownOrdering:
         it = gen()
         t = threading.Thread(target=consumer, args=(it,))
         t.start()
-        started.wait(timeout=1)
+        # Explicit checks turn silent timeouts into clear failures: otherwise
+        # a stalled consumer would just report "no drain frame" without hint.
+        assert started.wait(timeout=1), "consumer never entered the generator"
         # request_shutdown should flip the flag, wait a tick, THEN close.
         sd.request_shutdown(sse_grace_seconds=0.5, popen_term_grace_seconds=0)
         t.join(timeout=3)
+        assert not t.is_alive(), "consumer thread did not finish after drain"
         assert any("event: shutdown" in f for f in captured), \
             f"expected drain frame in {captured[-5:]}"
