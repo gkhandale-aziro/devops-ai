@@ -165,6 +165,22 @@ class TestTrackedPopen:
         sd.untrack_popen(proc)
         assert proc not in sd._processes
 
+    @staticmethod
+    def _hard_cleanup(proc):
+        """Fail-safe reaper for `sleep(30)` children. The tests below assert
+        that request_shutdown() kills the child; if an assertion fires earlier,
+        we still need to stop the child so it doesn't leak into later tests
+        (Windows in particular happily keeps orphaned pythons running)."""
+        if proc is None:
+            return
+        if proc.poll() is None:
+            try:
+                proc.kill()
+                proc.wait(timeout=3)
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+        sd.untrack_popen(proc)
+
     def test_popen_registered_during_sse_grace_is_also_killed(self):
         """Regression for a timing bug: procs_snapshot used to be taken
         BEFORE the SSE grace sleep, so a Popen spawned from a closing
@@ -185,13 +201,17 @@ class TestTrackedPopen:
 
         it = gen()
         next(it)  # Prime it so the generator is registered.
-        sd.request_shutdown(sse_grace_seconds=0.2, popen_term_grace_seconds=5)
-        proc = spawned["proc"]
-        t0 = time.monotonic()
-        while proc.poll() is None and time.monotonic() - t0 < 3:
-            time.sleep(0.05)
-        assert proc.poll() is not None, \
-            "late-registered Popen was not terminated by request_shutdown"
+        proc = None
+        try:
+            sd.request_shutdown(sse_grace_seconds=0.2, popen_term_grace_seconds=5)
+            proc = spawned.get("proc")
+            t0 = time.monotonic()
+            while proc is not None and proc.poll() is None and time.monotonic() - t0 < 3:
+                time.sleep(0.05)
+            assert proc is not None and proc.poll() is not None, \
+                "late-registered Popen was not terminated by request_shutdown"
+        finally:
+            self._hard_cleanup(proc)
 
     def test_request_shutdown_terminates_tracked_popen(self):
         """A long-lived tracked child must be SIGTERMed (or .terminate()'d
@@ -199,15 +219,18 @@ class TestTrackedPopen:
         so we aren't racing the Python interpreter's own startup."""
         cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
         proc = sd.tracked_popen(cmd)
-        assert proc.poll() is None  # still running
+        try:
+            assert proc.poll() is None  # still running
 
-        sd.request_shutdown(sse_grace_seconds=0, popen_term_grace_seconds=5)
-        # After request_shutdown returns, the proc should be gone.
-        # (wait() is safe to call again — already reaped.)
-        t0 = time.monotonic()
-        while proc.poll() is None and time.monotonic() - t0 < 3:
-            time.sleep(0.05)
-        assert proc.poll() is not None
+            sd.request_shutdown(sse_grace_seconds=0, popen_term_grace_seconds=5)
+            # After request_shutdown returns, the proc should be gone.
+            # (wait() is safe to call again — already reaped.)
+            t0 = time.monotonic()
+            while proc.poll() is None and time.monotonic() - t0 < 3:
+                time.sleep(0.05)
+            assert proc.poll() is not None
+        finally:
+            self._hard_cleanup(proc)
 
 
 # ── Flask /api/v1/readyz integration ─────────────────────────────────────────
