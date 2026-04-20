@@ -41,7 +41,7 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 - [x] **SEC-3** Flask-Limiter rate limits on `/api/v1/chat/*/stream` — LLM cost cap (S) — shipped in Phase F
 - [x] **SEC-4** CSRF protection + security headers (CSP, HSTS, X-Frame-Options) (S) — shipped in Phase D
 - [x] **SEC-5** SSH host key verification — pinned-key strict mode (PR #22, `bbe42ec`)
-- [ ] **SEC-6** PII scrubbing on stored incident snapshots + retention policy (M)
+- [x] **SEC-6** PII scrubbing on stored incident snapshots + retention policy (M) — shipped: `sandbox.redact.redact_text` promoted to module-level so `store.save_snapshot` / `save_analysis` reuse the same detector set that `StreamRedactor` uses on SSE output; scrub applied at the write choke point (env opt-out `AZIRO_SNAPSHOT_REDACT=0`); event retention is env-driven via `AZIRO_EVENT_RETENTION_DAYS` (default 30, snapshots cascade via FK)
 - [ ] **SEC-7** Feature flag / kill switch for experimental paths (S)
 
 ### Runtime hardening

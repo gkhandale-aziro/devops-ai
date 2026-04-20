@@ -14,10 +14,44 @@ import os
 import datetime
 import threading
 
+from sandbox.redact import redact_text
+
 DB_FILE        = os.path.join(
     os.environ.get("AZIRO_DATA_DIR", os.path.join(os.path.dirname(__file__), "..")),
     "aziro.db",
 )
+
+
+def _retention_days() -> int:
+    """Days to keep events (snapshots + analyses cascade via FK).
+
+    Read fresh each call so tests can set AZIRO_EVENT_RETENTION_DAYS=0
+    to force-purge without monkey-patching. Falls back to 30 on a
+    missing, malformed, or negative value — a negative window would
+    push the cutoff into the future and wipe every row, which is never
+    what an operator actually wants.
+    """
+    try:
+        days = int(os.environ.get("AZIRO_EVENT_RETENTION_DAYS", "30"))
+    except ValueError:
+        return 30
+    if days < 0:
+        return 30
+    return days
+
+
+def _redact_enabled() -> bool:
+    """SEC-6: scrub secrets out of stored snapshot/analysis text.
+
+    On by default. Opt-out via AZIRO_SNAPSHOT_REDACT=0 for scenarios
+    where the rule set over-matches (e.g. a customer reproducing a bug
+    against a sandbox cluster with fake credentials).
+    """
+    return os.environ.get("AZIRO_SNAPSHOT_REDACT", "1") not in ("0", "false", "False", "")
+
+
+# Kept for backward compat with callers that imported this constant.
+# New code should use _retention_days().
 RETENTION_DAYS = 30
 
 
@@ -183,20 +217,44 @@ class EventStore:
         Save a kubectl log/describe snapshot linked to an event.
 
         kind values: logs | logs_previous | describe | events
+
+        Secrets in `content` (AWS keys, JWTs, bearer tokens, etc.) are
+        scrubbed via sandbox.redact.redact_text before persistence —
+        the single choke point for all snapshot writers, so no caller
+        can bypass it by forgetting to scrub upstream.
         """
+        text = content or ""
+        if _redact_enabled():
+            text = redact_text(text)
         with self._conn() as c:
             c.execute(
                 "INSERT INTO snapshots (event_id, timestamp, kind, content) VALUES (?,?,?,?)",
-                (event_id, _now(), kind, content or ""),
+                (event_id, _now(), kind, text),
             )
 
     def save_analysis(self, event_id: int, diagnosis: str, remediation: str = ""):
-        """Save the AI diagnosis (and optional remediation command) for an event."""
+        """Save the AI diagnosis (and optional remediation command) for an event.
+
+        LLM output can echo secrets pulled from the prompt context (e.g.
+        an env-dump snapshot fed into diagnosis). Scrub the same way
+        snapshots are scrubbed so the DB never stores what we would
+        refuse to stream to a client.
+
+        Order matters: redact BEFORE truncating. Cutting first can split
+        a secret across the 8000/2000-char boundary, leaving its prefix
+        un-detectable by any pattern and defeating the scrub.
+        """
+        if _redact_enabled():
+            diag = redact_text(diagnosis)[:8000]
+            remed = redact_text(remediation)[:2000]
+        else:
+            diag = diagnosis[:8000]
+            remed = remediation[:2000]
         with self._conn() as c:
             c.execute(
                 """INSERT INTO analyses (event_id, timestamp, diagnosis, remediation)
                    VALUES (?,?,?,?)""",
-                (event_id, _now(), diagnosis[:8000], remediation[:2000]),
+                (event_id, _now(), diag, remed),
             )
 
     # ── read ──────────────────────────────────────────────────────────────────
@@ -369,10 +427,22 @@ class EventStore:
     # ── maintenance ───────────────────────────────────────────────────────────
 
     def _purge_old(self) -> int:
-        """Delete events (+ cascaded snapshots/analyses) older than RETENTION_DAYS."""
+        """Delete events (+ cascaded snapshots/analyses) older than retention window.
+
+        Window is AZIRO_EVENT_RETENTION_DAYS (default 30). Snapshots and
+        analyses are removed implicitly by `ON DELETE CASCADE`, so there
+        is no separate snapshot TTL to run — if an event goes, its
+        captured logs and diagnoses go with it.
+
+        Cutoff precision must match `_now()` — stored timestamps are at
+        second precision (`isoformat(timespec="seconds")`), so a
+        cutoff with microseconds would compare as strictly greater than
+        a just-saved row's timestamp, letting retention=0 purge a row
+        inserted microseconds earlier in the same `save_event` call.
+        """
         cutoff = (
-            datetime.datetime.now() - datetime.timedelta(days=RETENTION_DAYS)
-        ).isoformat()
+            datetime.datetime.now() - datetime.timedelta(days=_retention_days())
+        ).isoformat(timespec="seconds")
         with self._conn() as c:
             old = [
                 r[0] for r in c.execute(

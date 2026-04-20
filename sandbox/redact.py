@@ -65,6 +65,21 @@ _REDACTED = "[REDACTED]"
 _MAX_PATTERN_LEN = 512
 
 
+def redact_text(text: str) -> str:
+    """Apply all compiled secret patterns to a text string.
+
+    Module-level so non-streaming callers (store writes, logs, tests) can
+    reuse the same rule set StreamRedactor uses for SSE output. Keeping the
+    pattern list in one place means a new detector lands in every redaction
+    path at once, not just the one the author remembered to update.
+    """
+    if not text:
+        return text
+    for pattern in _PATTERNS:
+        text = pattern.sub(_REDACTED, text)
+    return text
+
+
 class StreamRedactor:
     """
     Wraps an SSE generator and redacts sensitive patterns from streamed content.
@@ -79,9 +94,7 @@ class StreamRedactor:
 
     def _redact_text(self, text):
         """Apply all compiled patterns to a text string."""
-        for pattern in _PATTERNS:
-            text = pattern.sub(_REDACTED, text)
-        return text
+        return redact_text(text)
 
     def redact_stream(self, generator):
         """
