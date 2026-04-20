@@ -1851,6 +1851,12 @@ def api_logs_stream(tid):
                         proc.wait(timeout=3)
                     except subprocess.TimeoutExpired:
                         proc.kill()
+                        # SIGKILL doesn't auto-reap; without this wait the
+                        # child sits as <defunct> until worker exit.
+                        try:
+                            proc.wait(timeout=1)
+                        except (subprocess.TimeoutExpired, OSError):
+                            pass
                 untrack_popen(proc)
 
     return Response(generate(), mimetype="text/event-stream",

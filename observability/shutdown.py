@@ -107,12 +107,17 @@ def sse_stream(gen_fn):
         except GeneratorExit:
             # Client disconnected — propagate so the inner generator's own
             # `finally` blocks (e.g. kubectl Popen cleanup) run.
+            raise
+        finally:
+            # Close inner unconditionally. On natural exhaustion this is a
+            # no-op; on `break` (e.g. the drain path above) or GeneratorExit
+            # from the client side, this is what actually fires inner's own
+            # finally blocks — which is how tracked_popen children get
+            # terminated on time instead of leaking until GC.
             try:
                 inner.close()
             except Exception:
                 pass
-            raise
-        finally:
             _unregister_stream(inner)
     wrapper.__name__ = getattr(gen_fn, "__name__", "sse_stream_wrapped")
     wrapper.__doc__ = gen_fn.__doc__
@@ -175,11 +180,10 @@ def request_shutdown(
         return
     _shutting_down = True
 
-    # Snapshot under lock; release before iterating so generator's own
+    # Snapshot streams under lock; release before iterating so a generator's
     # deregister path doesn't deadlock waiting for us.
     with _lock:
         streams_snapshot = list(_streams)
-        procs_snapshot = list(_processes)
 
     # ── SSE: polite drain, then force-close ──────────────────────────────────
     # Order matters. If we call gen.close() up front, every wrapper exits on
@@ -199,6 +203,16 @@ def request_shutdown(
             pass
 
     # ── Subprocesses: SIGTERM, then SIGKILL stragglers ───────────────────────
+    # Snapshot AFTER the SSE drain: wrappers that closed during the grace
+    # window may have spawned + registered Popens (e.g. the kubectl-logs
+    # stream's tracked_popen), so we need to pick up anything that appeared
+    # while we were sleeping. Clear the registry under the same lock so a
+    # late tracked_popen caller can observe is_shutting_down() and bail
+    # instead of registering into an about-to-be-abandoned set.
+    with _lock:
+        procs_snapshot = list(_processes)
+        _processes.clear()
+
     for proc in procs_snapshot:
         if proc.poll() is not None:
             continue  # already exited
@@ -234,9 +248,6 @@ def request_shutdown(
                 pass
         except Exception:
             pass
-
-    with _lock:
-        _processes.clear()
 
 
 def _reset_for_tests() -> None:

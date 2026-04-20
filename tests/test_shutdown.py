@@ -165,6 +165,34 @@ class TestTrackedPopen:
         sd.untrack_popen(proc)
         assert proc not in sd._processes
 
+    def test_popen_registered_during_sse_grace_is_also_killed(self):
+        """Regression for a timing bug: procs_snapshot used to be taken
+        BEFORE the SSE grace sleep, so a Popen spawned from a closing
+        wrapper (tracked_popen inside the kubectl-logs generator) would
+        miss the kill loop and leak. Fix re-snapshots after the sleep."""
+        spawned = {}
+
+        @sd.sse_stream
+        def gen():
+            try:
+                while True:
+                    yield "tick"
+            finally:
+                # Spawn a tracked child during the wrapper's teardown —
+                # mirrors the real logs-stream generator's Popen lifecycle.
+                spawned["proc"] = sd.tracked_popen(
+                    [sys.executable, "-c", "import time; time.sleep(30)"])
+
+        it = gen()
+        next(it)  # Prime it so the generator is registered.
+        sd.request_shutdown(sse_grace_seconds=0.2, popen_term_grace_seconds=5)
+        proc = spawned["proc"]
+        t0 = time.monotonic()
+        while proc.poll() is None and time.monotonic() - t0 < 3:
+            time.sleep(0.05)
+        assert proc.poll() is not None, \
+            "late-registered Popen was not terminated by request_shutdown"
+
     def test_request_shutdown_terminates_tracked_popen(self):
         """A long-lived tracked child must be SIGTERMed (or .terminate()'d
         on Windows) by `request_shutdown()`. Give it a wide grace window
