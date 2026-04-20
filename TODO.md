@@ -48,7 +48,7 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 - [x] **RUN-1** Gunicorn + gevent workers behind nginx (drop Flask dev server) (S) — shipped in Phase D
 - [x] **RUN-2** `/healthz` (liveness) + `/readyz` (DB + LLM reachability) (S) — shipped in Phase C
 - [x] **RUN-3** Prometheus `/metrics` — request counts, LLM tokens, tool-call latencies (M) — shipped 2026-04-17: `observability/metrics.py`, gunicorn multi-process mode, Prometheus container in obs-run.sh, `Aziro — Metrics` dashboard
-- [ ] **RUN-4** structlog JSON logging + Sentry SDK integration (S)
+- [x] **RUN-4** structlog JSON logging + self-hosted Loki aggregation (S) — shipped: JSON envelope via `observability.configure_logging`, Alloy tails Docker stdout → Loki → Grafana `Aziro — Logs` dashboard. Loki replaces Sentry (no external SaaS per architecture call)
 - [ ] **RUN-5** Graceful shutdown: SIGTERM drains SSE + kills kubectl subprocesses (S)
 
 ### Durable state
