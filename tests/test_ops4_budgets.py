@@ -171,7 +171,7 @@ def test_chat_sink_error_does_not_break_call(llm):
 
     llm.usage_sink = _broken_sink
     # Must succeed even though sink raises.
-    reply, cmd, tc_id = llm.chat(
+    reply, _cmd, _tc_id = llm.chat(
         [{"role": "user", "content": "hi"}], use_tools=False,
         user_id="alice",
     )
