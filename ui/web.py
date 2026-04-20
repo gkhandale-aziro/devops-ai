@@ -49,7 +49,14 @@ from auth import (
     init_login_manager, audit_after_request,
     AUTH_MODE_APIKEY, AUTH_MODE_SESSION, AUTH_MODE_BOTH,
 )
-from auth.middleware import get_auth_mode, session_auth_check, role_check
+from auth.middleware import get_auth_mode, session_auth_check, role_check, require_role
+from config.features import (
+    is_enabled as _feature_enabled,
+    set_enabled as _feature_set,
+    clear_override as _feature_clear,
+    list_flags as _feature_list,
+    FEATURE_AUTO_MONITOR, FEATURE_ANALYZE_ENDPOINT, KNOWN_FEATURES,
+)
 
 configure_logging()
 log = get_logger("aziro.web")
@@ -1167,6 +1174,22 @@ def _draining_response():
     return (jsonify({"status": "draining"}), 503, {"Retry-After": "30"})
 
 
+def _feature_disabled_response(feature: str):
+    """SEC-7: 503 returned when an operator has killed a feature path.
+
+    503 + Retry-After is the right shape here — the feature may come back
+    on, and clients should back off rather than treating it as a permanent
+    404. `feature` is echoed so the UI can surface which kill switch is
+    currently tripped."""
+    log.info("feature.disabled_request_rejected",
+             extra={"feature": feature, "path": request.path})
+    return (
+        jsonify({"error": "feature disabled", "feature": feature}),
+        503,
+        {"Retry-After": "60"},
+    )
+
+
 # ── OPS-4: per-user daily token budget ───────────────────────────────────────
 
 def _daily_token_budget() -> int:
@@ -1308,6 +1331,8 @@ _ANALYSIS_SYSTEM = (
 def api_analyze_stream():
     if is_shutting_down():
         return _draining_response()
+    if not _feature_enabled(FEATURE_ANALYZE_ENDPOINT):
+        return _feature_disabled_response(FEATURE_ANALYZE_ENDPOINT)
     over_budget = _check_llm_budget()
     if over_budget:
         return over_budget
@@ -1331,6 +1356,8 @@ def api_analyze_stream():
 
 @app.route("/api/v1/analyze", methods=["POST"])
 def api_analyze():
+    if not _feature_enabled(FEATURE_ANALYZE_ENDPOINT):
+        return _feature_disabled_response(FEATURE_ANALYZE_ENDPOINT)
     over_budget = _check_llm_budget()
     if over_budget:
         return over_budget
@@ -1418,6 +1445,8 @@ def _web_triage_handle(raw_event, target_id="", target_name=""):
 @app.route("/api/v1/monitor/<tid>", methods=["POST"])
 def api_monitor_start(tid):
     """Start monitoring a target. Broadcasts alerts to all /api/v1/monitor/stream subscribers."""
+    if not _feature_enabled(FEATURE_AUTO_MONITOR):
+        return _feature_disabled_response(FEATURE_AUTO_MONITOR)
     target = _targets.get(tid)
     if not target:
         return jsonify({"error": "not found"}), 404
@@ -1683,6 +1712,57 @@ def api_feedback():
 def api_stats():
     """Cluster incident stats: counts by level, top failing objects."""
     return jsonify(_store.get_stats())
+
+
+# ── SEC-7: feature flag admin API ─────────────────────────────────────────────
+#
+# Read-only list is open to any authenticated user so the UI can show a
+# "feature X is currently disabled" banner. Mutating routes require admin —
+# same role gate as other operational knobs (target create/delete).
+
+@app.route("/api/v1/admin/features", methods=["GET"])
+def api_features_list():
+    return jsonify({"features": _feature_list()})
+
+
+@app.route("/api/v1/admin/features/<name>", methods=["POST"])
+@require_role("admin")
+def api_features_set(name):
+    if name not in KNOWN_FEATURES:
+        return jsonify({"error": "unknown feature", "feature": name}), 404
+    body = request.json or {}
+    if "enabled" not in body:
+        return jsonify({"error": "body must include 'enabled': bool"}), 400
+    enabled = bool(body["enabled"])
+    _feature_set(name, enabled)
+    # Operator trail — paired with SEC-2 audit log, but explicit here since
+    # a kill-switch flip during an incident is the kind of event ops teams
+    # want grep-able without joining on the audit_log schema.
+    actor = _current_user_id() or "api-key"
+    log.warning("feature.toggled",
+                extra={"feature": name, "enabled": enabled, "actor": actor})
+    return jsonify({"feature": name, "enabled": enabled, "source": "runtime"})
+
+
+@app.route("/api/v1/admin/features/<name>", methods=["DELETE"])
+@require_role("admin")
+def api_features_clear(name):
+    """Remove a runtime override so the flag falls back to env/default.
+
+    Distinct from POST enabled=<default> because future deployments may
+    change the default — 'clear my override' is a different intent from
+    'force it to the current default'."""
+    if name not in KNOWN_FEATURES:
+        return jsonify({"error": "unknown feature", "feature": name}), 404
+    _feature_clear(name)
+    actor = _current_user_id() or "api-key"
+    log.warning("feature.override_cleared",
+                extra={"feature": name, "actor": actor})
+    # Snapshot the resulting state so the caller doesn't need a follow-up GET.
+    for flag in _feature_list():
+        if flag["name"] == name:
+            return jsonify(flag)
+    return jsonify({"feature": name})  # pragma: no cover — registry guarantees hit
 
 
 # ── Topology API ──────────────────────────────────────────────────────────────

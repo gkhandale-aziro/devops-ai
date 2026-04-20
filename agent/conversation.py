@@ -15,6 +15,7 @@ import queue as _queue
 from tools.filter      import is_destructive
 from agent.needs_tools import needs_tools
 from observability    import record_tool_call
+from config.features   import is_enabled, FEATURE_AGENT_TOOLS
 
 MAX_STEPS = 5
 
@@ -277,6 +278,16 @@ class Agent:
                 if command in ran_commands:
                     self._append_tool(messages, reply, command, tool_call_id,
                                       "[Already ran. Use output already provided.]")
+                    continue
+
+                # SEC-7 kill switch: when agent tool execution is off, feed
+                # the model back a placeholder instead of running the command.
+                # The loop keeps going so the model can fall back to a
+                # text-only answer from whatever context it already has.
+                if not is_enabled(FEATURE_AGENT_TOOLS):
+                    self._append_tool(messages, reply, command, tool_call_id,
+                                      "[Tool execution disabled by operator. "
+                                      "Answer from available context.]")
                     continue
 
                 if is_destructive(command) and confirm_q is not None:
