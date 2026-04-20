@@ -61,7 +61,7 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 - [x] **OPS-1** Dockerfile (multi-stage) + docker-compose.yml (app + postgres + redis) — shipped pre-v0.0.1
 - [ ] **OPS-2** GitHub Actions CI: pytest + ruff + pip-audit + Trivy on every PR (S)
 - [ ] **OPS-3** Load test with k6: 50 concurrent users, 10 SSE streams, sustained chat (M)
-- [ ] **OPS-4** LLM cost controls: per-user token budgets + circuit breaker on agent loops (M)
+- [x] **OPS-4** LLM cost controls: per-user token budgets + circuit breaker on agent loops (M) — shipped: `store.llm_usage` table (user_id/model/tokens/ts) + `record_llm_usage` / `user_tokens_today`; `LLMClient.chat` populates `usage_out` dict and fires wired-in `usage_sink` callback per call; agent loop tracks cumulative `total_tokens` and aborts once `AZIRO_AGENT_RUN_TOKEN_CAP` (default 50000) is crossed; `_check_llm_budget()` returns 429 when `AZIRO_USER_DAILY_TOKEN_BUDGET` (default 200000) is exhausted; wired into all four chat/analyze endpoints
 
 ### Docs & release
 - [ ] **DOCS-1** Deploy guide, ops runbook, backup/restore, SLO definitions (M)

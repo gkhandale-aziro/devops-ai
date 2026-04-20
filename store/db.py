@@ -149,6 +149,21 @@ class EventStore:
 
                 CREATE INDEX IF NOT EXISTS idx_metrics_target_time
                     ON metrics(target_id, metric, timestamp DESC);
+
+                CREATE TABLE IF NOT EXISTS llm_usage (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp         TEXT    NOT NULL,
+                    user_id           TEXT    NOT NULL,
+                    model             TEXT    NOT NULL,
+                    prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+                    completion_tokens INTEGER NOT NULL DEFAULT 0,
+                    total_tokens      INTEGER NOT NULL DEFAULT 0,
+                    session_id        TEXT    DEFAULT ''
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_llm_usage_user_ts
+                    ON llm_usage(user_id, timestamp DESC);
+
                 PRAGMA foreign_keys = ON;
             """)
 
@@ -413,6 +428,74 @@ class EventStore:
         ).isoformat()
         with self._conn() as c:
             c.execute("DELETE FROM metrics WHERE timestamp < ?", (cutoff,))
+
+    # ── LLM usage (OPS-4) ─────────────────────────────────────────────────────
+    #
+    # Per-user token accounting. The metrics path (observability/metrics.py
+    # record_llm_call) already exports aggregate counters for Prometheus, but
+    # those are worker-local and don't survive a restart. This table persists
+    # per-call rows so we can enforce daily budgets across workers and across
+    # bounces, and so an operator can audit who burned how many tokens when a
+    # bill spike lands.
+    #
+    # `user_id` is a string (not FK) so anonymous or system-triggered calls
+    # can still land with a sentinel like "anonymous" or "auto-monitor"
+    # without us inventing user rows for them. `cost_usd` is intentionally
+    # absent — model pricing drifts, and we'd rather compute it at report
+    # time from the current price list than trust a stale value.
+
+    def record_llm_usage(
+        self,
+        user_id: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        session_id: str = "",
+    ) -> None:
+        """Persist a single LLM call's token usage. Callable from providers/client.py.
+
+        Fire-and-forget — swallows errors so a persistence blip never masks an
+        otherwise-successful LLM response. If the row doesn't land, the
+        in-memory Prometheus counter still captured the call.
+        """
+        if not user_id:
+            return
+        total = (prompt_tokens or 0) + (completion_tokens or 0)
+        try:
+            with self._conn() as c:
+                c.execute(
+                    """INSERT INTO llm_usage
+                       (timestamp, user_id, model, prompt_tokens,
+                        completion_tokens, total_tokens, session_id)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (_now(), user_id, model,
+                     int(prompt_tokens or 0),
+                     int(completion_tokens or 0),
+                     total, session_id or ""),
+                )
+        except Exception:
+            pass
+
+    def user_tokens_today(self, user_id: str) -> int:
+        """Return total_tokens this user has spent since today's local midnight.
+
+        Used by the budget-check at request entry to decide whether to let a
+        new chat/analyze call through. Missing rows (fresh user, empty table)
+        return 0 — a brand-new user starts at zero regardless of the default.
+        """
+        if not user_id:
+            return 0
+        start_of_day = datetime.datetime.combine(
+            datetime.date.today(), datetime.time.min
+        ).isoformat(timespec="seconds")
+        with self._conn() as c:
+            row = c.execute(
+                """SELECT COALESCE(SUM(total_tokens), 0) AS used
+                   FROM   llm_usage
+                   WHERE  user_id = ? AND timestamp >= ?""",
+                (user_id, start_of_day),
+            ).fetchone()
+        return int(row["used"] or 0) if row else 0
 
     # ── feedback ──────────────────────────────────────────────────────────────
 

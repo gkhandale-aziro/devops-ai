@@ -514,6 +514,12 @@ class LLMClient:
         self._monitor_thread: threading.Thread | None = None
         self._monitor_stop = threading.Event()
 
+        # OPS-4: optional callback for per-user token accounting. The app wires
+        # this to EventStore.record_llm_usage during boot so the store layer
+        # doesn't leak up into providers. Signature:
+        #   sink(user_id, model, prompt_tokens, completion_tokens, session_id)
+        self.usage_sink = None
+
         print(f"  [AI] Provider: OpenAI SDK (direct)")
         print(f"  [AI] Tool model:   {self.tool_model}")
         print(f"  [AI] Answer model: {self.answer_model}")
@@ -694,22 +700,41 @@ class LLMClient:
 
     # ── Non-streaming ────────────────────────────────────────────────────────
 
-    def chat(self, messages, use_tools=True):
-        """Returns (reply_text, command_or_None, tool_call_id_or_None)."""
+    def chat(self, messages, use_tools=True, user_id=None, session_id=None,
+             usage_out=None):
+        """Returns (reply_text, command_or_None, tool_call_id_or_None).
+
+        OPS-4 kwargs:
+            user_id, session_id — attribution fields for per-user token
+                accounting via `self.usage_sink`. When omitted, the call is
+                made but no usage row lands (used for system calls like
+                session-title generation).
+            usage_out — optional dict the caller passes to receive
+                {prompt_tokens, completion_tokens, total_tokens} for this
+                single call. Lets the agent loop cap its cumulative cost
+                across tool-calling steps without querying the DB.
+        """
         try:
-            return self._chat_once(messages, use_tools)
+            return self._chat_once(messages, use_tools,
+                                   user_id=user_id, session_id=session_id,
+                                   usage_out=usage_out)
         except Exception as e:
             print(f"  [AI] Chat error ({type(e).__name__}): {str(e)[:150]}")
             if self._handle_error(e, failing_model=self._effective_model(use_tools)):
-                return self._chat_once(messages, use_tools)
+                return self._chat_once(messages, use_tools,
+                                       user_id=user_id, session_id=session_id,
+                                       usage_out=usage_out)
             if _is_quota_error(e):
                 raise
             return self._retry_transient(
-                lambda: self._chat_once(messages, use_tools), e,
+                lambda: self._chat_once(messages, use_tools,
+                                        user_id=user_id, session_id=session_id,
+                                        usage_out=usage_out), e,
                 failing_model=self._effective_model(use_tools),
             )
 
-    def _chat_once(self, messages, use_tools):
+    def _chat_once(self, messages, use_tools, user_id=None, session_id=None,
+                   usage_out=None):
         model = self._effective_model(use_tools)
 
         t0 = time.time()
@@ -767,6 +792,24 @@ class LLMClient:
                 # (e.g. Anthropic's combined figure) so we don't double-count.
                 total_tokens=total_toks if not (prompt_toks or completion_toks) else 0,
             )
+            # OPS-4: expose this call's token counts to the caller (agent loop
+            # uses this to enforce AZIRO_AGENT_RUN_TOKEN_CAP) and persist a
+            # per-user usage row via the wired-in sink. Both are best-effort:
+            # metrics/budgets must never mask a provider error or success.
+            if isinstance(usage_out, dict):
+                usage_out["prompt_tokens"] = prompt_toks
+                usage_out["completion_tokens"] = completion_toks
+                usage_out["total_tokens"] = (
+                    total_toks if total_toks else prompt_toks + completion_toks
+                )
+            if user_id and self.usage_sink:
+                try:
+                    self.usage_sink(
+                        user_id, model, prompt_toks, completion_toks,
+                        session_id or "",
+                    )
+                except Exception:
+                    pass
 
     # ── Streaming ────────────────────────────────────────────────────────────
 

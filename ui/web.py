@@ -69,6 +69,11 @@ _store    = EventStore()
 _auth     = AuthStore()
 _metric_collector = MetricCollector(_store)
 
+# OPS-4: wire the LLM client's best-effort usage sink to the store so every
+# non-streaming call writes a per-user row to llm_usage. Done here (not in
+# LLMClient.__init__) to keep providers/ free of store/ imports.
+_llm.usage_sink = _store.record_llm_usage
+
 
 def _bootstrap_admin_if_empty():
     """On first boot with an empty users table, create an admin from
@@ -1162,11 +1167,59 @@ def _draining_response():
     return (jsonify({"status": "draining"}), 503, {"Retry-After": "30"})
 
 
+# ── OPS-4: per-user daily token budget ───────────────────────────────────────
+
+def _daily_token_budget() -> int:
+    """Cap on tokens one user may consume in a rolling day. 0 disables."""
+    try:
+        v = int(os.environ.get("AZIRO_USER_DAILY_TOKEN_BUDGET", "200000"))
+        return max(v, 0)
+    except ValueError:
+        return 200000
+
+
+def _current_user_id() -> str:
+    """Return the logged-in user id or '' for anonymous. Cheap, no Flask
+    import side effects if current_user isn't bound."""
+    try:
+        if current_user.is_authenticated:
+            return current_user.get_id() or ""
+    except Exception:
+        pass
+    return ""
+
+
+def _check_llm_budget():
+    """Return a 429 Response if the caller is over their daily token budget,
+    or None if they're in the clear. Anonymous users and a zero budget both
+    bypass the check — OPS-4 budgets are a per-user accounting mechanism,
+    not an anti-abuse control (rate limits already cover that)."""
+    budget = _daily_token_budget()
+    if budget <= 0:
+        return None
+    uid = _current_user_id()
+    if not uid:
+        return None
+    used = _store.user_tokens_today(uid)
+    if used >= budget:
+        log.warning("llm.budget_exhausted",
+                    extra={"user_id": uid, "used": used, "budget": budget})
+        return (jsonify({
+            "error": "Daily LLM token budget exhausted. Try again tomorrow.",
+            "used": used,
+            "budget": budget,
+        }), 429, {"Retry-After": "3600"})
+    return None
+
+
 @app.route("/api/v1/chat/<tid>/stream", methods=["POST"])
 @limiter.limit(_CHAT_STREAM_LIMITS)
 def api_chat_stream(tid):
     if is_shutting_down():
         return _draining_response()
+    over_budget = _check_llm_budget()
+    if over_budget:
+        return over_budget
     target = _targets.get(tid)
     if not target:
         return jsonify({"error": "not found"}), 404
@@ -1177,6 +1230,8 @@ def api_chat_stream(tid):
     too_long = _reject_if_too_long(user_msg, "message")
     if too_long:
         return too_long
+
+    uid = _current_user_id()
 
     # Serialize concurrent chat requests for the same target so the
     # get → append → set sequence cannot interleave across threads.
@@ -1200,7 +1255,8 @@ def api_chat_stream(tid):
                 _session.set(tid, messages)
                 yield "data: [DONE]\n\n"
             else:
-                yield from _agent.run(messages, target, _session, tid)
+                yield from _agent.run(messages, target, _session, tid,
+                                      user_id=uid, session_db_id=tid)
         except Exception as e:
             log.error("chat.target_stream_error", extra={"target_id": tid, "error": str(e)[:200]})
             # Retry with fallback if available
@@ -1252,6 +1308,9 @@ _ANALYSIS_SYSTEM = (
 def api_analyze_stream():
     if is_shutting_down():
         return _draining_response()
+    over_budget = _check_llm_budget()
+    if over_budget:
+        return over_budget
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
@@ -1272,6 +1331,9 @@ def api_analyze_stream():
 
 @app.route("/api/v1/analyze", methods=["POST"])
 def api_analyze():
+    over_budget = _check_llm_budget()
+    if over_budget:
+        return over_budget
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
@@ -1281,7 +1343,8 @@ def api_analyze():
     messages = [{"role": "system", "content": _ANALYSIS_SYSTEM},
                 {"role": "user",   "content": prompt}]
     try:
-        reply, _, _ = _llm.chat(messages, use_tools=False)
+        reply, _, _ = _llm.chat(messages, use_tools=False,
+                                user_id=_current_user_id())
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1487,6 +1550,9 @@ def api_sessions_messages(sid):
 def api_sessions_chat_stream(sid):
     if is_shutting_down():
         return _draining_response()
+    over_budget = _check_llm_budget()
+    if over_budget:
+        return over_budget
     if not any(s["id"] == sid for s in _sessions.load()):
         return jsonify({"error": "not found"}), 404
     user_msg = (request.json or {}).get("message", "").strip()
