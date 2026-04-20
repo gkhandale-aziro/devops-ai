@@ -9,13 +9,13 @@
  *   - Font Awesome 6 (fa6):  AWS (Simple Icons removed the AWS mark over
  *                            trademark concerns; Font Awesome still ships it)
  *   - VS Code Icons (vsc):   Azure (Microsoft's own icon set)
- *   - Lucide:                ssh, local (no official brand mark exists)
+ *   - Lucide:                ssh, local, jenkins (no official brand mark exists)
  */
 import type { ComponentType, SVGProps } from "react";
 import { SiKubernetes, SiDocker, SiGooglecloud, SiTerraform } from "react-icons/si";
 import { FaAws } from "react-icons/fa6";
 import { VscAzure } from "react-icons/vsc";
-import { SquareTerminal, Laptop } from "lucide-react";
+import { SquareTerminal, Laptop, Hammer } from "lucide-react";
 import type { TargetType } from "../types";
 
 /** Icons from react-icons and Lucide both accept size + standard SVG props. */
@@ -37,4 +37,5 @@ export const TARGET_META: Record<TargetType, TypeMeta> = {
   azure:      { icon: VscAzure,       color: "#0078D4", label: "Azure"       },
   terraform:  { icon: SiTerraform,    color: "#7B42BC", label: "Terraform"   },
   local:      { icon: Laptop,         color: "#22c55e", label: "Local"       },
+  jenkins:    { icon: Hammer,         color: "#D33833", label: "Jenkins"     },
 };

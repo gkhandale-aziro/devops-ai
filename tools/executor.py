@@ -10,6 +10,7 @@ from .aws       import run_aws
 from .gcp       import run_gcp
 from .azure     import run_azure
 from .local     import run_local
+from .jenkins   import run_jenkins
 
 
 class ToolExecutor:
@@ -28,6 +29,7 @@ class ToolExecutor:
             "aws":        run_aws,
             "gcp":        run_gcp,
             "azure":      run_azure,
+            "jenkins":    run_jenkins,
         }
 
     def execute(self, target, command):

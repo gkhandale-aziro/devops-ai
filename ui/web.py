@@ -731,7 +731,7 @@ def api_add():
     if err:
         return err
     name = name.strip()
-    valid_types = {"ssh", "kubernetes", "docker", "aws", "gcp", "azure", "terraform", "local"}
+    valid_types = {"ssh", "kubernetes", "docker", "aws", "gcp", "azure", "terraform", "local", "jenkins"}
     if ttype not in valid_types:
         return jsonify({"error": f"invalid type: {ttype}"}), 400
     config = d.get("config", {})
@@ -785,6 +785,7 @@ _TEST_COMMANDS = {
     "gcp":        "gcloud config get-value project 2>&1",
     "azure":      "az account show --query name -o tsv 2>&1",
     "terraform":  "terraform version 2>&1",
+    "jenkins":    "test",
 }
 
 @app.route("/api/v1/targets/<tid>/test", methods=["GET"])
@@ -810,6 +811,9 @@ def api_test(tid):
     # kubernetes: must see "Kubernetes control plane" to be truly online
     if ttype == "kubernetes":
         failed = "control plane" not in out.lower() and "kubernetes" not in out.lower()
+    # jenkins: REST check returns "Jenkins control plane OK" on success, "[ERROR] ..." on failure
+    if ttype == "jenkins":
+        failed = "[ERROR]" in out or "control plane OK" not in out
     status = "offline" if failed else "online"
     _targets.update_status(tid, status)
     return jsonify({"status": status, "message": out})
@@ -931,6 +935,12 @@ TAB_COMMANDS = {
                     "workspace": "terraform workspace show 2>/dev/null"},
         "plan":    {"output": "terraform plan -no-color 2>/dev/null | tail -60"},
         "outputs": {"output": "terraform output 2>/dev/null"},
+    },
+    "jenkins": {
+        "pipelines": {"output": "list_jobs"},
+        "builds":    {"output": "list_builds"},
+        "queue":     {"output": "list_queue"},
+        "agents":    {"output": "list_agents"},
     },
 }
 TAB_COMMANDS["local"] = TAB_COMMANDS["ssh"]
