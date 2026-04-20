@@ -1151,9 +1151,22 @@ def api_namespaces(tid):
 
 # ── AI chat — target-specific streaming ──────────────────────────────────────
 
+def _draining_response():
+    """Uniform 503 for new SSE requests arriving after shutdown has begun.
+
+    Returning it from each SSE handler BEFORE any side effect (session
+    persistence, subprocess spawn) keeps a late request from mutating state
+    on a worker that's already telling the LB it's gone. `/readyz` emits
+    the same contract, so LB + direct-hit clients see the same response.
+    """
+    return (jsonify({"status": "draining"}), 503, {"Retry-After": "30"})
+
+
 @app.route("/api/v1/chat/<tid>/stream", methods=["POST"])
 @limiter.limit(_CHAT_STREAM_LIMITS)
 def api_chat_stream(tid):
+    if is_shutting_down():
+        return _draining_response()
     target = _targets.get(tid)
     if not target:
         return jsonify({"error": "not found"}), 404
@@ -1237,6 +1250,8 @@ _ANALYSIS_SYSTEM = (
 @app.route("/api/v1/analyze/stream", methods=["POST"])
 @limiter.limit(_CHAT_STREAM_LIMITS)
 def api_analyze_stream():
+    if is_shutting_down():
+        return _draining_response()
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
@@ -1397,6 +1412,8 @@ def api_monitor_stream():
     SSE endpoint — each browser tab subscribes here to receive live alerts.
     Sends keepalive every 25 s to prevent connection timeout.
     """
+    if is_shutting_down():
+        return _draining_response()
     sub_id = str(uuid.uuid4())
     sub_q  = _queue.Queue()
     _monitor_subs[sub_id] = sub_q
@@ -1468,6 +1485,8 @@ def api_sessions_messages(sid):
 @app.route("/api/v1/sessions/<sid>/chat/stream", methods=["POST"])
 @limiter.limit(_CHAT_STREAM_LIMITS)
 def api_sessions_chat_stream(sid):
+    if is_shutting_down():
+        return _draining_response()
     if not any(s["id"] == sid for s in _sessions.load()):
         return jsonify({"error": "not found"}), 404
     user_msg = (request.json or {}).get("message", "").strip()
@@ -1785,6 +1804,8 @@ def api_logs_stream(tid):
     SSE stream of kubectl logs -f for a pod.
     ?pod=name  &namespace=default  &container=main
     """
+    if is_shutting_down():
+        return _draining_response()
     target = _targets.get(tid)
     if not target:
         return jsonify({"error": "not found"}), 404

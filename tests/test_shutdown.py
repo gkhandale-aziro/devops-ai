@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -25,10 +26,20 @@ from observability import shutdown as sd
 
 @pytest.fixture(autouse=True)
 def _reset_state():
-    """Every test starts with a clean registry and the flag cleared."""
+    """Every test starts with a clean registry and the flag cleared.
+
+    `_reload_web` below pops `observability.shutdown` from `sys.modules`
+    and re-imports it, producing a second module object distinct from
+    the `sd` handle at the top of this file. Tests that flip the flag
+    via the re-imported module would otherwise leak `_shutting_down=True`
+    into later test files (seen failing `tests/test_web_validation.py`
+    after this file). Reset both to be safe."""
     sd._reset_for_tests()
     yield
     sd._reset_for_tests()
+    live = sys.modules.get("observability.shutdown")
+    if live is not None and live is not sd:
+        live._reset_for_tests()
 
 
 # ── flag semantics ───────────────────────────────────────────────────────────
@@ -223,3 +234,83 @@ class TestReadyzDraining:
             assert body["status"] == "draining"
         finally:
             app_sd._reset_for_tests()
+
+
+class TestSseEndpointsRejectDuringDrain:
+    """Without this guard, a late request could mutate state (_session.set)
+    or spawn a subprocess (tracked_popen) on a worker that's already told
+    the LB it's gone. Every SSE entry point must bail out before side effects.
+
+    Note: the four chat/analyze routes are decorated with `@limiter.limit(...)`,
+    and flask-limiter's `headers_enabled=True` rewrites Retry-After with its
+    own calculation. We therefore verify only the status + body contract here;
+    the readyz test above pins the exact 30 since /readyz has no rate limit."""
+
+    def _flip_flag(self):
+        from observability import shutdown as app_sd
+        app_sd._shutting_down = True
+
+    def _assert_draining(self, r):
+        assert r.status_code == 503
+        body = r.get_json()
+        assert body == {"status": "draining"}
+
+    def test_chat_stream_rejects_when_draining(self, fresh_app):
+        self._flip_flag()
+        _, c = fresh_app
+        r = c.post("/api/v1/chat/missing-tid/stream", json={"message": "hi"})
+        self._assert_draining(r)
+
+    def test_analyze_stream_rejects_when_draining(self, fresh_app):
+        self._flip_flag()
+        _, c = fresh_app
+        r = c.post("/api/v1/analyze/stream", json={"prompt": "hi"})
+        self._assert_draining(r)
+
+    def test_monitor_stream_rejects_when_draining(self, fresh_app):
+        self._flip_flag()
+        _, c = fresh_app
+        r = c.get("/api/v1/monitor/stream")
+        self._assert_draining(r)
+
+    def test_sessions_chat_stream_rejects_when_draining(self, fresh_app):
+        self._flip_flag()
+        _, c = fresh_app
+        r = c.post("/api/v1/sessions/missing-sid/chat/stream",
+                   json={"message": "hi"})
+        self._assert_draining(r)
+
+    def test_logs_stream_rejects_when_draining(self, fresh_app):
+        self._flip_flag()
+        _, c = fresh_app
+        r = c.get("/api/v1/logs/missing-tid/stream?pod=abc")
+        self._assert_draining(r)
+
+
+class TestShutdownOrdering:
+    def test_drain_frame_emitted_before_force_close(self):
+        """The whole point of sse_grace_seconds is to let actively-consumed
+        wrappers emit `event: shutdown` before we slam them shut. Regression
+        guard for the order: flag → sleep → close (NOT close → sleep)."""
+        captured = []
+        started = threading.Event()
+
+        @sd.sse_stream
+        def gen():
+            while True:
+                started.set()
+                yield "data: tick\n\n"
+
+        def consumer(it):
+            for frame in it:
+                captured.append(frame)
+
+        it = gen()
+        t = threading.Thread(target=consumer, args=(it,))
+        t.start()
+        started.wait(timeout=1)
+        # request_shutdown should flip the flag, wait a tick, THEN close.
+        sd.request_shutdown(sse_grace_seconds=0.5, popen_term_grace_seconds=0)
+        t.join(timeout=3)
+        assert any("event: shutdown" in f for f in captured), \
+            f"expected drain frame in {captured[-5:]}"

@@ -181,18 +181,22 @@ def request_shutdown(
         streams_snapshot = list(_streams)
         procs_snapshot = list(_processes)
 
-    # ── SSE: close each generator ────────────────────────────────────────────
+    # ── SSE: polite drain, then force-close ──────────────────────────────────
+    # Order matters. If we call gen.close() up front, every wrapper exits on
+    # StopIteration before its flag-check branch runs, so clients never see
+    # the `event: shutdown` frame. Instead: the flag is already set above,
+    # so actively-consumed wrappers emit the drain frame and finish on their
+    # own during the sleep window. After the window closes, anything still
+    # registered is idle (nobody pulling) or misbehaving — force-close it.
+    if streams_snapshot:
+        time.sleep(sse_grace_seconds)
+
     for gen in streams_snapshot:
         try:
             gen.close()
         except Exception:
             # Never let one misbehaving generator block the rest of the drain.
             pass
-
-    # Give greenlets a beat to run their finally blocks (DB writes,
-    # kubectl-log Popen cleanup hanging off a generator, etc.)
-    if streams_snapshot:
-        time.sleep(sse_grace_seconds)
 
     # ── Subprocesses: SIGTERM, then SIGKILL stragglers ───────────────────────
     for proc in procs_snapshot:
@@ -219,6 +223,14 @@ def request_shutdown(
                 else:
                     proc.kill()
             except (ProcessLookupError, PermissionError, OSError):
+                pass
+            # SIGKILL doesn't auto-reap. Without this wait, the child sits as
+            # a <defunct> zombie until the worker itself exits — and gunicorn
+            # may SIGKILL the worker before that happens.
+            try:
+                proc.wait(timeout=1.0)
+            except (subprocess.TimeoutExpired, ProcessLookupError,
+                    PermissionError, OSError):
                 pass
         except Exception:
             pass
