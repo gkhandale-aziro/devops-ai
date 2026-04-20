@@ -27,12 +27,17 @@ def _retention_days() -> int:
 
     Read fresh each call so tests can set AZIRO_EVENT_RETENTION_DAYS=0
     to force-purge without monkey-patching. Falls back to 30 on a
-    missing or malformed value.
+    missing, malformed, or negative value — a negative window would
+    push the cutoff into the future and wipe every row, which is never
+    what an operator actually wants.
     """
     try:
-        return int(os.environ.get("AZIRO_EVENT_RETENTION_DAYS", "30"))
+        days = int(os.environ.get("AZIRO_EVENT_RETENTION_DAYS", "30"))
     except ValueError:
         return 30
+    if days < 0:
+        return 30
+    return days
 
 
 def _redact_enabled() -> bool:
@@ -234,12 +239,17 @@ class EventStore:
         an env-dump snapshot fed into diagnosis). Scrub the same way
         snapshots are scrubbed so the DB never stores what we would
         refuse to stream to a client.
+
+        Order matters: redact BEFORE truncating. Cutting first can split
+        a secret across the 8000/2000-char boundary, leaving its prefix
+        un-detectable by any pattern and defeating the scrub.
         """
-        diag = diagnosis[:8000]
-        remed = remediation[:2000]
         if _redact_enabled():
-            diag = redact_text(diag)
-            remed = redact_text(remed)
+            diag = redact_text(diagnosis)[:8000]
+            remed = redact_text(remediation)[:2000]
+        else:
+            diag = diagnosis[:8000]
+            remed = remediation[:2000]
         with self._conn() as c:
             c.execute(
                 """INSERT INTO analyses (event_id, timestamp, diagnosis, remediation)
@@ -423,10 +433,16 @@ class EventStore:
         analyses are removed implicitly by `ON DELETE CASCADE`, so there
         is no separate snapshot TTL to run — if an event goes, its
         captured logs and diagnoses go with it.
+
+        Cutoff precision must match `_now()` — stored timestamps are at
+        second precision (`isoformat(timespec="seconds")`), so a
+        cutoff with microseconds would compare as strictly greater than
+        a just-saved row's timestamp, letting retention=0 purge a row
+        inserted microseconds earlier in the same `save_event` call.
         """
         cutoff = (
             datetime.datetime.now() - datetime.timedelta(days=_retention_days())
-        ).isoformat()
+        ).isoformat(timespec="seconds")
         with self._conn() as c:
             old = [
                 r[0] for r in c.execute(

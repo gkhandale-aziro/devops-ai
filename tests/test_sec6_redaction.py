@@ -327,3 +327,75 @@ class TestRetentionEnvOverride:
         s = EventStore(db_file=str(tmp_path / "aziro.db"))
         # Should not raise.
         s.save_event(_evt(), "SEV2")
+
+    def test_negative_env_falls_back_to_default(self, tmp_path, monkeypatch):
+        """AZIRO_EVENT_RETENTION_DAYS=-1 would push the cutoff into the
+        future and wipe every row on the next save_event. Reject the
+        nonsense value and fall back to 30 days so an operator's typo
+        in a values file can't nuke an incident history."""
+        monkeypatch.setenv("AZIRO_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("AZIRO_EVENT_RETENTION_DAYS", "-1")
+        sys.modules.pop("store", None)
+        sys.modules.pop("store.db", None)
+        from store.db import EventStore, _retention_days
+        assert _retention_days() == 30
+        s = EventStore(db_file=str(tmp_path / "aziro.db"))
+        eid = s.save_event(_evt(), "SEV2")
+        # Second save triggers _purge_old with a 30-day cutoff — the
+        # first event (saved seconds ago) must survive.
+        s.save_event(_evt(obj="other"), "SEV2")
+        with s._conn() as c:
+            rows = c.execute("SELECT id FROM events WHERE id = ?", (eid,)).fetchall()
+        assert len(rows) == 1
+
+    def test_retention_zero_does_not_purge_just_inserted_row(self, tmp_path, monkeypatch):
+        """With AZIRO_EVENT_RETENTION_DAYS=0 the cutoff equals "now".
+        A row inserted microseconds earlier must not be deleted by the
+        post-insert _purge_old — that would make the save_event call
+        itself destructive. The guarantee depends on _purge_old using
+        the same second precision as _now()."""
+        monkeypatch.setenv("AZIRO_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("AZIRO_EVENT_RETENTION_DAYS", "0")
+        sys.modules.pop("store", None)
+        sys.modules.pop("store.db", None)
+        from store.db import EventStore
+        s = EventStore(db_file=str(tmp_path / "aziro.db"))
+        eid = s.save_event(_evt(), "SEV2")  # triggers _purge_old internally
+        with s._conn() as c:
+            rows = c.execute("SELECT id FROM events WHERE id = ?", (eid,)).fetchall()
+        assert len(rows) == 1, "just-inserted row survived retention=0 purge"
+
+
+# ── 4. Redact-before-truncate ───────────────────────────────────────────────
+
+class TestRedactBeforeTruncate:
+    """Truncating before scrubbing can cut a secret in half, leaving its
+    prefix undetectable to the pattern engine. `save_analysis` must
+    redact the FULL string first, then apply the 8000/2000-char caps."""
+
+    def test_diagnosis_longer_than_cap_still_scrubs_secret_near_boundary(self, store):
+        eid = _seed_event(store)
+        # Put a JWT right where the 8000-char truncation would cut it.
+        jwt = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+            ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ"
+            ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        # 7990 chars of filler, then the JWT. Truncate-first would keep
+        # only the first ~10 chars of the JWT, breaking the detector.
+        prefix = "x" * 7990
+        diag = prefix + jwt
+        store.save_analysis(eid, diagnosis=diag)
+        saved, _ = _fetch_analysis(store, eid)
+        # The full JWT substring must not appear anywhere in the stored
+        # diagnosis — even a partial fragment from the boundary region.
+        assert jwt[:30] not in saved, "secret prefix leaked via truncate-before-redact"
+
+    def test_remediation_boundary_secret_scrubbed(self, store):
+        eid = _seed_event(store)
+        # AWS access keys are 20 chars; force-place one crossing the 2000 boundary.
+        prefix = "y" * 1990
+        remed = prefix + "AKIAIOSFODNN7EXAMPLE" + " rest"
+        store.save_analysis(eid, diagnosis="short", remediation=remed)
+        _, saved_remed = _fetch_analysis(store, eid)
+        assert "AKIAIOSFODNN7EXAMPLE" not in saved_remed
