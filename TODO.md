@@ -49,7 +49,7 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 - [x] **RUN-2** `/healthz` (liveness) + `/readyz` (DB + LLM reachability) (S) — shipped in Phase C
 - [x] **RUN-3** Prometheus `/metrics` — request counts, LLM tokens, tool-call latencies (M) — shipped 2026-04-17: `observability/metrics.py`, gunicorn multi-process mode, Prometheus container in obs-run.sh, `Aziro — Metrics` dashboard
 - [x] **RUN-4** structlog JSON logging + self-hosted Loki aggregation (S) — shipped: JSON envelope via `observability.configure_logging`, Alloy tails Docker stdout → Loki → Grafana `Aziro — Logs` dashboard. Loki replaces Sentry (no external SaaS per architecture call)
-- [ ] **RUN-5** Graceful shutdown: SIGTERM drains SSE + kills kubectl subprocesses (S)
+- [x] **RUN-5** Graceful shutdown: SIGTERM drains SSE + kills kubectl subprocesses (S) — shipped: `observability/shutdown.py` registry + `@sse_stream` wraps all 5 SSE generators in `ui/web.py`, `tracked_popen` replaces direct Popen for `kubectl logs -f`, gunicorn `worker_int` hook calls `request_shutdown()`, `/api/v1/readyz` returns 503 + `Retry-After: 30` during drain
 
 ### Durable state
 - [ ] **DB-1** Postgres 16 + Alembic migrations (keep SQLite as dev default) (M)

@@ -1,4 +1,4 @@
-"""Observability: structured logging (Phase C) + Prometheus metrics (RUN-3)."""
+"""Observability: structured logging (C) + Prometheus metrics (RUN-3) + graceful shutdown (RUN-5)."""
 from observability.logging import (
     configure_logging,
     get_logger,
@@ -18,6 +18,13 @@ from observability.metrics import (
     record_tool_call,
     set_build_info,
 )
+from observability.shutdown import (
+    is_shutting_down,
+    request_shutdown,
+    sse_stream,
+    tracked_popen,
+    untrack_popen,
+)
 
 __all__ = [
     "configure_logging",
@@ -35,4 +42,9 @@ __all__ = [
     "record_llm_call",
     "record_tool_call",
     "set_build_info",
+    "is_shutting_down",
+    "request_shutdown",
+    "sse_stream",
+    "tracked_popen",
+    "untrack_popen",
 ]

@@ -42,6 +42,7 @@ from observability import (
     current_request_id, new_request_id, bind_request_id, clear_request_id,
     REQUEST_ID_HEADER,
     metrics_handler, record_http_request,
+    is_shutting_down, sse_stream, tracked_popen, untrack_popen,
 )
 from auth import (
     AuthStore, auth_bp,
@@ -565,6 +566,13 @@ def prometheus_metrics():
 
 @app.route("/api/v1/readyz", methods=["GET"])
 def api_readyz():
+    # During graceful shutdown, tell upstream LBs to stop routing here
+    # BEFORE we try to close DB connections. Retry-After gives the LB a
+    # hint to wait a round before giving up on this instance entirely.
+    if is_shutting_down():
+        return (jsonify({"status": "draining", "checks": {"shutdown": "in_progress"}}),
+                503, {"Retry-After": "30"})
+
     checks: dict = {}
     ok = True
 
@@ -1143,9 +1151,22 @@ def api_namespaces(tid):
 
 # ── AI chat — target-specific streaming ──────────────────────────────────────
 
+def _draining_response():
+    """Uniform 503 for new SSE requests arriving after shutdown has begun.
+
+    Returning it from each SSE handler BEFORE any side effect (session
+    persistence, subprocess spawn) keeps a late request from mutating state
+    on a worker that's already telling the LB it's gone. `/readyz` emits
+    the same contract, so LB + direct-hit clients see the same response.
+    """
+    return (jsonify({"status": "draining"}), 503, {"Retry-After": "30"})
+
+
 @app.route("/api/v1/chat/<tid>/stream", methods=["POST"])
 @limiter.limit(_CHAT_STREAM_LIMITS)
 def api_chat_stream(tid):
+    if is_shutting_down():
+        return _draining_response()
     target = _targets.get(tid)
     if not target:
         return jsonify({"error": "not found"}), 404
@@ -1165,6 +1186,7 @@ def api_chat_stream(tid):
         messages = _trim(messages)
         _session.set(tid, messages)
 
+    @sse_stream
     def generate():
         try:
             # Send thinking event immediately so frontend knows we're alive
@@ -1228,6 +1250,8 @@ _ANALYSIS_SYSTEM = (
 @app.route("/api/v1/analyze/stream", methods=["POST"])
 @limiter.limit(_CHAT_STREAM_LIMITS)
 def api_analyze_stream():
+    if is_shutting_down():
+        return _draining_response()
     prompt = (request.json or {}).get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "empty prompt"}), 400
@@ -1237,7 +1261,12 @@ def api_analyze_stream():
     messages = [{"role": "system", "content": _ANALYSIS_SYSTEM},
                 {"role": "user",   "content": prompt}]
     redactor = StreamRedactor()
-    return Response(redactor.redact_stream(_agent.stream(messages)), mimetype="text/event-stream",
+
+    @sse_stream
+    def generate():
+        yield from _agent.stream(messages)
+
+    return Response(redactor.redact_stream(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
@@ -1383,10 +1412,13 @@ def api_monitor_stream():
     SSE endpoint — each browser tab subscribes here to receive live alerts.
     Sends keepalive every 25 s to prevent connection timeout.
     """
+    if is_shutting_down():
+        return _draining_response()
     sub_id = str(uuid.uuid4())
     sub_q  = _queue.Queue()
     _monitor_subs[sub_id] = sub_q
 
+    @sse_stream
     def generate():
         try:
             while True:
@@ -1453,6 +1485,8 @@ def api_sessions_messages(sid):
 @app.route("/api/v1/sessions/<sid>/chat/stream", methods=["POST"])
 @limiter.limit(_CHAT_STREAM_LIMITS)
 def api_sessions_chat_stream(sid):
+    if is_shutting_down():
+        return _draining_response()
     if not any(s["id"] == sid for s in _sessions.load()):
         return jsonify({"error": "not found"}), 404
     user_msg = (request.json or {}).get("message", "").strip()
@@ -1472,6 +1506,7 @@ def api_sessions_chat_stream(sid):
     # Check if this is the first user message (title still "New Chat")
     is_first_msg = any(s["id"] == sid and s["title"] == "New Chat" for s in _sessions.load())
 
+    @sse_stream
     def generate():
         full = ""
         try:
@@ -1769,6 +1804,8 @@ def api_logs_stream(tid):
     SSE stream of kubectl logs -f for a pod.
     ?pod=name  &namespace=default  &container=main
     """
+    if is_shutting_down():
+        return _draining_response()
     target = _targets.get(tid)
     if not target:
         return jsonify({"error": "not found"}), 404
@@ -1789,26 +1826,38 @@ def api_logs_stream(tid):
     if container and _SAFE_NAME_RE.match(container):
         cmd += ["-c", container]
 
+    @sse_stream
     def generate():
         import subprocess
         proc = None
         try:
-            proc = subprocess.Popen(
+            # tracked_popen registers the child so worker_int can SIGTERM
+            # it on graceful shutdown even if the client never disconnects.
+            proc = tracked_popen(
                 cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
             )
             for line in proc.stdout:
                 yield f"data: {json.dumps({'line': line.rstrip()})}\n\n"
+            yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
         finally:
             # Terminate child process on client disconnect or stream end
-            if proc and proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-        yield "data: [DONE]\n\n"
+            if proc is not None:
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        # SIGKILL doesn't auto-reap; without this wait the
+                        # child sits as <defunct> until worker exit.
+                        try:
+                            proc.wait(timeout=1)
+                        except (subprocess.TimeoutExpired, OSError):
+                            pass
+                untrack_popen(proc)
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

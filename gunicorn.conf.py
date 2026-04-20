@@ -91,3 +91,25 @@ def child_exit(server, worker):
     except Exception:
         # Never let a metrics-side failure crash gunicorn's worker reaper.
         pass
+
+
+# ── Graceful shutdown (RUN-5) ─────────────────────────────────────────────────
+# gunicorn sends SIGTERM to a worker on:
+#   - `kill <worker-pid>` (manual)
+#   - master reloading under --reload or SIGHUP
+#   - graceful container stop (SIGTERM → graceful_timeout → SIGKILL)
+#
+# Default behavior: worker finishes in-flight requests, ignores SSE
+# generators still yielding, and orphans any subprocesses it spawned.
+# `worker_int` lets us close generators (yielding a final "event: shutdown"
+# frame so clients reconnect cleanly) and kill tracked kubectl Popens
+# before the graceful_timeout window closes.
+
+def worker_int(worker):
+    try:
+        from observability.shutdown import request_shutdown
+        request_shutdown()
+    except Exception:
+        # Swallow — we'd rather SIGKILL a dirty worker than block the
+        # master's shutdown sequence on a bug in our drain code.
+        pass
