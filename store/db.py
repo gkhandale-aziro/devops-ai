@@ -137,12 +137,18 @@ class EventStore:
         """
         now = _now()
         with self._engine.begin() as conn:
-            result = conn.execute(
+            # RETURNING is the only race-free way to retrieve the new id
+            # under concurrent writes — Postgres doesn't expose lastrowid,
+            # and a MAX(id) lookup can see another session's row slip in
+            # between our INSERT and the SELECT. Both SQLite (>=3.35) and
+            # Postgres support RETURNING, so this one path covers both.
+            eid = conn.execute(
                 text("""INSERT INTO events
                         (timestamp, source, level, reason, object, namespace,
                          message, raw, target_id, target_name)
                         VALUES (:timestamp, :source, :level, :reason, :object,
-                                :namespace, :message, :raw, :target_id, :target_name)"""),
+                                :namespace, :message, :raw, :target_id, :target_name)
+                        RETURNING id"""),
                 {
                     "timestamp":   now,
                     "source":      event.get("source",    "kubernetes"),
@@ -155,16 +161,7 @@ class EventStore:
                     "target_id":   target_id,
                     "target_name": target_name,
                 },
-            )
-            eid = result.lastrowid
-            # Postgres doesn't expose lastrowid; fall back to a RETURNING-style
-            # read when needed. psycopg3 + SA do populate lastrowid for plain
-            # INSERTs, but belt-and-braces:
-            if eid is None:
-                eid = conn.execute(
-                    text("SELECT MAX(id) FROM events WHERE timestamp = :ts"),
-                    {"ts": now},
-                ).scalar()
+            ).scalar()
 
         self._purge_old()
         return int(eid)

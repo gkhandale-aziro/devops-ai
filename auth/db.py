@@ -92,17 +92,12 @@ class AuthStore:
 
         try:
             with self._engine.begin() as conn:
-                result = conn.execute(
+                uid = conn.execute(
                     text("""INSERT INTO users (username, password_hash, role, created_at)
-                            VALUES (:username, :pw, :role, :ts)"""),
+                            VALUES (:username, :pw, :role, :ts)
+                            RETURNING id"""),
                     {"username": username, "pw": pw_hash, "role": role, "ts": _now()},
-                )
-                uid = result.lastrowid
-                if uid is None:
-                    uid = conn.execute(
-                        text("SELECT id FROM users WHERE username = :u"),
-                        {"u": username},
-                    ).scalar()
+                ).scalar()
         except IntegrityError as e:
             raise ValueError(f"username {username!r} already exists") from e
 

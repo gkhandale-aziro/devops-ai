@@ -74,13 +74,20 @@ def _fresh_sqlite(tmp_path: Path, name: str):
 
 
 class TestMetadataCreateAll:
-    def test_all_expected_tables_present(self, tmp_path):
+    def test_tables_match_exactly(self, tmp_path):
+        """Catches BOTH missing tables (old table deleted) and surprise
+        additions (new Table() not yet reflected in EXPECTED_TABLES).
+        Symmetric equality is the point — a drift in either direction is
+        a schema change that should land as an explicit Alembic revision
+        plus a test update, not as a silent pass."""
         engine = _fresh_sqlite(tmp_path, "create_all")
         metadata.create_all(engine)
         insp = inspect(engine)
         present = set(insp.get_table_names())
-        missing = EXPECTED_TABLES - present
-        assert not missing, f"create_all skipped tables: {missing}"
+        assert present == EXPECTED_TABLES, (
+            f"schema drift — missing: {EXPECTED_TABLES - present}, "
+            f"unexpected: {present - EXPECTED_TABLES}"
+        )
 
     @pytest.mark.parametrize("table,cols", sorted(EXPECTED_COLUMNS.items()))
     def test_table_has_expected_columns(self, tmp_path, table, cols):
@@ -88,8 +95,10 @@ class TestMetadataCreateAll:
         metadata.create_all(engine)
         insp = inspect(engine)
         actual = {c["name"] for c in insp.get_columns(table)}
-        missing = cols - actual
-        assert not missing, f"{table} missing columns: {missing}"
+        assert actual == cols, (
+            f"{table} column drift — missing: {cols - actual}, "
+            f"unexpected: {actual - cols}"
+        )
 
     @pytest.mark.parametrize("table,indexes", sorted(EXPECTED_INDEXES.items()))
     def test_table_has_expected_indexes(self, tmp_path, table, indexes):
@@ -97,8 +106,10 @@ class TestMetadataCreateAll:
         metadata.create_all(engine)
         insp = inspect(engine)
         actual = {i["name"] for i in insp.get_indexes(table)}
-        missing = indexes - actual
-        assert not missing, f"{table} missing indexes: {missing}"
+        assert actual == indexes, (
+            f"{table} index drift — missing: {indexes - actual}, "
+            f"unexpected: {actual - indexes}"
+        )
 
 
 class TestAlembicBaseline:
