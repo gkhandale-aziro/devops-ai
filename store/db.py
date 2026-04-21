@@ -32,6 +32,7 @@ from sqlalchemy.engine import Connection
 
 from sandbox.redact import redact_text
 from store.engine import build_engine, ensure_capable, get_engine
+from store.lifecycle import DETECTED, APPROVED, InvalidTransition, require_transition
 from store.schema import metadata
 
 log = logging.getLogger(__name__)
@@ -209,6 +210,17 @@ class EventStore:
                 },
             ).scalar()
 
+            # First row in the incident timeline — from_state is empty
+            # (no predecessor), to_state is the server_default we just
+            # materialised. Written in the same txn as the event so the
+            # timeline is never missing its origin entry.
+            conn.execute(
+                text("""INSERT INTO incident_transitions
+                        (event_id, timestamp, from_state, to_state, actor, reason)
+                        VALUES (:eid, :ts, '', :to, 'system:ingest', '')"""),
+                {"eid": eid, "ts": now, "to": DETECTED},
+            )
+
         # The row is durable at this point. Purge is a background-style
         # housekeeping task — if it fails (DB locked, disk full, etc.)
         # the caller must NOT see it as `save_event` failure, or they'll
@@ -282,6 +294,126 @@ class EventStore:
                     "remediation": remed,
                 },
             )
+
+    # ── lifecycle ─────────────────────────────────────────────────────────────
+
+    def transition_event(
+        self,
+        event_id: int,
+        to_state: str,
+        actor: str,
+        reason: str = "",
+        details: str = "",
+    ) -> dict:
+        """Move an event through the 8-state machine.
+
+        Validates the from→to edge against `store.lifecycle`, updates
+        `events.lifecycle_state` (plus `approved_by/at` when landing in
+        Approved), and appends a row to `incident_transitions` — all in
+        one transaction so a mid-flight failure can't leave the event
+        state and the audit log out of sync.
+
+        Raises:
+            LookupError           — no event with that id (caller → 404)
+            InvalidTransition     — edge rejected by lifecycle rules
+                                    (caller → 409)
+        """
+        now = _now()
+        with self._engine.begin() as conn:
+            current = conn.execute(
+                text("SELECT lifecycle_state FROM events WHERE id = :id"),
+                {"id": event_id},
+            ).scalar()
+            if current is None:
+                raise LookupError(f"event {event_id} not found")
+
+            require_transition(current, to_state)
+
+            if to_state == APPROVED:
+                conn.execute(
+                    text("""UPDATE events
+                            SET lifecycle_state = :to,
+                                approved_by = :by,
+                                approved_at = :at
+                            WHERE id = :id"""),
+                    {"to": to_state, "by": actor, "at": now, "id": event_id},
+                )
+            else:
+                conn.execute(
+                    text("""UPDATE events
+                            SET lifecycle_state = :to
+                            WHERE id = :id"""),
+                    {"to": to_state, "id": event_id},
+                )
+
+            conn.execute(
+                text("""INSERT INTO incident_transitions
+                        (event_id, timestamp, from_state, to_state,
+                         actor, reason, details)
+                        VALUES (:eid, :ts, :frm, :to, :actor, :reason, :details)"""),
+                {
+                    "eid": event_id, "ts": now,
+                    "frm": current, "to": to_state,
+                    "actor": actor, "reason": reason, "details": details,
+                },
+            )
+        return {
+            "event_id": event_id,
+            "from_state": current,
+            "to_state": to_state,
+            "actor": actor,
+            "timestamp": now,
+        }
+
+    def auto_transition(
+        self,
+        event_id: int,
+        to_state: str,
+        actor: str,
+        reason: str = "",
+    ) -> bool:
+        """Best-effort transition for background pipelines.
+
+        Unlike `transition_event`, this silently skips when:
+          - the event is gone (race with retention purge), or
+          - the edge is invalid (an operator already moved it past
+            this state manually).
+
+        Returning False instead of raising lets the ingest/analyzer
+        pipelines keep flowing even if lifecycle drifts from the auto
+        path. Logged at INFO so operators still see the skip in
+        Loki/stdout.
+
+        Returns True iff a row was written.
+        """
+        try:
+            self.transition_event(event_id, to_state, actor, reason)
+            return True
+        except (LookupError, InvalidTransition) as e:
+            log.info(
+                "lifecycle.auto_transition_skipped",
+                extra={
+                    "event_id": event_id,
+                    "to_state": to_state,
+                    "actor": actor,
+                    "err_type": type(e).__name__,
+                },
+            )
+            return False
+
+    def get_event_transitions(self, event_id: int) -> list[dict]:
+        """Append-only timeline for an event, oldest-first (so the UI can
+        render it as a top-down activity feed without client-side sort)."""
+        with self._engine.begin() as conn:
+            rows = conn.execute(
+                text("""SELECT id, event_id, timestamp, from_state,
+                               to_state, actor, reason, details
+                        FROM   incident_transitions
+                        WHERE  event_id = :id
+                        ORDER  BY id ASC"""),
+                {"id": event_id},
+            ).mappings().all()
+        return [dict(r) for r in rows]
 
     # ── read ──────────────────────────────────────────────────────────────────
 

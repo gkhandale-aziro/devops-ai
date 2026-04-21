@@ -59,9 +59,22 @@ events = Table(
     Column("raw", Text, server_default=text("''")),
     Column("target_id", Text, server_default=text("''")),
     Column("target_name", Text, server_default=text("''")),
+    # Lifecycle (added v1.0): every event is also an incident progressing
+    # through the 8-state machine in store/lifecycle.py. `status` stays
+    # ('open'/'closed') for back-compat with the older API; lifecycle_state
+    # is the fine-grained one the UI timeline renders.
+    Column(
+        "lifecycle_state",
+        Text,
+        nullable=False,
+        server_default=text("'Detected'"),
+    ),
+    Column("approved_by", Text, server_default=text("''")),
+    Column("approved_at", Text, server_default=text("''")),
     Index("idx_events_object", "object"),
     Index("idx_events_timestamp", column("timestamp").desc()),
     Index("idx_events_level", "level"),
+    Index("idx_events_lifecycle_state", "lifecycle_state"),
 )
 
 snapshots = Table(
@@ -128,6 +141,32 @@ llm_usage = Table(
     Column("total_tokens", Integer, nullable=False, server_default=text("0")),
     Column("session_id", Text, server_default=text("''")),
     Index("idx_llm_usage_user_ts", "user_id", column("timestamp").desc()),
+)
+
+
+# Append-only log of every state change on events. The `from_state` is
+# nullable because the initial Detected insert has no predecessor. The
+# `actor` is either a username (approval, manual transition) or a system
+# tag like "system:ingest" / "system:analyzer" / "system:executor" so
+# the timeline can attribute who/what moved the incident forward.
+incident_transitions = Table(
+    "incident_transitions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "event_id",
+        Integer,
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("timestamp", Text, nullable=False),
+    Column("from_state", Text, server_default=text("''")),
+    Column("to_state", Text, nullable=False),
+    Column("actor", Text, nullable=False, server_default=text("'system'")),
+    Column("reason", Text, server_default=text("''")),
+    Column("details", Text, server_default=text("''")),
+    Index("idx_incident_transitions_event_ts",
+          "event_id", column("timestamp").desc()),
 )
 
 

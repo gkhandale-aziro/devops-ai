@@ -1702,6 +1702,63 @@ def api_events_by_object(name):
     return jsonify(_store.get_object_history(name, limit=limit))
 
 
+# ── Incident lifecycle API ────────────────────────────────────────────────────
+#
+# Every event is also an incident in the 8-state machine defined in
+# store/lifecycle.py. POST /transition is gated by the normal role_check
+# (viewers already get 403 on state-changing verbs), so no explicit role
+# decorator is needed here.
+
+@app.route("/api/v1/incidents/<int:event_id>/transitions", methods=["GET"])
+def api_incident_transitions(event_id):
+    """Return the ordered timeline of state changes for one incident."""
+    if not _store.get_event(event_id):
+        return jsonify({"error": "not found"}), 404
+    return jsonify({
+        "event_id": event_id,
+        "transitions": _store.get_event_transitions(event_id),
+    })
+
+
+@app.route("/api/v1/incidents/<int:event_id>/transition", methods=["POST"])
+def api_incident_transition(event_id):
+    """Move an incident to a new lifecycle state.
+
+    Body: { "to": "<state>", "reason": "<free text, optional>" }
+
+    Returns 404 if the event doesn't exist, 400 for a bad body, 409 for
+    an edge the state machine rejects.
+    """
+    from store.lifecycle import InvalidTransition as _InvalidTransition
+
+    body = request.json or {}
+    to_state = (body.get("to") or "").strip()
+    if not to_state:
+        return jsonify({"error": "body must include 'to'"}), 400
+    reason = (body.get("reason") or "").strip()
+
+    # Who moved it — either the logged-in user or the api-key client.
+    # The executor uses its own `system:executor` actor via direct store
+    # call, so anything reaching this route is a human action.
+    actor = _current_user_id() or "api-key"
+
+    try:
+        result = _store.transition_event(
+            event_id=event_id,
+            to_state=to_state,
+            actor=actor,
+            reason=reason,
+        )
+    except LookupError:
+        return jsonify({"error": "not found"}), 404
+    except _InvalidTransition as e:
+        return jsonify({
+            "error": "invalid transition",
+            "detail": str(e),
+        }), 409
+    return jsonify(result)
+
+
 @app.route("/api/v1/feedback", methods=["POST"])
 def api_feedback():
     """Save user feedback (thumbs up/down) for an AI response."""

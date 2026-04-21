@@ -114,6 +114,15 @@ class Agent:
                 out_q.put({"type": "done"})
                 continue
 
+            # Triaging → Diagnosing: LLM is about to start looking at the
+            # evidence. Best-effort: operator may have already moved the
+            # incident past Diagnosing manually.
+            if is_auto and event_id and store:
+                store.auto_transition(
+                    event_id, "Diagnosing", "system:analyzer",
+                    reason="agent loop started",
+                )
+
             # full agentic loop — collect text to save as analysis
             full_text = ""
             for event in self._run_internal(
@@ -127,6 +136,13 @@ class Agent:
             # save AI analysis to DB for auto-monitor queries
             if is_auto and event_id and store and full_text.strip():
                 store.save_analysis(event_id, diagnosis=full_text)
+                # Diagnosis written → incident enters Proposing, awaiting
+                # operator Approve. The scripted executor picks up from
+                # there; this is the human-in-the-loop gate.
+                store.auto_transition(
+                    event_id, "Proposing", "system:analyzer",
+                    reason="diagnosis written, awaiting approval",
+                )
 
     # ── built-in CLI commands ─────────────────────────────────────────────────
 

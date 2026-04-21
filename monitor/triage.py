@@ -112,6 +112,14 @@ class Triage:
         # 1. persist event → get id
         event_id = self._store.save_event(event, "SEV2") if self._store else None
 
+        # 1a. classified + captured — move Detected → Triaging so the
+        # UI reflects real progress instead of a row stuck on its origin.
+        if self._store and event_id is not None:
+            self._store.auto_transition(
+                event_id, "Triaging", "system:triager",
+                reason=f"classified as SEV2 ({event.get('reason', '')})",
+            )
+
         # 2. capture snapshots NOW (before pod restarts and logs are gone)
         snaps = self._capture_snapshots(obj, ns, event_id)
 
@@ -143,6 +151,11 @@ class Triage:
         ns  = event.get("namespace", "default")
 
         event_id = self._store.save_event(event, "SEV1") if self._store else None
+        if self._store and event_id is not None:
+            self._store.auto_transition(
+                event_id, "Triaging", "system:triager",
+                reason=f"classified as SEV1 ({event.get('reason', '')})",
+            )
         snaps    = self._capture_snapshots(obj, ns, event_id)
         history  = self._history_context(obj, exclude_id=event_id)
 
