@@ -66,6 +66,21 @@ EXPECTED_INDEXES = {
     "audit_log":     {"idx_audit_log_ts", "idx_audit_log_user_ts"},
 }
 
+# Named unique constraints that must survive any migration. Drop/rename
+# of `uq_users_username` would let two rows share a username and break
+# login uniqueness silently.
+EXPECTED_UNIQUES = {
+    "users": {"uq_users_username"},
+}
+
+# Foreign keys that carry cascade semantics — if `ondelete` drifts from
+# CASCADE, deleting an event would orphan its snapshots/analyses rows.
+# Shape: {table: {column: (referred_table, referred_column, ondelete)}}
+EXPECTED_FKS: dict[str, dict[str, tuple[str, str, str]]] = {
+    "snapshots": {"event_id": ("events", "id", "CASCADE")},
+    "analyses":  {"event_id": ("events", "id", "CASCADE")},
+}
+
 
 def _fresh_sqlite(tmp_path: Path, name: str):
     """Build a throwaway SQLite engine rooted at tmp_path/name.db."""
@@ -74,12 +89,13 @@ def _fresh_sqlite(tmp_path: Path, name: str):
 
 
 def _assert_full_parity(engine) -> None:
-    """Table + column + index parity against EXPECTED_* on `engine`.
+    """Table + column + index + constraint parity against EXPECTED_* on
+    `engine`.
 
     Used for the Alembic tests too — asserting only table names would
-    let a migration drift on columns or indexes while the suite still
-    passed, so the explicit revision gets the same tripwires as
-    `metadata.create_all`.
+    let a migration drift on columns, indexes, or constraint shape while
+    the suite still passed, so the explicit revision gets the same
+    tripwires as `metadata.create_all`.
     """
     insp = inspect(engine)
     present = set(insp.get_table_names()) - {"alembic_version"}
@@ -99,6 +115,29 @@ def _assert_full_parity(engine) -> None:
             f"{table} index drift — missing: {indexes - actual}, "
             f"unexpected: {actual - indexes}"
         )
+    for table, names in EXPECTED_UNIQUES.items():
+        actual = {u["name"] for u in insp.get_unique_constraints(table)}
+        assert names <= actual, (
+            f"{table} unique-constraint drift — missing: {names - actual}"
+        )
+    for table, fks in EXPECTED_FKS.items():
+        actual = insp.get_foreign_keys(table)
+        for col, (ref_table, ref_col, ondelete) in fks.items():
+            matches = [
+                fk for fk in actual
+                if fk["constrained_columns"] == [col]
+                and fk["referred_table"] == ref_table
+                and fk["referred_columns"] == [ref_col]
+            ]
+            assert matches, (
+                f"{table}.{col} FK drift — no FK to {ref_table}.{ref_col}, "
+                f"got: {actual}"
+            )
+            got_ondelete = (matches[0].get("options") or {}).get("ondelete", "")
+            assert (got_ondelete or "").upper() == ondelete, (
+                f"{table}.{col} FK ondelete drift — "
+                f"expected {ondelete!r}, got {got_ondelete!r}"
+            )
 
 
 class TestMetadataCreateAll:

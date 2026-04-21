@@ -64,14 +64,21 @@ def run_migrations_online() -> None:
     url = config.get_main_option("sqlalchemy.url")
     connectable = build_engine(url)
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            render_as_batch=connection.dialect.name == "sqlite",
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+    try:
+        with connectable.connect() as connection:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                render_as_batch=connection.dialect.name == "sqlite",
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        # `build_engine` opens a QueuePool; without dispose(), SQLite
+        # file handles and WAL files can linger past the migration
+        # (matters for back-to-back `alembic upgrade`/`downgrade` runs
+        # in tests and for operators cycling through revisions).
+        connectable.dispose()
 
 
 if context.is_offline_mode():

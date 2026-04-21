@@ -146,6 +146,16 @@ class AuthStore:
     def verify_password(self, username: str, password: str) -> Optional[dict]:
         """Return the user dict on success, None on failure. Constant-time."""
         row = self.get_user_by_name(username)
+        # Non-string passwords (None, dict, bytes from a broken JSON
+        # payload) should read as a clean auth failure, not an
+        # AttributeError bubbling up to the caller. Still run a dummy
+        # bcrypt check so the timing matches a real miss.
+        if not isinstance(password, str):
+            bcrypt.checkpw(
+                b"x",
+                row["password_hash"].encode("utf-8") if row else _DUMMY_HASH,
+            )
+            return None
         if not row:
             # Constant-time: verify against the module-level dummy hash
             # (computed at the real _BCRYPT_ROUNDS cost) so the response
