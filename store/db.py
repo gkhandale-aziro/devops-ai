@@ -31,10 +31,26 @@ from sqlalchemy import Engine, text
 from sqlalchemy.engine import Connection
 
 from sandbox.redact import redact_text
-from store.engine import build_engine, get_engine
+from store.engine import build_engine, ensure_capable, get_engine
 from store.schema import metadata
 
 log = logging.getLogger(__name__)
+
+
+def _err_meta(e: Exception) -> dict:
+    """Extract PII-safe diagnostic fields from a DB exception.
+
+    SQLAlchemy's `str(exc)` embeds the failing SQL together with its
+    bind parameters (which in our stores include `user_id`, redacted
+    log text, etc.), so logging it raw undoes the redaction we do
+    elsewhere. Type name + driver error code is plenty for triage.
+    """
+    orig = getattr(e, "orig", None)
+    return {
+        "err_type": type(e).__name__,
+        "err_code": (getattr(orig, "pgcode", None)
+                     or getattr(orig, "sqlite_errorcode", None)),
+    }
 
 
 DB_FILE = os.path.join(
@@ -82,6 +98,10 @@ class EventStore:
     def __init__(self, db_file: Optional[str] = None, engine: Optional[Engine] = None):
         if engine is not None:
             self._engine = engine
+            # `build_engine` runs the SQLite >= 3.35 check; an injected
+            # engine skipped it. Re-run here or save_event's INSERT …
+            # RETURNING can fail mid-request with a cryptic syntax error.
+            ensure_capable(self._engine)
         elif db_file is not None:
             # Back-compat: callers (mostly tests) that pass an explicit file
             # path get their own engine so test isolation is preserved.
@@ -185,7 +205,7 @@ class EventStore:
         try:
             self._purge_old()
         except Exception as e:
-            log.warning("store.purge_old_failed", extra={"err": str(e)[:200]})
+            log.warning("store.purge_old_failed", extra=_err_meta(e))
         return int(eid)
 
     def update_event_status(self, event_id: int, status: str) -> bool:
@@ -509,7 +529,7 @@ class EventStore:
             log.warning(
                 "store.llm_usage_write_failed",
                 extra={"user_ref": _redact_user(user_id), "model": model,
-                       "err": str(e)[:200]},
+                       **_err_meta(e)},
             )
 
     def user_tokens_today(self, user_id: str) -> int:

@@ -80,6 +80,15 @@ def _check_sqlite_version() -> None:
         )
 
 
+def ensure_capable(engine: Engine) -> None:
+    """Re-apply the capability checks `build_engine()` performs, for stores
+    that accept a pre-built `engine=` injection and would otherwise bypass
+    them. No-op for non-SQLite engines.
+    """
+    if engine.dialect.name == "sqlite":
+        _check_sqlite_version()
+
+
 def build_engine(url: str) -> Engine:
     """Create a fresh Engine for the given URL. Not cached.
 

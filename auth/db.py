@@ -20,7 +20,7 @@ import bcrypt
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 
-from store.engine import build_engine, get_engine
+from store.engine import build_engine, ensure_capable, get_engine
 from store.schema import metadata
 
 
@@ -58,6 +58,9 @@ class AuthStore:
     def __init__(self, db_file: Optional[str] = None, engine: Optional[Engine] = None):
         if engine is not None:
             self._engine = engine
+            # `build_engine` runs the SQLite >= 3.35 check; an injected
+            # engine skipped it. create_user() uses INSERT … RETURNING id.
+            ensure_capable(self._engine)
         elif db_file is not None:
             self._engine = build_engine(f"sqlite:///{os.path.abspath(db_file)}")
         else:
