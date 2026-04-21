@@ -55,7 +55,7 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 
 Sequenced as 4 PRs (A → D). Full design in [docs/db-v1-plan.md](docs/db-v1-plan.md).
 
-- [ ] **DB-1 / PR-A** SQLAlchemy Core + Alembic, dual-backend (SQLite default, Postgres opt-in via `AZIRO_DB_URL`). Port `store/db.py` + `auth/db.py` to engine-based access; initial Alembic revision `0001_baseline` captures current schema; full suite passes on both backends. No schema changes.
+- [x] **DB-1 / PR-A** SQLAlchemy Core + Alembic, dual-backend (SQLite default, Postgres opt-in via `AZIRO_DB_URL`) — shipped 2026-04-21 (PR #31). Alembic revision `0001_baseline` freezes the pre-SA-Core schema; schema-parity tripwires in `tests/test_schema_parity.py` cover tables/columns/indexes/uniques/FKs; SQLite ≥ 3.35 asserted at engine build for `INSERT … RETURNING`; full suite 554/554 on SQLite. Postgres runtime exercise deferred to PR-C.
 - [ ] **DB-2 / PR-B** Redis 7 integration — rate-limit storage (`AZIRO_RATELIMIT_STORAGE_URI=redis://…`), monitor SSE pub/sub fan-out across workers, flask-session server-side sessions. Docker-compose adds `redis:7-alpine`; in-memory fallback for dev.
 - [ ] **DB-3 / PR-C** Postgres 16 production migration — docker-compose adds `postgres:16-alpine`; `AZIRO_DB_URL=postgresql+psycopg://…` path exercised in CI; SQLite→PG data copy script (`scripts/migrate_sqlite_to_pg.py`) with dry-run + row-count verification; `pg_stat_statements` extension + connection pool sizing.
 - [ ] **DB-4 / PR-D** Backups + restore drill — `pg_dump --format=custom` nightly cron, 30-day retention on MinIO (S3-compatible, self-hosted), restore-verification script that boots a scratch DB and runs schema-diff; runbook entry in `docs/ops/backup-restore.md`.
