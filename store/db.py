@@ -20,6 +20,7 @@ on each `save_event`. Snapshot + analysis rows cascade via FK.
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -188,16 +189,21 @@ class EventStore:
         return int(eid)
 
     def update_event_status(self, event_id: int, status: str) -> bool:
-        """Update event status: open | acknowledged | resolved."""
+        """Update event status: open | acknowledged | resolved.
+
+        Returns True only when a row was actually updated — a caller
+        passing a non-existent event_id gets False so they can surface
+        a 404 instead of a misleading 200.
+        """
         valid = {"open", "acknowledged", "resolved"}
         if status not in valid:
             return False
         with self._engine.begin() as conn:
-            conn.execute(
+            result = conn.execute(
                 text("UPDATE events SET status = :status WHERE id = :id"),
                 {"status": status, "id": event_id},
             )
-        return True
+        return (result.rowcount or 0) > 0
 
     def save_snapshot(self, event_id: int, kind: str, content: str) -> None:
         """Save a kubectl log/describe snapshot linked to an event.
@@ -337,15 +343,28 @@ class EventStore:
                        GROUP  BY level"""
                 )).all()
             }
+            # Postgres requires every non-aggregated SELECT column in
+            # GROUP BY (SQLite is lax about this and would silently pick
+            # an arbitrary namespace). And `MAX(level)` is severity-
+            # inverted — lexically 'SEV2' > 'SEV1', but SEV1 is the more
+            # severe of the two, so MAX reports the wrong "worst_level"
+            # whenever both appear. MIN() gets the right answer because
+            # the level strings happen to sort in severity order, but we
+            # use an explicit CASE/bool-or idiom so the intent isn't
+            # buried in a lexical coincidence.
             top_failing = [
                 dict(r) for r in conn.execute(text(
                     """SELECT object, namespace,
-                              COUNT(*)        AS count,
-                              MAX(timestamp)  AS last_seen,
-                              MAX(level)      AS worst_level
+                              COUNT(*)       AS count,
+                              MAX(timestamp) AS last_seen,
+                              CASE
+                                WHEN SUM(CASE WHEN level = 'SEV1' THEN 1 ELSE 0 END) > 0
+                                  THEN 'SEV1'
+                                ELSE 'SEV2'
+                              END            AS worst_level
                        FROM   events
                        WHERE  level IN ('SEV1','SEV2')
-                       GROUP  BY object
+                       GROUP  BY object, namespace
                        ORDER  BY count DESC
                        LIMIT  10"""
                 )).mappings().all()
@@ -448,7 +467,7 @@ class EventStore:
         except (TypeError, ValueError):
             log.warning(
                 "store.llm_usage_bad_tokens",
-                extra={"user_id": user_id, "model": model,
+                extra={"user_ref": _redact_user(user_id), "model": model,
                        "prompt": repr(prompt_tokens)[:40],
                        "completion": repr(completion_tokens)[:40]},
             )
@@ -479,7 +498,8 @@ class EventStore:
             # stopped working" with no forensic trail.
             log.warning(
                 "store.llm_usage_write_failed",
-                extra={"user_id": user_id, "model": model, "err": str(e)[:200]},
+                extra={"user_ref": _redact_user(user_id), "model": model,
+                       "err": str(e)[:200]},
             )
 
     def user_tokens_today(self, user_id: str) -> int:
@@ -547,3 +567,13 @@ class EventStore:
 
 def _now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def _redact_user(user_id: str) -> str:
+    """Stable short hash for log telemetry so a persistent user's failures
+    still correlate across log lines, without spilling a raw username
+    (which may be an email or account key) into log aggregation.
+    """
+    if not user_id:
+        return ""
+    return "u#" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:10]
