@@ -51,15 +51,24 @@ def _has_index(insp, table: str, name: str) -> bool:
 
 def upgrade() -> None:
     bind = op.get_bind()
+    # SQLAlchemy 2.0 Inspectors cache `has_table` / `get_indexes` per
+    # instance (per `reflection.cache`). After DDL, subsequent checks
+    # on the same Inspector would return pre-DDL results — we'd skip
+    # an index whose table we just created because the cached table
+    # list said "no such table". `clear_cache()` after each op forces
+    # a fresh reflection so the next `create_*_if_missing` sees the
+    # real DB state.
     insp = inspect(bind)
 
     def create_table_if_missing(name: str, *columns, **kwargs) -> None:
         if not _has_table(insp, name):
             op.create_table(name, *columns, **kwargs)
+            insp.clear_cache()
 
     def create_index_if_missing(name: str, table: str, columns) -> None:
         if not _has_index(insp, table, name):
             op.create_index(name, table, columns)
+            insp.clear_cache()
 
     create_table_if_missing(
         "events",

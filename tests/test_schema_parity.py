@@ -73,6 +73,34 @@ def _fresh_sqlite(tmp_path: Path, name: str):
     return build_engine(f"sqlite:///{tmp_path / name}.db")
 
 
+def _assert_full_parity(engine) -> None:
+    """Table + column + index parity against EXPECTED_* on `engine`.
+
+    Used for the Alembic tests too — asserting only table names would
+    let a migration drift on columns or indexes while the suite still
+    passed, so the explicit revision gets the same tripwires as
+    `metadata.create_all`.
+    """
+    insp = inspect(engine)
+    present = set(insp.get_table_names()) - {"alembic_version"}
+    assert present == EXPECTED_TABLES, (
+        f"table drift — missing: {EXPECTED_TABLES - present}, "
+        f"unexpected: {present - EXPECTED_TABLES}"
+    )
+    for table, cols in EXPECTED_COLUMNS.items():
+        actual = {c["name"] for c in insp.get_columns(table)}
+        assert actual == cols, (
+            f"{table} column drift — missing: {cols - actual}, "
+            f"unexpected: {actual - cols}"
+        )
+    for table, indexes in EXPECTED_INDEXES.items():
+        actual = {i["name"] for i in insp.get_indexes(table)}
+        assert actual == indexes, (
+            f"{table} index drift — missing: {indexes - actual}, "
+            f"unexpected: {actual - indexes}"
+        )
+
+
 class TestMetadataCreateAll:
     def test_tables_match_exactly(self, tmp_path):
         """Catches BOTH missing tables (old table deleted) and surprise
@@ -130,9 +158,7 @@ class TestAlembicBaseline:
 
         engine = create_engine(url)
         try:
-            insp = inspect(engine)
-            present = set(insp.get_table_names()) - {"alembic_version"}
-            assert present == EXPECTED_TABLES
+            _assert_full_parity(engine)
         finally:
             engine.dispose()
 
@@ -154,12 +180,10 @@ class TestAlembicBaseline:
         finally:
             engine.dispose()
 
-        # Re-upgrading should restore every table.
+        # Re-upgrading should restore every table, column, and index.
         command.upgrade(cfg, "head")
         engine = create_engine(url)
         try:
-            insp = inspect(engine)
-            present = set(insp.get_table_names()) - {"alembic_version"}
-            assert present == EXPECTED_TABLES
+            _assert_full_parity(engine)
         finally:
             engine.dispose()

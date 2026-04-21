@@ -507,13 +507,19 @@ class EventStore:
             pt = int(prompt_tokens or 0)
             ct = int(completion_tokens or 0)
         except (TypeError, ValueError):
+            # Fall back to a zero-token row rather than dropping the
+            # event: budget accounting uses COUNT/SUM over llm_usage, so
+            # swallowing a malformed payload would leak quota (user made
+            # a real LLM call but has no record of it). Zero tokens is
+            # wrong but recoverable; a missing row is silently wrong.
             log.warning(
                 "store.llm_usage_bad_tokens",
                 extra={"user_ref": _redact_user(user_id), "model": model,
                        "prompt": repr(prompt_tokens)[:40],
                        "completion": repr(completion_tokens)[:40]},
             )
-            return
+            pt = 0
+            ct = 0
         total = pt + ct
         try:
             with self._engine.begin() as conn:

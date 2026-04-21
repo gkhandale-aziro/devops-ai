@@ -54,6 +54,17 @@ def _now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 
+def _norm_username(name: str) -> str:
+    """Canonical form for storage and lookup.
+
+    SQLite's NOCASE collation gives case-insensitive match but only on
+    SQLite; Postgres would treat `Alice` and `alice` as distinct, making
+    auth semantics depend on the backend. Lower-casing at the app layer
+    gives uniform uniqueness, lookup, and lockout behavior on both.
+    """
+    return (name or "").strip().lower()
+
+
 class AuthStore:
     def __init__(self, db_file: Optional[str] = None, engine: Optional[Engine] = None):
         if engine is not None:
@@ -88,7 +99,7 @@ class AuthStore:
     def create_user(self, username: str, password: str, role: str = "viewer") -> dict:
         """Create a user. Raises ValueError on weak/invalid input or duplicate."""
         from auth.models import ALL_ROLES
-        username = (username or "").strip()
+        username = _norm_username(username)
         if not username or len(username) > 64:
             raise ValueError("username must be 1–64 chars")
         if role not in ALL_ROLES:
@@ -128,7 +139,7 @@ class AuthStore:
             row = conn.execute(
                 text("""SELECT id, username, password_hash, role, created_at, last_login_at
                         FROM users WHERE username = :u"""),
-                {"u": (username or "").strip()},
+                {"u": _norm_username(username)},
             ).mappings().first()
         return dict(row) if row else None
 
@@ -164,14 +175,14 @@ class AuthStore:
             conn.execute(
                 text("""INSERT INTO login_failures (username, timestamp, remote_ip)
                         VALUES (:u, :ts, :ip)"""),
-                {"u": (username or "").strip(), "ts": _now(), "ip": remote_ip or ""},
+                {"u": _norm_username(username), "ts": _now(), "ip": remote_ip or ""},
             )
 
     def is_locked_out(self, username: str) -> bool:
         """True if `username` has ≥ FAILED_LOGIN_LIMIT failures in the last
         FAILED_LOGIN_WINDOW seconds AND the most recent failure is within
         FAILED_LOGIN_LOCKOUT seconds."""
-        username = (username or "").strip()
+        username = _norm_username(username)
         if not username:
             return False
         window_cutoff = (datetime.datetime.now()
@@ -194,7 +205,7 @@ class AuthStore:
         with self._engine.begin() as conn:
             conn.execute(
                 text("DELETE FROM login_failures WHERE username = :u"),
-                {"u": (username or "").strip()},
+                {"u": _norm_username(username)},
             )
 
     # ── audit log ────────────────────────────────────────────────────────────
