@@ -104,6 +104,11 @@ class EventStore:
         column the current app needs, so these ALTER statements either
         succeed on a legacy DB or raise `duplicate column` which we
         swallow. Postgres fresh installs also land on the full schema.
+
+        Only the "already exists" path is swallowed — a locked DB,
+        permission issue, or unrelated SQL drift must propagate so
+        startup fails loudly instead of limping along with a partially
+        migrated schema.
         """
         migrations = [
             "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open'",
@@ -114,8 +119,13 @@ class EventStore:
             try:
                 with self._engine.begin() as conn:
                     conn.execute(text(sql))
-            except Exception:
-                pass  # column already exists
+            except Exception as e:
+                # SQLite: "duplicate column name: status"
+                # Postgres: "column ... already exists"
+                msg = str(e).lower()
+                if "duplicate column" in msg or "already exists" in msg:
+                    continue
+                raise
 
     @contextmanager
     def _conn(self) -> Iterator[Connection]:
@@ -163,7 +173,14 @@ class EventStore:
                 },
             ).scalar()
 
-        self._purge_old()
+        # The row is durable at this point. Purge is a background-style
+        # housekeeping task — if it fails (DB locked, disk full, etc.)
+        # the caller must NOT see it as `save_event` failure, or they'll
+        # retry and end up with a duplicate event.
+        try:
+            self._purge_old()
+        except Exception:
+            pass
         return int(eid)
 
     def update_event_status(self, event_id: int, status: str) -> bool:
@@ -416,7 +433,17 @@ class EventStore:
         """
         if not user_id:
             return
-        total = (prompt_tokens or 0) + (completion_tokens or 0)
+        # Coerce once at the top — callers occasionally pass strings
+        # ("12"/"3") from JSON usage blobs, and `"12" + "3"` silently
+        # concatenates instead of summing. Normalize first, THEN sum,
+        # so `total` can never disagree with the two components and
+        # the blanket except below can't mask a bad-data bug.
+        try:
+            pt = int(prompt_tokens or 0)
+            ct = int(completion_tokens or 0)
+        except (TypeError, ValueError):
+            return
+        total = pt + ct
         try:
             with self._engine.begin() as conn:
                 conn.execute(
@@ -429,8 +456,8 @@ class EventStore:
                         "timestamp":         _now(),
                         "user_id":           user_id,
                         "model":             model,
-                        "prompt_tokens":     int(prompt_tokens or 0),
-                        "completion_tokens": int(completion_tokens or 0),
+                        "prompt_tokens":     pt,
+                        "completion_tokens": ct,
                         "total_tokens":      total,
                         "session_id":        session_id or "",
                     },
