@@ -426,7 +426,7 @@ class EventStore:
             )
 
     def get_metrics(self, target_id: str, metric: Optional[str] = None,
-                    since: Optional[str] = None, step: Optional[str] = None) -> dict:
+                    since: Optional[str] = None) -> dict:
         """Query metric time-series. Returns {metric_name: [{t, v}, ...]}."""
         where = ["target_id = :target_id"]
         params: dict = {"target_id": target_id}

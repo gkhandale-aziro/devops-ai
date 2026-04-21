@@ -34,6 +34,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    column,
     text,
 )
 
@@ -59,7 +60,7 @@ events = Table(
     Column("target_id", Text, server_default=text("''")),
     Column("target_name", Text, server_default=text("''")),
     Index("idx_events_object", "object"),
-    Index("idx_events_timestamp", text("timestamp DESC")),
+    Index("idx_events_timestamp", column("timestamp").desc()),
     Index("idx_events_level", "level"),
 )
 
@@ -101,7 +102,7 @@ metrics = Table(
     Column("timestamp", Text, nullable=False),
     Column("metric", Text, nullable=False),
     Column("value", Float, nullable=False),
-    Index("idx_metrics_target_time", "target_id", "metric", text("timestamp DESC")),
+    Index("idx_metrics_target_time", "target_id", "metric", column("timestamp").desc()),
 )
 
 feedback = Table(
@@ -126,7 +127,7 @@ llm_usage = Table(
     Column("completion_tokens", Integer, nullable=False, server_default=text("0")),
     Column("total_tokens", Integer, nullable=False, server_default=text("0")),
     Column("session_id", Text, server_default=text("''")),
-    Index("idx_llm_usage_user_ts", "user_id", text("timestamp DESC")),
+    Index("idx_llm_usage_user_ts", "user_id", column("timestamp").desc()),
 )
 
 
@@ -158,7 +159,7 @@ login_failures = Table(
     Column("username", Text, nullable=False),
     Column("timestamp", Text, nullable=False),
     Column("remote_ip", Text, server_default=text("''")),
-    Index("idx_login_failures_username_ts", "username", text("timestamp DESC")),
+    Index("idx_login_failures_username_ts", "username", column("timestamp").desc()),
 )
 
 audit_log = Table(
@@ -173,6 +174,6 @@ audit_log = Table(
     Column("status", Integer),
     Column("remote_ip", Text, server_default=text("''")),
     Column("request_id", Text, server_default=text("''")),
-    Index("idx_audit_log_ts", text("timestamp DESC")),
-    Index("idx_audit_log_user_ts", "user_id", text("timestamp DESC")),
+    Index("idx_audit_log_ts", column("timestamp").desc()),
+    Index("idx_audit_log_user_ts", "user_id", column("timestamp").desc()),
 )

@@ -23,19 +23,16 @@ import pytest
 def _reset_process_engine_between_tests():
     # Reset before the test so the first get_engine() call inside the
     # test re-resolves against whatever monkeypatch has set up.
-    try:
-        from store.engine import reset_engine
-        reset_engine()
-    except Exception:
-        pass
+    # Don't swallow failures here — a reset_engine() exception means
+    # the previous test leaked state and the next test would silently
+    # run with wrong isolation; let it surface immediately.
+    from store.engine import reset_engine
+    reset_engine()
 
     yield
 
     # And again after, so a test that didn't monkeypatch doesn't inherit
     # the engine built by a test that did.
-    try:
-        from store.engine import reset_engine
-        reset_engine()
-    except Exception:
-        pass
+    from store.engine import reset_engine as _reset_engine
+    _reset_engine()
     sys.modules.pop("store.engine", None)
