@@ -1,3 +1,7 @@
+# Requires Docker Compose v2 CLI (`docker compose up`) — the
+# `depends_on.condition: service_healthy` gate below is a v2 feature
+# and is silently ignored by the legacy v1 `docker-compose` binary,
+# which would race the app container against Redis startup.
 services:
   aziro:
     build: .

@@ -71,6 +71,8 @@ class TestRedisClientSingleton:
         assert is_configured() is False
 
     def test_url_set_returns_client_and_is_cached(self, monkeypatch):
+        # `fake` is the exact client the patch routes through, so we
+        # assert identity against it — not discardable here.
         fake, (ep, fp) = _install_fakeredis()
         _reset_client()
         with ep, fp as mock_from_url:
@@ -82,7 +84,7 @@ class TestRedisClientSingleton:
             assert mock_from_url.call_count == 1
 
     def test_ping_true_on_live_fake(self, monkeypatch):
-        fake, (ep, fp) = _install_fakeredis()
+        _fake, (ep, fp) = _install_fakeredis()
         _reset_client()
         with ep, fp:
             from observability.redis_client import ping
@@ -171,7 +173,7 @@ class TestSessionBackend:
         assert isinstance(web.app.session_interface, SecureCookieSessionInterface)
 
     def test_redis_session_selected_when_opted_in(self, monkeypatch):
-        fake, (ep, fp) = _install_fakeredis()
+        _fake, (ep, fp) = _install_fakeredis()
         monkeypatch.setenv("AZIRO_SESSION_TYPE", "redis")
         _reset_client()
         with ep, fp:
@@ -281,6 +283,76 @@ class TestMonitorPubSub:
         finally:
             web._monitor_subs.pop("sid-test", None)
 
+    def test_zero_subscribers_falls_back_to_local(self, monkeypatch):
+        """publish() returns 0 when no subscriber is listening yet —
+        typically the narrow window before the subscriber thread's
+        ps.subscribe() lands. Without local fallback the alert is lost
+        on this worker, so the UI stays dark even though the event is
+        in the DB. We treat count==0 the same as a publish failure."""
+        web = self._import_web()
+        import queue as _queue
+        q = _queue.Queue()
+        web._monitor_subs["sid-test"] = q
+
+        class _NoSubs:
+            def publish(self, *a, **kw):
+                return 0
+
+        try:
+            with patch.object(web, "_ensure_redis_monitor_subscriber",
+                              return_value=_NoSubs()):
+                web._broadcast_alert({"hello": "world"})
+            evt = q.get(timeout=1)
+            assert evt == {"hello": "world"}
+        finally:
+            web._monitor_subs.pop("sid-test", None)
+
+    def test_real_pubsub_roundtrip_via_fakeredis(self, monkeypatch):
+        """End-to-end sanity: publish → real pub/sub delivery → decode →
+        local fan-out. Stubs only `_ensure_redis_monitor_subscriber`
+        with a pre-subscribed fakeredis pubsub so we don't race the
+        background thread's subscribe call."""
+        import fakeredis
+        import threading
+        import queue as _queue
+
+        web = self._import_web()
+
+        fake = fakeredis.FakeRedis()
+        ps = fake.pubsub(ignore_subscribe_messages=True)
+        ps.subscribe(web._MONITOR_CHANNEL)
+
+        sink_q = _queue.Queue()
+        web._monitor_subs["sid-roundtrip"] = sink_q
+
+        def _relay():
+            # Mimic the real subscriber loop: read one message, decode,
+            # fan out locally. Bounded iterations so test can't hang.
+            for _ in range(5):
+                msg = ps.get_message(timeout=1.0)
+                if not msg or msg.get("type") != "message":
+                    continue
+                payload = msg["data"]
+                if isinstance(payload, (bytes, bytearray)):
+                    payload = payload.decode("utf-8")
+                web._fan_out_local(json.loads(payload))
+                return
+
+        relay = threading.Thread(target=_relay, daemon=True)
+        relay.start()
+
+        try:
+            with patch.object(web, "_ensure_redis_monitor_subscriber",
+                              return_value=fake):
+                web._broadcast_alert({"roundtrip": "ok"})
+            # Must arrive via the pubsub path, decoded from bytes, JSON-parsed.
+            evt = sink_q.get(timeout=2)
+            assert evt == {"roundtrip": "ok"}
+        finally:
+            web._monitor_subs.pop("sid-roundtrip", None)
+            ps.close()
+            relay.join(timeout=2)
+
 
 # ── 5. /readyz redis probe ──────────────────────────────────────────────────
 
@@ -316,7 +388,7 @@ class TestReadyzRedis:
         assert "redis" not in r.get_json()["checks"]
 
     def test_redis_ok_when_ping_succeeds(self, client, monkeypatch):
-        fake, (ep, fp) = _install_fakeredis()
+        _fake, (ep, fp) = _install_fakeredis()
         _reset_client()
         with ep, fp:
             r = client.get("/api/v1/readyz")

@@ -1546,8 +1546,17 @@ def _broadcast_alert(event):
     r = _ensure_redis_monitor_subscriber()
     if r is not None:
         try:
-            r.publish(_MONITOR_CHANNEL, json.dumps(event))
-            return
+            delivered = r.publish(_MONITOR_CHANNEL, json.dumps(event))
+            # publish() returns the subscriber count. Zero means no
+            # worker (not even this one) was listening when we called —
+            # typically during the narrow window between start-up and
+            # the subscriber thread's first ps.subscribe(). Fall back
+            # to local so this worker's UI isn't dark; the other
+            # workers miss this one event, which is fine because events
+            # are durably persisted in the `events` table.
+            if delivered and delivered > 0:
+                return
+            log.debug("monitor.redis_no_subscribers_local_fallback")
         except Exception as e:
             # Redis flaked — deliver to local clients so this worker's
             # UI still sees the alert. Other workers miss it, which is
