@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import os
 from contextlib import contextmanager
 from typing import Iterator, Optional
@@ -31,6 +32,8 @@ from sqlalchemy.engine import Connection
 from sandbox.redact import redact_text
 from store.engine import build_engine, get_engine
 from store.schema import metadata
+
+log = logging.getLogger(__name__)
 
 
 DB_FILE = os.path.join(
@@ -176,11 +179,12 @@ class EventStore:
         # The row is durable at this point. Purge is a background-style
         # housekeeping task — if it fails (DB locked, disk full, etc.)
         # the caller must NOT see it as `save_event` failure, or they'll
-        # retry and end up with a duplicate event.
+        # retry and end up with a duplicate event. Log so ops notices
+        # before retention actually overflows.
         try:
             self._purge_old()
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("store.purge_old_failed", extra={"err": str(e)[:200]})
         return int(eid)
 
     def update_event_status(self, event_id: int, status: str) -> bool:
@@ -442,6 +446,12 @@ class EventStore:
             pt = int(prompt_tokens or 0)
             ct = int(completion_tokens or 0)
         except (TypeError, ValueError):
+            log.warning(
+                "store.llm_usage_bad_tokens",
+                extra={"user_id": user_id, "model": model,
+                       "prompt": repr(prompt_tokens)[:40],
+                       "completion": repr(completion_tokens)[:40]},
+            )
             return
         total = pt + ct
         try:
@@ -462,8 +472,15 @@ class EventStore:
                         "session_id":        session_id or "",
                     },
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            # Hot path — never raise, but don't silently ghost the row
+            # either. Without this log, a persistent write failure
+            # (disk full, replica lag, etc.) looks like "budgets just
+            # stopped working" with no forensic trail.
+            log.warning(
+                "store.llm_usage_write_failed",
+                extra={"user_id": user_id, "model": model, "err": str(e)[:200]},
+            )
 
     def user_tokens_today(self, user_id: str) -> int:
         """Return total_tokens this user has spent since today's local midnight.
