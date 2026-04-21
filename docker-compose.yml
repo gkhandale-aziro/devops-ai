@@ -8,6 +8,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     ports:
       - "5000:5000"
     volumes:
@@ -53,6 +55,11 @@ services:
       # leave unset for cookie-signed sessions (dev / no-redis deployments).
       - AZIRO_REDIS_URL=redis://redis:6379/0
       - AZIRO_SESSION_TYPE=redis
+      # DB-3 — AZIRO_DB_URL lives in .env (loaded via env_file above) so the
+      # password never appears in a tracked file. See .env.example for the
+      # required value; compose up fails fast if the var is unset because
+      # the aziro image refuses to boot against a bare SQLite when the
+      # postgres container is the only DB reachable.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     deploy:
@@ -79,6 +86,43 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # DB-3 — Postgres 16 for the durable application state (events, snapshots,
+  # analyses, users, audit_log, ...). Only enabled when AZIRO_DB_URL is set
+  # on the aziro service (default in this compose file). Dev / pytest boxes
+  # that run outside compose keep the SQLite fallback because AZIRO_DB_URL
+  # is unset there.
+  #
+  # Schema changes are owned by Alembic — run `python -m scripts.db upgrade`
+  # against this instance, not `init-scripts`. pg-init.sql only lays down
+  # extensions that must exist before the first migration applies.
+  postgres:
+    image: postgres:16-alpine
+    # POSTGRES_PASSWORD comes from .env via env_file so the secret never
+    # lives in a tracked file. POSTGRES_DB / POSTGRES_USER are non-sensitive
+    # and stay in `environment:` for visibility.
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: aziro
+      POSTGRES_USER: aziro
+    volumes:
+      - aziro-pg-data:/var/lib/postgresql/data
+      # Runs exactly once, on first boot against an empty data dir. Enabling
+      # pg_stat_statements here (rather than via an Alembic migration) keeps
+      # the migration pipeline Alembic-only — extensions require superuser
+      # and shared_preload_libraries, which Alembic should not manage.
+      - ./scripts/pg-init.sql:/docker-entrypoint-initdb.d/pg-init.sql:ro
+    healthcheck:
+      # pg_isready returns 0 once the server accepts connections. Gate the
+      # aziro service on this so the first `alembic upgrade head` doesn't
+      # race a still-booting Postgres.
+      test: ["CMD-SHELL", "pg_isready -U aziro -d aziro"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   aziro-data:
   aziro-redis-data:
+  aziro-pg-data:
