@@ -19,6 +19,7 @@ remember to PRAGMA manually.
 from __future__ import annotations
 
 import os
+import sqlite3
 import threading
 from typing import Optional
 
@@ -28,6 +29,12 @@ from sqlalchemy.pool import StaticPool
 
 _PROCESS_ENGINE: Optional[Engine] = None
 _PROCESS_ENGINE_LOCK = threading.Lock()
+
+# INSERT ... RETURNING landed in SQLite 3.35.0 (March 2021). save_event() and
+# auth/db.py create_user() both rely on it. Ubuntu 20.04 ships 3.31.1 and
+# would fail with a cryptic "near RETURNING: syntax error" mid-request;
+# checking once at import is a better UX than a mystery query failure.
+_MIN_SQLITE = (3, 35, 0)
 
 
 def _default_sqlite_url() -> str:
@@ -56,6 +63,23 @@ def _apply_sqlite_pragmas(dbapi_conn, _conn_record) -> None:
         cur.close()
 
 
+def _check_sqlite_version() -> None:
+    """Fail fast with a clear message if the runtime's SQLite predates
+    3.35 — save_event/create_user use INSERT ... RETURNING which only
+    lands there. Better to surface this at engine build than at the
+    first write."""
+    actual = tuple(int(x) for x in sqlite3.sqlite_version.split("."))
+    if actual < _MIN_SQLITE:
+        have = sqlite3.sqlite_version
+        need = ".".join(str(x) for x in _MIN_SQLITE)
+        raise RuntimeError(
+            f"SQLite {have} is too old — Aziro Ops requires ≥ {need} for "
+            f"INSERT … RETURNING. Upgrade the OS package (Ubuntu 22.04+, "
+            f"Debian 12+, or run via the provided Dockerfile which bases on "
+            f"python:3.12-slim)."
+        )
+
+
 def build_engine(url: str) -> Engine:
     """Create a fresh Engine for the given URL. Not cached.
 
@@ -64,6 +88,9 @@ def build_engine(url: str) -> Engine:
     """
     is_sqlite = url.startswith("sqlite")
     is_memory = is_sqlite and (":memory:" in url or url.endswith("sqlite://"))
+
+    if is_sqlite:
+        _check_sqlite_version()
 
     kwargs: dict = {"future": True}
 

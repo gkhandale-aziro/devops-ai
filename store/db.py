@@ -334,13 +334,23 @@ class EventStore:
           recent      — last 5 events
         """
         with self._engine.begin() as conn:
+            # A subquery GROUP BY avoids the delimiter-collision trap in
+            # `COUNT(DISTINCT object || '|' || reason)`: k8s names rarely
+            # contain '|' but nothing stops a user-named target from
+            # doing so, and "foo|bar" + "" collides with "foo" + "bar".
+            # The two-stage form is also what Postgres wants — it's
+            # faster on indexed (level, object, reason) triples too.
             counts = {
                 row[0]: row[1]
                 for row in conn.execute(text(
-                    """SELECT level, COUNT(DISTINCT object || '|' || reason)
-                       FROM   events
-                       WHERE  status = 'open'
-                       GROUP  BY level"""
+                    """SELECT level, COUNT(*) AS n
+                       FROM (
+                           SELECT level, object, reason
+                           FROM   events
+                           WHERE  status = 'open'
+                           GROUP  BY level, object, reason
+                       ) AS active
+                       GROUP BY level"""
                 )).all()
             }
             # Postgres requires every non-aggregated SELECT column in
