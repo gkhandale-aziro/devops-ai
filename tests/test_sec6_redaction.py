@@ -22,11 +22,11 @@ Two concerns:
 import os
 import sys
 import datetime
-import sqlite3
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
+from sqlalchemy import text
 
 
 # ── Test fixture helpers ─────────────────────────────────────────────────────
@@ -74,19 +74,20 @@ def _seed_event(store, level="SEV2"):
 def _fetch_snapshot_content(store, event_id):
     with store._conn() as c:
         row = c.execute(
-            "SELECT content FROM snapshots WHERE event_id = ? ORDER BY id DESC LIMIT 1",
-            (event_id,),
-        ).fetchone()
+            text("SELECT content FROM snapshots WHERE event_id = :eid "
+                 "ORDER BY id DESC LIMIT 1"),
+            {"eid": event_id},
+        ).mappings().first()
     return row["content"] if row else None
 
 
 def _fetch_analysis(store, event_id):
     with store._conn() as c:
         row = c.execute(
-            "SELECT diagnosis, remediation FROM analyses WHERE event_id = ? "
-            "ORDER BY id DESC LIMIT 1",
-            (event_id,),
-        ).fetchone()
+            text("SELECT diagnosis, remediation FROM analyses WHERE event_id = :eid "
+                 "ORDER BY id DESC LIMIT 1"),
+            {"eid": event_id},
+        ).mappings().first()
     return (row["diagnosis"], row["remediation"]) if row else (None, None)
 
 
@@ -294,7 +295,9 @@ class TestRetentionEnvOverride:
         eid1 = _seed_event(store)
         _seed_event(store, level="SEV1")  # triggers _purge_old
         with store._conn() as c:
-            rows = c.execute("SELECT id FROM events WHERE id = ?", (eid1,)).fetchall()
+            rows = c.execute(
+                text("SELECT id FROM events WHERE id = :id"), {"id": eid1},
+            ).all()
         assert len(rows) == 1
 
     def test_custom_short_window_purges_aged_rows(self, tmp_path, monkeypatch):
@@ -313,12 +316,17 @@ class TestRetentionEnvOverride:
             datetime.datetime.now() - datetime.timedelta(days=5)
         ).isoformat()
         with s._conn() as c:
-            c.execute("UPDATE events SET timestamp = ? WHERE id = ?", (ancient, old_eid))
+            c.execute(
+                text("UPDATE events SET timestamp = :ts WHERE id = :id"),
+                {"ts": ancient, "id": old_eid},
+            )
 
         # This save triggers _purge_old. The aged row should go.
         s.save_event(_evt(obj="fresh-pod"), "SEV2")
         with s._conn() as c:
-            survived = c.execute("SELECT id FROM events WHERE id = ?", (old_eid,)).fetchall()
+            survived = c.execute(
+                text("SELECT id FROM events WHERE id = :id"), {"id": old_eid},
+            ).all()
         assert survived == []
 
     def test_snapshots_cascade_on_purge(self, tmp_path, monkeypatch):
@@ -337,13 +345,17 @@ class TestRetentionEnvOverride:
             datetime.datetime.now() - datetime.timedelta(days=5)
         ).isoformat()
         with s._conn() as c:
-            c.execute("UPDATE events SET timestamp = ? WHERE id = ?", (ancient, eid))
+            c.execute(
+                text("UPDATE events SET timestamp = :ts WHERE id = :id"),
+                {"ts": ancient, "id": eid},
+            )
 
         s.save_event(_evt(obj="fresh-pod"), "SEV2")  # triggers purge
         with s._conn() as c:
             snaps = c.execute(
-                "SELECT id FROM snapshots WHERE event_id = ?", (eid,)
-            ).fetchall()
+                text("SELECT id FROM snapshots WHERE event_id = :id"),
+                {"id": eid},
+            ).all()
         assert snaps == []
 
     def test_malformed_env_falls_back_to_default(self, tmp_path, monkeypatch):
@@ -376,7 +388,9 @@ class TestRetentionEnvOverride:
         # first event (saved seconds ago) must survive.
         s.save_event(_evt(obj="other"), "SEV2")
         with s._conn() as c:
-            rows = c.execute("SELECT id FROM events WHERE id = ?", (eid,)).fetchall()
+            rows = c.execute(
+                text("SELECT id FROM events WHERE id = :id"), {"id": eid},
+            ).all()
         assert len(rows) == 1
 
     def test_retention_zero_does_not_purge_just_inserted_row(self, tmp_path, monkeypatch):
@@ -393,7 +407,9 @@ class TestRetentionEnvOverride:
         s = EventStore(db_file=str(tmp_path / "aziro.db"))
         eid = s.save_event(_evt(), "SEV2")  # triggers _purge_old internally
         with s._conn() as c:
-            rows = c.execute("SELECT id FROM events WHERE id = ?", (eid,)).fetchall()
+            rows = c.execute(
+                text("SELECT id FROM events WHERE id = :id"), {"id": eid},
+            ).all()
         assert len(rows) == 1, "just-inserted row survived retention=0 purge"
 
 

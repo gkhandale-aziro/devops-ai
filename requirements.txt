@@ -10,3 +10,6 @@ flask-login>=0.6,<0.7
 flask-limiter>=3.8,<4.0
 bcrypt>=4.2,<6.0
 prometheus-client>=0.21,<0.22
+sqlalchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+psycopg[binary]>=3.2,<4.0

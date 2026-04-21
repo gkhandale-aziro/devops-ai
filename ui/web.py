@@ -588,11 +588,20 @@ def api_readyz():
     checks: dict = {}
     ok = True
 
+    # Key reflects the actual backend — `AZIRO_DB_URL=postgresql://…`
+    # should not report as "sqlite: ok" during a Postgres cutover. The
+    # dialect lookup itself is wrapped in the same try/except as the
+    # probe: if `_store` or `_store._engine` isn't initialised yet,
+    # /readyz must still return a clean 503, not a 500.
+    _db_key = "db"
     try:
-        _store._conn().execute("SELECT 1").fetchone()
-        checks["sqlite"] = "ok"
+        from sqlalchemy import text as _sa_text
+        _db_key = getattr(_store._engine.dialect, "name", "db") or "db"
+        with _store._conn() as _c:
+            _c.execute(_sa_text("SELECT 1")).fetchone()
+        checks[_db_key] = "ok"
     except Exception as e:
-        checks["sqlite"] = f"fail: {str(e)[:80]}"
+        checks[_db_key] = f"fail: {str(e)[:80]}"
         ok = False
 
     try:

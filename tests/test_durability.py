@@ -1,12 +1,14 @@
 """
 Tests for H-04 (atomic JSON writes) and H-05 (sqlite concurrency).
 
-H-04: sessions/manager.py now writes chat_sessions.json / chat_messages.json
-      via a temp file + os.replace. A crash/interrupt mid-write can leave a
-      stale .tmp file behind but must never corrupt the canonical file.
+H-04: sessions/manager.py writes chat_sessions.json / chat_messages.json
+      via a temp file + os.replace. A crash/interrupt mid-write can leave
+      a stale .tmp file behind but must never corrupt the canonical file.
 
-H-05: store/db.py now caches one sqlite3.Connection per thread and sets
-      PRAGMA busy_timeout=5000 so concurrent writers don't raise
+H-05: store/db.py goes through a SQLAlchemy Engine (PR-A). The SQLite
+      PRAGMAs (journal_mode=WAL, foreign_keys=ON, busy_timeout=5000) are
+      applied on every new DBAPI connection by a connect-event listener
+      in `store.engine`, so concurrent writers still don't raise
       SQLITE_BUSY under contention.
 """
 import os
@@ -14,7 +16,6 @@ import sys
 import json
 import sqlite3
 import threading
-import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -71,13 +72,10 @@ class TestAtomicJsonWrites:
 # ── H-05 ─────────────────────────────────────────────────────────────────────
 
 class TestSqliteConcurrency:
-    def test_concurrent_writes_do_not_raise_busy(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AZIRO_DATA_DIR", str(tmp_path))
-        import importlib
-        import store.db as db_mod
-        importlib.reload(db_mod)
+    def test_concurrent_writes_do_not_raise_busy(self, tmp_path):
+        from store.db import EventStore
 
-        store = db_mod.EventStore()
+        store = EventStore(db_file=str(tmp_path / "aziro.db"))
         errors = []
 
         def writer(n):
@@ -106,27 +104,56 @@ class TestSqliteConcurrency:
 
         assert not errors, f"concurrent writers raised: {errors}"
 
-    def test_thread_local_conn_is_cached(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AZIRO_DATA_DIR", str(tmp_path))
-        import importlib
-        import store.db as db_mod
-        importlib.reload(db_mod)
+    def test_engine_pool_hands_out_connections(self, tmp_path):
+        """Post-PR-A: thread-local caching moved into SQLAlchemy's pool.
 
-        store = db_mod.EventStore()
+        The pool still gives us isolated connections per checkout without
+        reopening the DB file each call, so the performance property the
+        original test guarded survives — just at a different layer.
+        """
+        from sqlalchemy import event
+        from store.db import EventStore
 
-        # Two calls from the same thread should return the same object.
-        c1 = store._conn()
-        c2 = store._conn()
-        assert c1 is c2
+        store = EventStore(db_file=str(tmp_path / "aziro.db"))
 
-    def test_busy_timeout_set_on_conn(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AZIRO_DATA_DIR", str(tmp_path))
-        import importlib
-        import store.db as db_mod
-        importlib.reload(db_mod)
+        # `checkedin() >= 1` would still pass if the pool opened two
+        # separate DBAPI connections and returned only one — which is
+        # the exact regression this test guards against. Counting
+        # `connect` events across two sequential checkouts proves
+        # reuse: the DBAPI connection is opened once and the second
+        # checkout gets the pooled connection back.
+        #
+        # Dispose first so `__init__`-time connects (e.g. WAL PRAGMA)
+        # don't pre-inflate the counter.
+        store._engine.dispose()
 
-        store = db_mod.EventStore()
-        conn = store._conn()
-        # busy_timeout is reported in ms; matches the value we set.
-        (timeout,) = conn.execute("PRAGMA busy_timeout").fetchone()
+        connects: list[int] = [0]
+
+        @event.listens_for(store._engine, "connect")
+        def _count(_dbapi_conn, _conn_record):
+            connects[0] += 1
+
+        raw1 = store._engine.raw_connection()
+        raw1.close()
+        raw2 = store._engine.raw_connection()
+        raw2.close()
+
+        assert connects[0] == 1, (
+            f"pool opened {connects[0]} DBAPI connections for 2 "
+            f"sequential checkouts — expected 1 (reuse)"
+        )
+
+    def test_busy_timeout_set_on_new_connections(self, tmp_path):
+        """The connect-event listener in store.engine should apply
+        PRAGMA busy_timeout=5000 to every new SQLite DBAPI connection."""
+        from store.db import EventStore
+
+        store = EventStore(db_file=str(tmp_path / "aziro.db"))
+        raw = store._engine.raw_connection()
+        try:
+            cur = raw.cursor()
+            (timeout,) = cur.execute("PRAGMA busy_timeout").fetchone()
+            cur.close()
+        finally:
+            raw.close()
         assert timeout == 5000

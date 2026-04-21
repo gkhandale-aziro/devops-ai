@@ -64,20 +64,23 @@ def test_record_llm_usage_isolates_users(store):
 def test_record_llm_usage_empty_user_is_noop(store):
     # System calls (title generation, prefetches) pass "" as user_id;
     # they must not land as rows because they'd show up against no one.
+    from sqlalchemy import text
     store.record_llm_usage("", "m", 500, 500)
     assert store.user_tokens_today("") == 0
     with store._conn() as c:
-        row = c.execute("SELECT COUNT(*) AS n FROM llm_usage").fetchone()
-    assert row["n"] == 0
+        n = c.execute(text("SELECT COUNT(*) FROM llm_usage")).scalar()
+    assert n == 0
 
 
 def test_record_llm_usage_swallows_errors(store, monkeypatch):
-    # A DB blip must not crash the hot path. We simulate by closing the
-    # underlying connection factory so any INSERT raises.
-    def _broken_conn():
-        raise RuntimeError("db gone")
+    # A DB blip must not crash the hot path. We simulate by swapping the
+    # engine for one whose begin() raises — same observable effect as
+    # the DB going away mid-INSERT.
+    class _BrokenEngine:
+        def begin(self):
+            raise RuntimeError("db gone")
 
-    monkeypatch.setattr(store, "_conn", _broken_conn)
+    monkeypatch.setattr(store, "_engine", _BrokenEngine())
     # Must not raise:
     store.record_llm_usage("alice", "m", 10, 10)
 
@@ -85,16 +88,18 @@ def test_record_llm_usage_swallows_errors(store, monkeypatch):
 def test_user_tokens_today_ignores_yesterday(store):
     # Seed a row dated yesterday by writing directly through the internal
     # connection. user_tokens_today's cutoff is today's local midnight.
+    from sqlalchemy import text
     yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).isoformat(
         timespec="seconds"
     )
     with store._conn() as c:
         c.execute(
-            """INSERT INTO llm_usage
-               (timestamp, user_id, model, prompt_tokens,
-                completion_tokens, total_tokens, session_id)
-               VALUES (?,?,?,?,?,?,?)""",
-            (yesterday, "alice", "m", 500, 500, 1000, ""),
+            text("""INSERT INTO llm_usage
+                    (timestamp, user_id, model, prompt_tokens,
+                     completion_tokens, total_tokens, session_id)
+                    VALUES (:ts, :uid, :model, :pt, :ct, :tt, :sid)"""),
+            {"ts": yesterday, "uid": "alice", "model": "m",
+             "pt": 500, "ct": 500, "tt": 1000, "sid": ""},
         )
     # Today's number excludes yesterday's 1000.
     assert store.user_tokens_today("alice") == 0

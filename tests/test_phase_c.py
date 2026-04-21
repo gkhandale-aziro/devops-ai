@@ -37,6 +37,10 @@ def client():
         MockSessions.return_value.load.return_value = []
         # _conn().execute("SELECT 1").fetchone() chain must succeed by default.
         MockStore.return_value._conn.return_value.execute.return_value.fetchone.return_value = (1,)
+        # /readyz now keys the DB check off the dialect name; give the
+        # mock a concrete string so jsonify() doesn't choke on a
+        # MagicMock. Tests assert the resulting `"sqlite"` key below.
+        MockStore.return_value._engine.dialect.name = "sqlite"
         from ui.web import app
         app.config["TESTING"] = True
         with app.test_client() as c:

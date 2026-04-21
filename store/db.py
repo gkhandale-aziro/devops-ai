@@ -1,22 +1,59 @@
 """
-store/db.py — SQLite event store for Aziro Ops.
+store/db.py — event store for Aziro Ops, now on SQLAlchemy Core.
 
-Three tables:
-  events     — every alert that fired (timestamp, level, reason, object)
-  snapshots  — kubectl logs/describe captured the moment an event fires
-  analyses   — what the AI diagnosed + any remediation proposed
+Same public surface as before:
+    store = EventStore()                     # uses AZIRO_DB_URL or default SQLite
+    store = EventStore(db_file=".../x.db")   # isolated SQLite path (tests)
+    eid = store.save_event({...}, "SEV2")
+    store.save_snapshot(eid, "logs", output)
+    store.save_analysis(eid, diagnosis, remediation)
 
-Auto-purges events older than RETENTION_DAYS (default 30) on each save_event call.
+Under the hood it runs against a SQLAlchemy Engine (SQLite by default,
+Postgres when `AZIRO_DB_URL=postgresql+psycopg://…` is set). SQL is
+still written by hand via `text()` — no ORM — because the queries here
+are short, selective, and any abstraction would obscure more than it
+helped.
+
+Auto-purges events older than `AZIRO_EVENT_RETENTION_DAYS` (default 30)
+on each `save_event`. Snapshot + analysis rows cascade via FK.
 """
-import sqlite3
-import json
-import os
+from __future__ import annotations
+
 import datetime
-import threading
+import hashlib
+import json
+import logging
+import os
+from contextlib import contextmanager
+from typing import Iterator, Optional
+
+from sqlalchemy import Engine, text
+from sqlalchemy.engine import Connection
 
 from sandbox.redact import redact_text
+from store.engine import build_engine, ensure_capable, get_engine
+from store.schema import metadata
 
-DB_FILE        = os.path.join(
+log = logging.getLogger(__name__)
+
+
+def _err_meta(e: Exception) -> dict:
+    """Extract PII-safe diagnostic fields from a DB exception.
+
+    SQLAlchemy's `str(exc)` embeds the failing SQL together with its
+    bind parameters (which in our stores include `user_id`, redacted
+    log text, etc.), so logging it raw undoes the redaction we do
+    elsewhere. Type name + driver error code is plenty for triage.
+    """
+    orig = getattr(e, "orig", None)
+    return {
+        "err_type": type(e).__name__,
+        "err_code": (getattr(orig, "pgcode", None)
+                     or getattr(orig, "sqlite_errorcode", None)),
+    }
+
+
+DB_FILE = os.path.join(
     os.environ.get("AZIRO_DATA_DIR", os.path.join(os.path.dirname(__file__), "..")),
     "aziro.db",
 )
@@ -25,11 +62,11 @@ DB_FILE        = os.path.join(
 def _retention_days() -> int:
     """Days to keep events (snapshots + analyses cascade via FK).
 
-    Read fresh each call so tests can set AZIRO_EVENT_RETENTION_DAYS=0
-    to force-purge without monkey-patching. Falls back to 30 on a
-    missing, malformed, or negative value — a negative window would
-    push the cutoff into the future and wipe every row, which is never
-    what an operator actually wants.
+    Read fresh each call so tests can set AZIRO_EVENT_RETENTION_DAYS=0 to
+    force-purge without monkey-patching. Falls back to 30 on a missing,
+    malformed, or negative value — a negative window would push the
+    cutoff into the future and wipe every row, which is never what an
+    operator actually wants.
     """
     try:
         days = int(os.environ.get("AZIRO_EVENT_RETENTION_DAYS", "30"))
@@ -43,9 +80,9 @@ def _retention_days() -> int:
 def _redact_enabled() -> bool:
     """SEC-6: scrub secrets out of stored snapshot/analysis text.
 
-    On by default. Opt-out via AZIRO_SNAPSHOT_REDACT=0 for scenarios
-    where the rule set over-matches (e.g. a customer reproducing a bug
-    against a sandbox cluster with fake credentials).
+    On by default. Opt-out via AZIRO_SNAPSHOT_REDACT=0 for scenarios where
+    the rule set over-matches (e.g. a customer reproducing a bug against
+    a sandbox cluster with fake credentials).
     """
     return os.environ.get("AZIRO_SNAPSHOT_REDACT", "1") not in ("0", "false", "False", "")
 
@@ -56,119 +93,60 @@ RETENTION_DAYS = 30
 
 
 class EventStore:
-    """
-    SQLite-backed store for monitor events, log snapshots, and AI analyses.
+    """SQL-backed store for monitor events, log snapshots, and AI analyses."""
 
-    Usage
-    -----
-        store = EventStore()
-        eid   = store.save_event(event, "SEV2")
-        store.save_snapshot(eid, "logs", kubectl_output)
-        store.save_analysis(eid, diagnosis="OOMKilled — memory limit too low")
-    """
-
-    def __init__(self, db_file=DB_FILE):
-        self._db = db_file
-        # Thread-local connection cache. Each thread gets its own sqlite3
-        # connection — reused across calls rather than opened every time.
-        # This is correct for sqlite3 (connections are not thread-safe) and
-        # avoids the "open, PRAGMA, close" overhead on every query.
-        self._tls = threading.local()
+    def __init__(self, db_file: Optional[str] = None, engine: Optional[Engine] = None):
+        if engine is not None:
+            self._engine = engine
+            # `build_engine` runs the SQLite >= 3.35 check; an injected
+            # engine skipped it. Re-run here or save_event's INSERT …
+            # RETURNING can fail mid-request with a cryptic syntax error.
+            ensure_capable(self._engine)
+        elif db_file is not None:
+            # Back-compat: callers (mostly tests) that pass an explicit file
+            # path get their own engine so test isolation is preserved.
+            self._engine = build_engine(f"sqlite:///{os.path.abspath(db_file)}")
+        else:
+            self._engine = get_engine()
         self._init_schema()
         self._migrate()
 
-    def _thread_conn(self):
-        """Return this thread's cached connection, opening one if needed."""
-        conn = getattr(self._tls, "conn", None)
-        if conn is None:
-            # timeout= is sqlite3.connect's own busy-retry ceiling on the
-            # initial connect. busy_timeout (pragma below) is the per-
-            # statement ceiling — SQLite retries internally with adaptive
-            # backoff up to 5s before raising SQLITE_BUSY.
-            conn = sqlite3.connect(self._db, check_same_thread=False, timeout=5.0)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA foreign_keys = ON")
-            conn.execute("PRAGMA busy_timeout = 5000")
-            self._tls.conn = conn
-        return conn
-
     # ── schema ────────────────────────────────────────────────────────────────
 
-    def _init_schema(self):
-        with self._conn() as c:
-            c.executescript("""
-                CREATE TABLE IF NOT EXISTS events (
-                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT    NOT NULL,
-                    source    TEXT    NOT NULL DEFAULT 'kubernetes',
-                    level     TEXT    NOT NULL,
-                    reason    TEXT    NOT NULL,
-                    object    TEXT    NOT NULL,
-                    namespace TEXT    DEFAULT '',
-                    message   TEXT    DEFAULT '',
-                    status    TEXT    NOT NULL DEFAULT 'open',
-                    raw       TEXT    DEFAULT ''
-                );
+    def _init_schema(self) -> None:
+        """Bootstrap tables on first boot — SQLite only.
 
-                CREATE TABLE IF NOT EXISTS snapshots (
-                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id  INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-                    timestamp TEXT    NOT NULL,
-                    kind      TEXT    NOT NULL,
-                    content   TEXT    DEFAULT ''
-                );
+        On SQLite (dev/test and the legacy single-file install), we
+        still `create_all` so a fresh checkout or a `rm aziro.db` +
+        start cycle Just Works. The call is a no-op against a DB that
+        already has the tables.
 
-                CREATE TABLE IF NOT EXISTS analyses (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id    INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-                    timestamp   TEXT    NOT NULL,
-                    diagnosis   TEXT    DEFAULT '',
-                    remediation TEXT    DEFAULT ''
-                );
+        On Postgres (PR-C production target), we intentionally do NOT
+        run `create_all`: the app runtime user typically doesn't hold
+        CREATE/ALTER grants, and the canonical migration path is
+        `python -m scripts.db upgrade head` (Alembic). If boot runs
+        before that, the first query will fail loudly rather than the
+        app silently limping along with a mystery schema.
+        """
+        if self._engine.dialect.name == "sqlite":
+            metadata.create_all(self._engine)
 
-                CREATE TABLE IF NOT EXISTS metrics (
-                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                    target_id TEXT    NOT NULL,
-                    timestamp TEXT    NOT NULL,
-                    metric    TEXT    NOT NULL,
-                    value     REAL    NOT NULL
-                );
+    def _migrate(self) -> None:
+        """Idempotent ALTER TABLE ADD COLUMN for pre-PR-A SQLite files.
 
-                CREATE INDEX IF NOT EXISTS idx_events_object    ON events(object);
-                CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC);
-                CREATE INDEX IF NOT EXISTS idx_events_level     ON events(level);
-                CREATE TABLE IF NOT EXISTS feedback (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp  TEXT NOT NULL,
-                    target_id  TEXT NOT NULL,
-                    message    TEXT NOT NULL,
-                    rating     TEXT NOT NULL,
-                    comment    TEXT DEFAULT ''
-                );
+        Scoped to SQLite for the same reason as `_init_schema`: Postgres
+        deployments go through Alembic, which owns every DDL change.
+        Fresh SQLite installs from `create_all` already have every
+        column, so these ALTERs either succeed on a legacy DB or raise
+        `duplicate column` which we swallow.
 
-                CREATE INDEX IF NOT EXISTS idx_metrics_target_time
-                    ON metrics(target_id, metric, timestamp DESC);
-
-                CREATE TABLE IF NOT EXISTS llm_usage (
-                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp         TEXT    NOT NULL,
-                    user_id           TEXT    NOT NULL,
-                    model             TEXT    NOT NULL,
-                    prompt_tokens     INTEGER NOT NULL DEFAULT 0,
-                    completion_tokens INTEGER NOT NULL DEFAULT 0,
-                    total_tokens      INTEGER NOT NULL DEFAULT 0,
-                    session_id        TEXT    DEFAULT ''
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_llm_usage_user_ts
-                    ON llm_usage(user_id, timestamp DESC);
-
-                PRAGMA foreign_keys = ON;
-            """)
-
-    def _migrate(self):
-        """Add columns introduced after initial schema without dropping existing data."""
+        Only the "already exists" path is swallowed — a locked DB,
+        permission issue, or unrelated SQL drift must propagate so
+        startup fails loudly instead of limping along with a partially
+        migrated schema.
+        """
+        if self._engine.dialect.name != "sqlite":
+            return
         migrations = [
             "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open'",
             "ALTER TABLE events ADD COLUMN target_id TEXT DEFAULT ''",
@@ -176,87 +154,114 @@ class EventStore:
         ]
         for sql in migrations:
             try:
-                with self._conn() as c:
-                    c.execute(sql)
-            except Exception:
-                pass  # column already exists
+                with self._engine.begin() as conn:
+                    conn.execute(text(sql))
+            except Exception as e:
+                # SQLite: "duplicate column name: status"
+                msg = str(e).lower()
+                if "duplicate column" in msg:
+                    continue
+                raise
 
-    def _conn(self):
-        """Return this thread's connection. Used as `with self._conn() as c:`
-        — the context-manager __exit__ commits (or rolls back on exception),
-        but does NOT close the connection, so it stays cached for the
-        thread's next call."""
-        return self._thread_conn()
+    @contextmanager
+    def _conn(self) -> Iterator[Connection]:
+        """Yield a SA Connection inside an auto-committing transaction.
+
+        Name kept for back-compat with the pre-SA Core code shape. Call
+        sites do `with self._conn() as c: c.execute(text(...))`.
+        """
+        with self._engine.begin() as conn:
+            yield conn
 
     # ── write ─────────────────────────────────────────────────────────────────
 
     def save_event(self, event: dict, level: str,
                    target_id: str = "", target_name: str = "") -> int:
-        """
-        Persist a monitor event. Returns the new event id.
+        """Persist a monitor event. Returns the new event id.
+
         Also purges events older than RETENTION_DAYS.
         """
         now = _now()
-        with self._conn() as c:
-            cur = c.execute(
-                """INSERT INTO events
-                   (timestamp, source, level, reason, object, namespace, message, raw, target_id, target_name)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (now,
-                 event.get("source",    "kubernetes"),
-                 level,
-                 event.get("reason",    ""),
-                 event.get("object",    ""),
-                 event.get("namespace", ""),
-                 event.get("message",   ""),
-                 json.dumps(event),
-                 target_id,
-                 target_name),
-            )
-            eid = cur.lastrowid
+        with self._engine.begin() as conn:
+            # RETURNING is the only race-free way to retrieve the new id
+            # under concurrent writes — Postgres doesn't expose lastrowid,
+            # and a MAX(id) lookup can see another session's row slip in
+            # between our INSERT and the SELECT. Both SQLite (>=3.35) and
+            # Postgres support RETURNING, so this one path covers both.
+            eid = conn.execute(
+                text("""INSERT INTO events
+                        (timestamp, source, level, reason, object, namespace,
+                         message, raw, target_id, target_name)
+                        VALUES (:timestamp, :source, :level, :reason, :object,
+                                :namespace, :message, :raw, :target_id, :target_name)
+                        RETURNING id"""),
+                {
+                    "timestamp":   now,
+                    "source":      event.get("source",    "kubernetes"),
+                    "level":       level,
+                    "reason":      event.get("reason",    ""),
+                    "object":      event.get("object",    ""),
+                    "namespace":   event.get("namespace", ""),
+                    "message":     event.get("message",   ""),
+                    "raw":         json.dumps(event),
+                    "target_id":   target_id,
+                    "target_name": target_name,
+                },
+            ).scalar()
 
-        self._purge_old()
-        return eid
+        # The row is durable at this point. Purge is a background-style
+        # housekeeping task — if it fails (DB locked, disk full, etc.)
+        # the caller must NOT see it as `save_event` failure, or they'll
+        # retry and end up with a duplicate event. Log so ops notices
+        # before retention actually overflows.
+        try:
+            self._purge_old()
+        except Exception as e:
+            log.warning("store.purge_old_failed", extra=_err_meta(e))
+        return int(eid)
 
     def update_event_status(self, event_id: int, status: str) -> bool:
-        """Update event status: open | acknowledged | resolved"""
+        """Update event status: open | acknowledged | resolved.
+
+        Returns True only when a row was actually updated — a caller
+        passing a non-existent event_id gets False so they can surface
+        a 404 instead of a misleading 200.
+        """
         valid = {"open", "acknowledged", "resolved"}
         if status not in valid:
             return False
-        with self._conn() as c:
-            c.execute("UPDATE events SET status = ? WHERE id = ?", (status, event_id))
-        return True
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                text("UPDATE events SET status = :status WHERE id = :id"),
+                {"status": status, "id": event_id},
+            )
+        return (result.rowcount or 0) > 0
 
-    def save_snapshot(self, event_id: int, kind: str, content: str):
-        """
-        Save a kubectl log/describe snapshot linked to an event.
+    def save_snapshot(self, event_id: int, kind: str, content: str) -> None:
+        """Save a kubectl log/describe snapshot linked to an event.
 
-        kind values: logs | logs_previous | describe | events
+        `kind` ∈ {logs, logs_previous, describe, events}.
 
         Secrets in `content` (AWS keys, JWTs, bearer tokens, etc.) are
-        scrubbed via sandbox.redact.redact_text before persistence —
+        scrubbed via `sandbox.redact.redact_text` before persistence —
         the single choke point for all snapshot writers, so no caller
         can bypass it by forgetting to scrub upstream.
         """
-        text = content or ""
+        payload = content or ""
         if _redact_enabled():
-            text = redact_text(text)
-        with self._conn() as c:
-            c.execute(
-                "INSERT INTO snapshots (event_id, timestamp, kind, content) VALUES (?,?,?,?)",
-                (event_id, _now(), kind, text),
+            payload = redact_text(payload)
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("""INSERT INTO snapshots (event_id, timestamp, kind, content)
+                        VALUES (:event_id, :timestamp, :kind, :content)"""),
+                {"event_id": event_id, "timestamp": _now(), "kind": kind, "content": payload},
             )
 
-    def save_analysis(self, event_id: int, diagnosis: str, remediation: str = ""):
+    def save_analysis(self, event_id: int, diagnosis: str, remediation: str = "") -> None:
         """Save the AI diagnosis (and optional remediation command) for an event.
 
-        LLM output can echo secrets pulled from the prompt context (e.g.
-        an env-dump snapshot fed into diagnosis). Scrub the same way
-        snapshots are scrubbed so the DB never stores what we would
-        refuse to stream to a client.
-
-        Order matters: redact BEFORE truncating. Cutting first can split
-        a secret across the 8000/2000-char boundary, leaving its prefix
+        Order matters: redact BEFORE truncating. Cutting first can split a
+        secret across the 8000/2000-char boundary, leaving its prefix
         un-detectable by any pattern and defeating the scrub.
         """
         if _redact_enabled():
@@ -265,26 +270,32 @@ class EventStore:
         else:
             diag = diagnosis[:8000]
             remed = remediation[:2000]
-        with self._conn() as c:
-            c.execute(
-                """INSERT INTO analyses (event_id, timestamp, diagnosis, remediation)
-                   VALUES (?,?,?,?)""",
-                (event_id, _now(), diag, remed),
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("""INSERT INTO analyses
+                        (event_id, timestamp, diagnosis, remediation)
+                        VALUES (:event_id, :timestamp, :diagnosis, :remediation)"""),
+                {
+                    "event_id":    event_id,
+                    "timestamp":   _now(),
+                    "diagnosis":   diag,
+                    "remediation": remed,
+                },
             )
 
     # ── read ──────────────────────────────────────────────────────────────────
 
-    def get_events(self, limit: int = 50, level: str = None,
-                   object_name: str = None) -> list:
+    def get_events(self, limit: int = 50, level: Optional[str] = None,
+                   object_name: Optional[str] = None) -> list:
         """Return recent events with last_diagnosis, optionally filtered."""
-        where  = []
-        params = []
+        where: list[str] = []
+        params: dict = {"limit": limit}
         if level:
-            where.append("e.level = ?")
-            params.append(level)
+            where.append("e.level = :level")
+            params["level"] = level
         if object_name:
-            where.append("e.object LIKE ?")
-            params.append(f"%{object_name}%")
+            where.append("e.object LIKE :object_name")
+            params["object_name"] = f"%{object_name}%"
 
         where_clause = ("WHERE " + " AND ".join(where)) if where else ""
         sql = f"""
@@ -295,116 +306,154 @@ class EventStore:
             FROM   events e
             {where_clause}
             ORDER  BY e.timestamp DESC
-            LIMIT  ?
+            LIMIT  :limit
         """
-        params.append(limit)
 
-        with self._conn() as c:
-            return [dict(r) for r in c.execute(sql, params).fetchall()]
+        with self._engine.begin() as conn:
+            rows = conn.execute(text(sql), params).mappings().all()
+        return [dict(r) for r in rows]
 
-    def get_event(self, event_id: int) -> dict | None:
+    def get_event(self, event_id: int) -> Optional[dict]:
         """Return one event with its snapshots and analyses."""
-        with self._conn() as c:
-            row = c.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                text("SELECT * FROM events WHERE id = :id"),
+                {"id": event_id},
+            ).mappings().first()
             if not row:
                 return None
             event = dict(row)
             event["snapshots"] = [
-                dict(r) for r in c.execute(
-                    "SELECT * FROM snapshots WHERE event_id = ? ORDER BY timestamp",
-                    (event_id,),
-                ).fetchall()
+                dict(r) for r in conn.execute(
+                    text("SELECT * FROM snapshots WHERE event_id = :id ORDER BY timestamp"),
+                    {"id": event_id},
+                ).mappings().all()
             ]
             event["analyses"] = [
-                dict(r) for r in c.execute(
-                    "SELECT * FROM analyses WHERE event_id = ? ORDER BY timestamp",
-                    (event_id,),
-                ).fetchall()
+                dict(r) for r in conn.execute(
+                    text("SELECT * FROM analyses WHERE event_id = :id ORDER BY timestamp"),
+                    {"id": event_id},
+                ).mappings().all()
             ]
         return event
 
     def get_object_history(self, object_name: str, limit: int = 10) -> list:
-        """
-        Return recent events for a specific pod/node,
-        with the latest AI diagnosis attached to each row.
-        """
+        """Return recent events for a specific pod/node, latest AI diagnosis
+        attached."""
         sql = """
             SELECT e.*,
                    (SELECT a.diagnosis FROM analyses a
                     WHERE  a.event_id = e.id
                     ORDER  BY a.timestamp DESC LIMIT 1) AS last_diagnosis
             FROM   events e
-            WHERE  e.object = ?
+            WHERE  e.object = :object_name
             ORDER  BY e.timestamp DESC
-            LIMIT  ?
+            LIMIT  :limit
         """
-        with self._conn() as c:
-            return [dict(r) for r in c.execute(sql, (object_name, limit)).fetchall()]
+        with self._engine.begin() as conn:
+            rows = conn.execute(text(sql),
+                                {"object_name": object_name, "limit": limit}).mappings().all()
+        return [dict(r) for r in rows]
 
     def get_stats(self) -> dict:
         """
         Returns:
-          counts      — {SEV1: n, SEV2: n, SEV3: n} — *active issues*,
-                        i.e. distinct (object, reason) pairs still open.
-                        A crashloop pod that fires 900 events in 9 days
-                        counts as ONE active issue, not 900, so the
-                        dashboard card matches the Live Alerts page.
+          counts      — {SEV1: n, SEV2: n, SEV3: n} — *active issues*, i.e.
+                        distinct (object, reason) pairs still open. A
+                        crashloop pod that fires 900 events in 9 days
+                        counts as ONE active issue, not 900.
           top_failing — top 10 objects by SEV1/SEV2 event count
           recent      — last 5 events
         """
-        with self._conn() as c:
+        with self._engine.begin() as conn:
+            # A subquery GROUP BY avoids the delimiter-collision trap in
+            # `COUNT(DISTINCT object || '|' || reason)`: k8s names rarely
+            # contain '|' but nothing stops a user-named target from
+            # doing so, and "foo|bar" + "" collides with "foo" + "bar".
+            # The two-stage form is also what Postgres wants — it's
+            # faster on indexed (level, object, reason) triples too.
             counts = {
                 row[0]: row[1]
-                for row in c.execute(
-                    """SELECT level, COUNT(DISTINCT object || '|' || reason)
-                       FROM   events
-                       WHERE  status = 'open'
-                       GROUP  BY level"""
-                ).fetchall()
+                for row in conn.execute(text(
+                    """SELECT level, COUNT(*) AS n
+                       FROM (
+                           SELECT level, object, reason
+                           FROM   events
+                           WHERE  status = 'open'
+                           GROUP  BY level, object, reason
+                       ) AS active
+                       GROUP BY level"""
+                )).all()
             }
+            # Postgres requires every non-aggregated SELECT column in
+            # GROUP BY (SQLite is lax about this and would silently pick
+            # an arbitrary namespace). And `MAX(level)` is severity-
+            # inverted — lexically 'SEV2' > 'SEV1', but SEV1 is the more
+            # severe of the two, so MAX reports the wrong "worst_level"
+            # whenever both appear. MIN() gets the right answer because
+            # the level strings happen to sort in severity order, but we
+            # use an explicit CASE/bool-or idiom so the intent isn't
+            # buried in a lexical coincidence.
             top_failing = [
-                dict(r) for r in c.execute(
+                dict(r) for r in conn.execute(text(
                     """SELECT object, namespace,
-                              COUNT(*)        AS count,
-                              MAX(timestamp)  AS last_seen,
-                              MAX(level)      AS worst_level
+                              COUNT(*)       AS count,
+                              MAX(timestamp) AS last_seen,
+                              CASE
+                                WHEN SUM(CASE WHEN level = 'SEV1' THEN 1 ELSE 0 END) > 0
+                                  THEN 'SEV1'
+                                ELSE 'SEV2'
+                              END            AS worst_level
                        FROM   events
                        WHERE  level IN ('SEV1','SEV2')
-                       GROUP  BY object
+                       GROUP  BY object, namespace
                        ORDER  BY count DESC
                        LIMIT  10"""
-                ).fetchall()
+                )).mappings().all()
             ]
             recent = [
-                dict(r) for r in c.execute(
+                dict(r) for r in conn.execute(text(
                     "SELECT * FROM events ORDER BY timestamp DESC LIMIT 5"
-                ).fetchall()
+                )).mappings().all()
             ]
         return {"counts": counts, "top_failing": top_failing, "recent": recent}
 
     # ── metrics ───────────────────────────────────────────────────────────────
 
-    def save_metrics(self, target_id: str, metrics: list):
-        """Save a batch of metric readings. Each item: {metric: str, value: float}"""
+    def save_metrics(self, target_id: str, metrics_list: list) -> None:
+        """Save a batch of metric readings. Each item: {metric: str, value: float}."""
+        if not metrics_list:
+            return
         now = _now()
-        with self._conn() as c:
-            c.executemany(
-                "INSERT INTO metrics (target_id, timestamp, metric, value) VALUES (?,?,?,?)",
-                [(target_id, now, m["metric"], m["value"]) for m in metrics],
+        rows = [
+            {"target_id": target_id, "timestamp": now,
+             "metric": m["metric"], "value": m["value"]}
+            for m in metrics_list
+        ]
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("""INSERT INTO metrics (target_id, timestamp, metric, value)
+                        VALUES (:target_id, :timestamp, :metric, :value)"""),
+                rows,
             )
 
-    def get_metrics(self, target_id: str, metric: str = None,
-                    since: str = None, step: str = None) -> dict:
-        """Query metric time-series. Returns {metric_name: [{t, v}, ...]}"""
-        where = ["target_id = ?"]
-        params = [target_id]
+    def get_metrics(self, target_id: str, metric: Optional[str] = None,
+                    since: Optional[str] = None) -> dict:
+        """Query metric time-series. Returns {metric_name: [{t, v}, ...]}."""
+        where = ["target_id = :target_id"]
+        params: dict = {"target_id": target_id}
         if metric:
             metrics_list = [m.strip() for m in metric.split(",")]
-            where.append(f"metric IN ({','.join('?' * len(metrics_list))})")
-            params.extend(metrics_list)
+            # Build an IN clause with unique bind names.
+            in_names = []
+            for i, m in enumerate(metrics_list):
+                key = f"m{i}"
+                in_names.append(f":{key}")
+                params[key] = m
+            where.append(f"metric IN ({','.join(in_names)})")
         if since:
-            where.append("timestamp >= ?")
-            params.append(since)
+            where.append("timestamp >= :since")
+            params["since"] = since
 
         sql = f"""
             SELECT metric, timestamp, value
@@ -412,37 +461,27 @@ class EventStore:
             WHERE  {' AND '.join(where)}
             ORDER  BY timestamp ASC
         """
-        result = {}
-        with self._conn() as c:
-            for row in c.execute(sql, params).fetchall():
+        result: dict = {}
+        with self._engine.begin() as conn:
+            for row in conn.execute(text(sql), params).mappings().all():
                 m = row["metric"]
                 if m not in result:
                     result[m] = []
                 result[m].append({"t": row["timestamp"], "v": row["value"]})
         return result
 
-    def purge_old_metrics(self, days: int = 7):
+    def purge_old_metrics(self, days: int = 7) -> None:
         """Delete metrics older than N days."""
         cutoff = (
             datetime.datetime.now() - datetime.timedelta(days=days)
         ).isoformat()
-        with self._conn() as c:
-            c.execute("DELETE FROM metrics WHERE timestamp < ?", (cutoff,))
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM metrics WHERE timestamp < :cutoff"),
+                {"cutoff": cutoff},
+            )
 
     # ── LLM usage (OPS-4) ─────────────────────────────────────────────────────
-    #
-    # Per-user token accounting. The metrics path (observability/metrics.py
-    # record_llm_call) already exports aggregate counters for Prometheus, but
-    # those are worker-local and don't survive a restart. This table persists
-    # per-call rows so we can enforce daily budgets across workers and across
-    # bounces, and so an operator can audit who burned how many tokens when a
-    # bill spike lands.
-    #
-    # `user_id` is a string (not FK) so anonymous or system-triggered calls
-    # can still land with a sentinel like "anonymous" or "auto-monitor"
-    # without us inventing user rows for them. `cost_usd` is intentionally
-    # absent — model pricing drifts, and we'd rather compute it at report
-    # time from the current price list than trust a stale value.
 
     def record_llm_usage(
         self,
@@ -452,93 +491,137 @@ class EventStore:
         completion_tokens: int,
         session_id: str = "",
     ) -> None:
-        """Persist a single LLM call's token usage. Callable from providers/client.py.
+        """Persist a single LLM call's token usage.
 
-        Fire-and-forget — swallows errors so a persistence blip never masks an
-        otherwise-successful LLM response. If the row doesn't land, the
-        in-memory Prometheus counter still captured the call.
+        Fire-and-forget — swallows errors so a persistence blip never masks
+        an otherwise-successful LLM response.
         """
         if not user_id:
             return
-        total = (prompt_tokens or 0) + (completion_tokens or 0)
+        # Coerce once at the top — callers occasionally pass strings
+        # ("12"/"3") from JSON usage blobs, and `"12" + "3"` silently
+        # concatenates instead of summing. Normalize first, THEN sum,
+        # so `total` can never disagree with the two components and
+        # the blanket except below can't mask a bad-data bug.
         try:
-            with self._conn() as c:
-                c.execute(
-                    """INSERT INTO llm_usage
-                       (timestamp, user_id, model, prompt_tokens,
-                        completion_tokens, total_tokens, session_id)
-                       VALUES (?,?,?,?,?,?,?)""",
-                    (_now(), user_id, model,
-                     int(prompt_tokens or 0),
-                     int(completion_tokens or 0),
-                     total, session_id or ""),
+            pt = int(prompt_tokens or 0)
+            ct = int(completion_tokens or 0)
+        except (TypeError, ValueError):
+            # Fall back to a zero-token row rather than dropping the
+            # event: budget accounting uses COUNT/SUM over llm_usage, so
+            # swallowing a malformed payload would leak quota (user made
+            # a real LLM call but has no record of it). Zero tokens is
+            # wrong but recoverable; a missing row is silently wrong.
+            log.warning(
+                "store.llm_usage_bad_tokens",
+                extra={"user_ref": _redact_user(user_id), "model": model,
+                       "prompt": repr(prompt_tokens)[:40],
+                       "completion": repr(completion_tokens)[:40]},
+            )
+            pt = 0
+            ct = 0
+        total = pt + ct
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text("""INSERT INTO llm_usage
+                            (timestamp, user_id, model, prompt_tokens,
+                             completion_tokens, total_tokens, session_id)
+                            VALUES (:timestamp, :user_id, :model, :prompt_tokens,
+                                    :completion_tokens, :total_tokens, :session_id)"""),
+                    {
+                        "timestamp":         _now(),
+                        "user_id":           user_id,
+                        "model":             model,
+                        "prompt_tokens":     pt,
+                        "completion_tokens": ct,
+                        "total_tokens":      total,
+                        "session_id":        session_id or "",
+                    },
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            # Hot path — never raise, but don't silently ghost the row
+            # either. Without this log, a persistent write failure
+            # (disk full, replica lag, etc.) looks like "budgets just
+            # stopped working" with no forensic trail.
+            log.warning(
+                "store.llm_usage_write_failed",
+                extra={"user_ref": _redact_user(user_id), "model": model,
+                       **_err_meta(e)},
+            )
 
     def user_tokens_today(self, user_id: str) -> int:
         """Return total_tokens this user has spent since today's local midnight.
 
-        Used by the budget-check at request entry to decide whether to let a
-        new chat/analyze call through. Missing rows (fresh user, empty table)
-        return 0 — a brand-new user starts at zero regardless of the default.
+        Used by the budget-check at request entry. Missing rows (fresh user,
+        empty table) return 0 — a brand-new user starts at zero regardless
+        of the default.
         """
         if not user_id:
             return 0
         start_of_day = datetime.datetime.combine(
             datetime.date.today(), datetime.time.min
         ).isoformat(timespec="seconds")
-        with self._conn() as c:
-            row = c.execute(
-                """SELECT COALESCE(SUM(total_tokens), 0) AS used
-                   FROM   llm_usage
-                   WHERE  user_id = ? AND timestamp >= ?""",
-                (user_id, start_of_day),
-            ).fetchone()
-        return int(row["used"] or 0) if row else 0
+        with self._engine.begin() as conn:
+            used = conn.execute(
+                text("""SELECT COALESCE(SUM(total_tokens), 0) AS used
+                        FROM   llm_usage
+                        WHERE  user_id = :user_id AND timestamp >= :start"""),
+                {"user_id": user_id, "start": start_of_day},
+            ).scalar()
+        return int(used or 0)
 
     # ── feedback ──────────────────────────────────────────────────────────────
 
-    def save_feedback(self, target_id: str, message: str, rating: str, comment: str = ""):
+    def save_feedback(self, target_id: str, message: str, rating: str,
+                      comment: str = "") -> None:
         """Save user feedback (thumbs up/down) for an AI response."""
-        with self._conn() as c:
-            c.execute(
-                "INSERT INTO feedback (timestamp, target_id, message, rating, comment) VALUES (?,?,?,?,?)",
-                (_now(), target_id, message[:2000], rating, comment[:500]),
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("""INSERT INTO feedback
+                        (timestamp, target_id, message, rating, comment)
+                        VALUES (:timestamp, :target_id, :message, :rating, :comment)"""),
+                {
+                    "timestamp": _now(),
+                    "target_id": target_id,
+                    "message":   message[:2000],
+                    "rating":    rating,
+                    "comment":   comment[:500],
+                },
             )
 
     # ── maintenance ───────────────────────────────────────────────────────────
 
     def _purge_old(self) -> int:
-        """Delete events (+ cascaded snapshots/analyses) older than retention window.
-
-        Window is AZIRO_EVENT_RETENTION_DAYS (default 30). Snapshots and
-        analyses are removed implicitly by `ON DELETE CASCADE`, so there
-        is no separate snapshot TTL to run — if an event goes, its
-        captured logs and diagnoses go with it.
+        """Delete events (+ cascaded snapshots/analyses) older than retention.
 
         Cutoff precision must match `_now()` — stored timestamps are at
-        second precision (`isoformat(timespec="seconds")`), so a
-        cutoff with microseconds would compare as strictly greater than
-        a just-saved row's timestamp, letting retention=0 purge a row
-        inserted microseconds earlier in the same `save_event` call.
+        second precision, so a cutoff with microseconds would compare as
+        strictly greater than a just-saved row, letting retention=0 purge
+        a row inserted microseconds earlier in the same `save_event` call.
         """
         cutoff = (
             datetime.datetime.now() - datetime.timedelta(days=_retention_days())
         ).isoformat(timespec="seconds")
-        with self._conn() as c:
-            old = [
-                r[0] for r in c.execute(
-                    "SELECT id FROM events WHERE timestamp < ?", (cutoff,)
-                ).fetchall()
-            ]
-            if old:
-                ph = ",".join("?" * len(old))
-                c.execute(f"DELETE FROM events WHERE id IN ({ph})", old)
-        return len(old)
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                text("DELETE FROM events WHERE timestamp < :cutoff"),
+                {"cutoff": cutoff},
+            )
+            return int(result.rowcount or 0)
 
 
 # ── helper ────────────────────────────────────────────────────────────────────
 
 def _now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def _redact_user(user_id: str) -> str:
+    """Stable short hash for log telemetry so a persistent user's failures
+    still correlate across log lines, without spilling a raw username
+    (which may be an email or account key) into log aggregation.
+    """
+    if not user_id:
+        return ""
+    return "u#" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:10]
