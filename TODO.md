@@ -52,10 +52,19 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 - [x] **RUN-5** Graceful shutdown: SIGTERM drains SSE + kills kubectl subprocesses (S) — shipped: `observability/shutdown.py` registry + `@sse_stream` wraps all 5 SSE generators in `ui/web.py`, `tracked_popen` replaces direct Popen for `kubectl logs -f`, gunicorn `worker_int` hook calls `request_shutdown()`, `/api/v1/readyz` returns 503 + `Retry-After: 30` during drain
 
 ### Durable state
-- [ ] **DB-1** Postgres 16 + Alembic migrations (keep SQLite as dev default) (M)
-- [ ] **DB-2** Redis 7 for sessions + SSE pub/sub fan-out (M)
-- [ ] **DB-3** Migrate events/snapshots/analyses tables from SQLite → Postgres (M)
-- [ ] **DB-4** Backup cron: `pg_dump` daily + retention + verified restore drill (S)
+
+Sequenced as 4 PRs (A → D). Full design in [docs/db-v1-plan.md](docs/db-v1-plan.md).
+
+- [ ] **DB-1 / PR-A** SQLAlchemy Core + Alembic, dual-backend (SQLite default, Postgres opt-in via `AZIRO_DB_URL`). Port `store/db.py` + `auth/db.py` to engine-based access; initial Alembic revision `0001_baseline` captures current schema; full suite passes on both backends. No schema changes.
+- [ ] **DB-2 / PR-B** Redis 7 integration — rate-limit storage (`AZIRO_RATELIMIT_STORAGE_URI=redis://…`), monitor SSE pub/sub fan-out across workers, flask-session server-side sessions. Docker-compose adds `redis:7-alpine`; in-memory fallback for dev.
+- [ ] **DB-3 / PR-C** Postgres 16 production migration — docker-compose adds `postgres:16-alpine`; `AZIRO_DB_URL=postgresql+psycopg://…` path exercised in CI; SQLite→PG data copy script (`scripts/migrate_sqlite_to_pg.py`) with dry-run + row-count verification; `pg_stat_statements` extension + connection pool sizing.
+- [ ] **DB-4 / PR-D** Backups + restore drill — `pg_dump --format=custom` nightly cron, 30-day retention on MinIO (S3-compatible, self-hosted), restore-verification script that boots a scratch DB and runs schema-diff; runbook entry in `docs/ops/backup-restore.md`.
+
+Decisions locked in (see plan for rationale):
+- SQLAlchemy Core (not ORM) — thin abstraction, preserves existing SQL fidelity
+- Redis scope: all three uses (limiter + pub/sub + sessions) in one PR to avoid churn
+- MinIO for backup target (self-hostable, no external SaaS per architecture call)
+- `AZIRO_AUTO_MIGRATE=0` default in prod (operator runs `alembic upgrade head` explicitly)
 
 ### Deploy & CI
 - [x] **OPS-1** Dockerfile (multi-stage) + docker-compose.yml (app + postgres + redis) — shipped pre-v0.0.1
