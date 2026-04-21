@@ -133,18 +133,22 @@ llm_usage = Table(
 
 # ── auth/db.py tables ───────────────────────────────────────────────────────
 #
-# `username` is declared without a collation here — on SQLite the legacy
-# `_init_schema` used `COLLATE NOCASE`, and pre-existing prod SQLite files
-# retain that collation (create_all does not redefine existing columns).
-# Fresh installs on SQLite and all Postgres installs fall back to the
-# default case-sensitive collation; AuthStore normalises lookups by
-# `.strip()` today and can layer `.lower()` in PR-C without a schema change.
+# `username` carries a SQLite-only `NOCASE` collation via `.with_variant`.
+# The legacy `_init_schema` used `COLLATE NOCASE`, and pre-existing prod
+# SQLite files retain it — without this variant, fresh SQLite installs
+# would silently allow `Alice` and `alice` to coexist while upgraded
+# installs still reject that pair, making auth case-sensitivity depend
+# on install history. Postgres gets no collation hint here; PR-C layers
+# `.lower()` normalisation in AuthStore to address the PG side.
+
+_USERNAME_TEXT = Text().with_variant(Text(collation="NOCASE"), "sqlite")
+
 
 users = Table(
     "users",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("username", Text, nullable=False),
+    Column("username", _USERNAME_TEXT, nullable=False),
     Column("password_hash", Text, nullable=False),
     Column("role", Text, nullable=False, server_default=text("'viewer'")),
     Column("created_at", Text, nullable=False),
@@ -156,7 +160,9 @@ login_failures = Table(
     "login_failures",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("username", Text, nullable=False),
+    # Same NOCASE-on-SQLite story as `users.username` so a lockout
+    # counter written for "Alice" is the one read back for "alice".
+    Column("username", _USERNAME_TEXT, nullable=False),
     Column("timestamp", Text, nullable=False),
     Column("remote_ip", Text, server_default=text("''")),
     Index("idx_login_failures_username_ts", "username", column("timestamp").desc()),

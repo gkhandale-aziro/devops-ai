@@ -68,8 +68,16 @@ class AuthStore:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        """Create auth tables if missing (part of the shared metadata)."""
-        metadata.create_all(self._engine)
+        """Bootstrap auth tables — SQLite only.
+
+        Postgres deployments use Alembic (`python -m scripts.db upgrade
+        head`) as the single source of schema truth; running
+        `metadata.create_all` on every boot would require the app user
+        to hold CREATE grants and could race an in-flight migration.
+        On SQLite (dev/test), `create_all` remains the bootstrap path.
+        """
+        if self._engine.dialect.name == "sqlite":
+            metadata.create_all(self._engine)
 
     # ── users ────────────────────────────────────────────────────────────────
 

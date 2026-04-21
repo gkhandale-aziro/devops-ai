@@ -19,6 +19,23 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.engine import make_url
+
+
+def _safe_target(url: str) -> str:
+    """Return a URL string with any password component masked.
+
+    AZIRO_DB_URL frequently embeds `user:password@host/db` for Postgres;
+    echoing it raw to stderr leaks credentials into CI logs and shell
+    history. SQLAlchemy's `URL.render_as_string(hide_password=True)`
+    replaces the password with `***` while keeping the rest readable.
+    """
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:
+        # Fall back to scheme-only on parse failure — never log raw.
+        scheme = url.split(":", 1)[0] if ":" in url else "?"
+        return f"{scheme}://***"
 
 
 def _load_config() -> Config:
@@ -71,8 +88,9 @@ def main(argv: list[str] | None = None) -> int:
         .set_defaults(func=_cmd_history)
 
     args = parser.parse_args(argv)
-    url = os.environ.get("AZIRO_DB_URL", "sqlite (default)")
-    print(f"[scripts.db] target: {url}", file=sys.stderr)
+    raw = os.environ.get("AZIRO_DB_URL")
+    shown = _safe_target(raw) if raw else "sqlite (default)"
+    print(f"[scripts.db] target: {shown}", file=sys.stderr)
     return args.func(args)
 
 

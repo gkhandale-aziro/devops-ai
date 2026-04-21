@@ -114,26 +114,39 @@ class EventStore:
     # ── schema ────────────────────────────────────────────────────────────────
 
     def _init_schema(self) -> None:
-        """Create every table in `store.schema.metadata` if missing.
+        """Bootstrap tables on first boot — SQLite only.
 
-        Idempotent — running against an already-populated DB is a no-op
-        because `create_all` passes `checkfirst=True` by default.
+        On SQLite (dev/test and the legacy single-file install), we
+        still `create_all` so a fresh checkout or a `rm aziro.db` +
+        start cycle Just Works. The call is a no-op against a DB that
+        already has the tables.
+
+        On Postgres (PR-C production target), we intentionally do NOT
+        run `create_all`: the app runtime user typically doesn't hold
+        CREATE/ALTER grants, and the canonical migration path is
+        `python -m scripts.db upgrade head` (Alembic). If boot runs
+        before that, the first query will fail loudly rather than the
+        app silently limping along with a mystery schema.
         """
-        metadata.create_all(self._engine)
+        if self._engine.dialect.name == "sqlite":
+            metadata.create_all(self._engine)
 
     def _migrate(self) -> None:
         """Idempotent ALTER TABLE ADD COLUMN for pre-PR-A SQLite files.
 
-        Fresh installs from `metadata.create_all` already have every
-        column the current app needs, so these ALTER statements either
-        succeed on a legacy DB or raise `duplicate column` which we
-        swallow. Postgres fresh installs also land on the full schema.
+        Scoped to SQLite for the same reason as `_init_schema`: Postgres
+        deployments go through Alembic, which owns every DDL change.
+        Fresh SQLite installs from `create_all` already have every
+        column, so these ALTERs either succeed on a legacy DB or raise
+        `duplicate column` which we swallow.
 
         Only the "already exists" path is swallowed — a locked DB,
         permission issue, or unrelated SQL drift must propagate so
         startup fails loudly instead of limping along with a partially
         migrated schema.
         """
+        if self._engine.dialect.name != "sqlite":
+            return
         migrations = [
             "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open'",
             "ALTER TABLE events ADD COLUMN target_id TEXT DEFAULT ''",
@@ -145,9 +158,8 @@ class EventStore:
                     conn.execute(text(sql))
             except Exception as e:
                 # SQLite: "duplicate column name: status"
-                # Postgres: "column ... already exists"
                 msg = str(e).lower()
-                if "duplicate column" in msg or "already exists" in msg:
+                if "duplicate column" in msg:
                     continue
                 raise
 
