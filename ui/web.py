@@ -115,6 +115,31 @@ if not _SESSION_SECRET:
                 extra={"hint": "set AZIRO_SESSION_SECRET in production"})
 app.config["SECRET_KEY"] = _SESSION_SECRET
 
+# DB-2 — optional server-side sessions backed by Redis. Default stays
+# Flask's signed cookie (good enough for single-worker dev + tests). In
+# prod operators set AZIRO_SESSION_TYPE=redis so logged-in users survive
+# a worker restart and sessions are shared across gunicorn workers.
+_SESSION_TYPE = os.environ.get("AZIRO_SESSION_TYPE", "").strip().lower()
+if _SESSION_TYPE == "redis":
+    from observability.redis_client import get_redis as _get_redis
+    _session_redis = _get_redis()
+    if _session_redis is None:
+        log.warning("auth.session_redis_unavailable_fallback_cookie",
+                    extra={"hint": "set AZIRO_REDIS_URL or drop AZIRO_SESSION_TYPE"})
+    else:
+        try:
+            from flask_session import Session as _FlaskSession
+            app.config["SESSION_TYPE"] = "redis"
+            app.config["SESSION_REDIS"] = _session_redis
+            app.config["SESSION_KEY_PREFIX"] = "aziro:sess:"
+            app.config["SESSION_PERMANENT"] = False
+            app.config["SESSION_USE_SIGNER"] = True
+            _FlaskSession(app)
+            log.info("auth.session_backend_redis")
+        except ImportError:
+            log.warning("auth.flask_session_missing_fallback_cookie",
+                        extra={"hint": "pip install flask-session>=0.6"})
+
 # Flask-Login + audit hook. Must happen before any before_request hooks
 # that reference current_user. Blueprint registration is deferred until
 # after the Limiter is configured so login can get a brute-force cap.
@@ -342,7 +367,22 @@ def _auth_middleware():
 _RATE_LIMIT           = os.environ.get("AZIRO_RATE_LIMIT", "120/minute")
 _CHAT_STREAM_LIMITS   = os.environ.get("AZIRO_CHAT_STREAM_LIMITS", "10/minute;100/hour")
 _LOGIN_LIMITS         = os.environ.get("AZIRO_LOGIN_LIMITS", "10/minute;50/hour")
-_LIMITER_STORAGE_URI  = os.environ.get("AZIRO_LIMITER_STORAGE", "memory://")
+
+# Limiter storage precedence:
+#   1. AZIRO_LIMITER_STORAGE explicit override (any URI flask-limiter supports)
+#   2. AZIRO_REDIS_URL (DB-2 default — one URL configures limiter + sessions
+#      + pub/sub, matches the docker-compose service name)
+#   3. memory:// (single-worker fallback; prints a noisy startup warning
+#      because it silently double-counts once a second gunicorn worker
+#      joins — exactly the scale event DB-2 exists to solve)
+_LIMITER_STORAGE_URI  = (
+    os.environ.get("AZIRO_LIMITER_STORAGE", "").strip()
+    or os.environ.get("AZIRO_REDIS_URL", "").strip()
+    or "memory://"
+)
+if _LIMITER_STORAGE_URI == "memory://":
+    log.warning("limiter.storage_in_memory",
+                extra={"hint": "set AZIRO_REDIS_URL for multi-worker deployments"})
 
 
 def _limit_key() -> str:
@@ -610,6 +650,20 @@ def api_readyz():
     except Exception as e:
         checks["sessions"] = f"fail: {str(e)[:80]}"
         ok = False
+
+    # Only probe Redis when the operator has opted in. We don't want a
+    # dev box without Redis to fail /readyz every scrape cycle.
+    from observability.redis_client import is_configured as _redis_configured, ping as _redis_ping
+    if _redis_configured():
+        try:
+            if _redis_ping():
+                checks["redis"] = "ok"
+            else:
+                checks["redis"] = "fail: no pong"
+                ok = False
+        except Exception as e:
+            checks["redis"] = f"fail: {str(e)[:80]}"
+            ok = False
 
     payload = {"status": "ok" if ok else "unavailable", "checks": checks}
     return jsonify(payload), (200 if ok else 503)
@@ -1394,6 +1448,14 @@ _monitor_subs     = {}          # sub_id → queue.Queue
 _monitor_lock     = threading.Lock()
 _web_watchers     = {}          # target_id → EventWatcher
 
+# DB-2 monitor fan-out channel. Workers PUBLISH here and every worker's
+# background subscriber relays into its local _monitor_subs. The prefix
+# matches the limiter/session conventions so a `KEYS aziro:*` sweep finds
+# every Aziro footprint in a shared Redis.
+_MONITOR_CHANNEL  = "aziro:monitor"
+_monitor_sub_started   = False
+_monitor_sub_lock      = threading.Lock()
+
 # Per-target session lock so concurrent chat requests to the same tid cannot
 # interleave append()/set() calls and corrupt the message list.
 _session_locks        = {}          # target_id → threading.Lock
@@ -1409,8 +1471,10 @@ def _get_session_lock(tid: str) -> threading.Lock:
         return lock
 
 
-def _broadcast_alert(event):
-    """Push a monitor alert to every active SSE subscriber."""
+def _fan_out_local(event):
+    """Push `event` to every SSE queue attached to this worker. Does NOT
+    re-publish to Redis — used both as the single code path when Redis is
+    unset, and as the delivery step inside the Redis subscriber loop."""
     dead = []
     for sid, q in list(_monitor_subs.items()):
         try:
@@ -1419,6 +1483,78 @@ def _broadcast_alert(event):
             dead.append(sid)
     for sid in dead:
         _monitor_subs.pop(sid, None)
+
+
+def _ensure_redis_monitor_subscriber():
+    """Start the per-worker Redis subscriber that relays pub/sub messages
+    to local SSE clients. Idempotent — called lazily from `_broadcast_alert`
+    and from `/api/v1/monitor/stream` so single-worker dev without any
+    producers still wires up the listener if Redis is configured.
+
+    Returns the redis client when the subscriber is live, else None so
+    callers know to fall back to in-process fan-out."""
+    from observability.redis_client import get_redis
+    r = get_redis()
+    if r is None:
+        return None
+    global _monitor_sub_started
+    with _monitor_sub_lock:
+        if _monitor_sub_started:
+            return r
+        _monitor_sub_started = True
+
+    def _loop():
+        try:
+            ps = r.pubsub(ignore_subscribe_messages=True)
+            ps.subscribe(_MONITOR_CHANNEL)
+            for msg in ps.listen():
+                if msg.get("type") != "message":
+                    continue
+                payload = msg.get("data")
+                if isinstance(payload, (bytes, bytearray)):
+                    payload = payload.decode("utf-8", "replace")
+                try:
+                    _fan_out_local(json.loads(payload))
+                except Exception as e:
+                    log.warning("monitor.redis_payload_decode_failed",
+                                extra={"error": str(e)[:120]})
+        except Exception as e:
+            log.error("monitor.redis_subscribe_crashed",
+                      extra={"error": str(e)[:200]})
+            # Mark the subscriber as not started so a later broadcast can
+            # retry — we don't want one transient blip to disable pub/sub
+            # permanently for this worker.
+            global _monitor_sub_started
+            with _monitor_sub_lock:
+                _monitor_sub_started = False
+
+    threading.Thread(target=_loop, daemon=True,
+                     name="aziro-redis-monitor-sub").start()
+    return r
+
+
+def _broadcast_alert(event):
+    """Push a monitor alert to every active SSE subscriber.
+
+    With Redis configured: PUBLISH on `aziro:monitor` so every worker's
+    subscriber fans out locally — including this worker's own subscriber,
+    so we don't double-deliver in-process here.
+
+    Without Redis: direct in-process fan-out to `_monitor_subs`. This is
+    the only path pytest exercises unless a test opts in to fakeredis.
+    """
+    r = _ensure_redis_monitor_subscriber()
+    if r is not None:
+        try:
+            r.publish(_MONITOR_CHANNEL, json.dumps(event))
+            return
+        except Exception as e:
+            # Redis flaked — deliver to local clients so this worker's
+            # UI still sees the alert. Other workers miss it, which is
+            # the acceptable failure mode (events are durably in the DB).
+            log.warning("monitor.redis_publish_failed_local_fallback",
+                        extra={"error": str(e)[:120]})
+    _fan_out_local(event)
 
 
 def _web_classify(raw_event):
@@ -1515,6 +1651,10 @@ def api_monitor_stream():
     """
     if is_shutting_down():
         return _draining_response()
+    # Lazily start the Redis pub/sub listener for this worker so an alert
+    # produced on another worker can reach this SSE client — no-op if
+    # Redis is unset.
+    _ensure_redis_monitor_subscriber()
     sub_id = str(uuid.uuid4())
     sub_q  = _queue.Queue()
     _monitor_subs[sub_id] = sub_q

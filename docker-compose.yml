@@ -1,6 +1,9 @@
 services:
   aziro:
     build: .
+    depends_on:
+      redis:
+        condition: service_healthy
     ports:
       - "5000:5000"
     volumes:
@@ -41,6 +44,11 @@ services:
       - AZURE_CONFIG_DIR=/home/aziro/.host-azure
       # Ollama on host — reachable via host.docker.internal
       - OLLAMA_API_BASE=http://host.docker.internal:11434
+      # DB-2 — one URL powers flask-limiter + flask-session + monitor pub/sub.
+      # AZIRO_SESSION_TYPE=redis flips Flask sessions to server-side storage;
+      # leave unset for cookie-signed sessions (dev / no-redis deployments).
+      - AZIRO_REDIS_URL=redis://redis:6379/0
+      - AZIRO_SESSION_TYPE=redis
     extra_hosts:
       - "host.docker.internal:host-gateway"
     deploy:
@@ -50,5 +58,23 @@ services:
           cpus: "2.0"
     restart: unless-stopped
 
+  # DB-2 — Redis 7 for rate-limit counters, server-side sessions, and
+  # monitor SSE pub/sub fan-out across gunicorn workers. Appendonly so
+  # sessions + rate-limit windows survive a container restart. When the
+  # app runs outside compose (dev / pytest) everything falls back to
+  # in-memory / filesystem / in-process because AZIRO_REDIS_URL is unset.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - aziro-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   aziro-data:
+  aziro-redis-data:

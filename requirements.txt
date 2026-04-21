@@ -13,3 +13,5 @@ prometheus-client>=0.21,<0.22
 sqlalchemy>=2.0,<3.0
 alembic>=1.13,<2.0
 psycopg[binary]>=3.2,<4.0
+redis>=5.0,<6.0
+flask-session>=0.6,<0.7
