@@ -21,7 +21,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 
 from store.engine import build_engine, ensure_capable, get_engine
-from store.schema import metadata
+from store.schema import audit_log, login_failures, metadata, users
 
 
 DB_FILE = os.path.join(
@@ -88,7 +88,15 @@ class AuthStore:
         On SQLite (dev/test), `create_all` remains the bootstrap path.
         """
         if self._engine.dialect.name == "sqlite":
-            metadata.create_all(self._engine)
+            # AuthStore only owns the auth tables. Sharing `metadata`
+            # with EventStore means `metadata.create_all(engine)` would
+            # also create events/metrics/llm_usage/etc. on the first
+            # AuthStore-only boot, blurring ownership. Pass the auth
+            # tables explicitly so the boundary matches the docstring.
+            metadata.create_all(
+                self._engine,
+                tables=[users, login_failures, audit_log],
+            )
 
     # ── users ────────────────────────────────────────────────────────────────
 

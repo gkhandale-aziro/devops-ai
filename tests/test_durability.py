@@ -111,20 +111,37 @@ class TestSqliteConcurrency:
         reopening the DB file each call, so the performance property the
         original test guarded survives — just at a different layer.
         """
+        from sqlalchemy import event
         from store.db import EventStore
 
         store = EventStore(db_file=str(tmp_path / "aziro.db"))
 
-        # A new raw_connection checkout is cheap because the pool keeps
-        # the underlying DBAPI connection warm between calls.
+        # `checkedin() >= 1` would still pass if the pool opened two
+        # separate DBAPI connections and returned only one — which is
+        # the exact regression this test guards against. Counting
+        # `connect` events across two sequential checkouts proves
+        # reuse: the DBAPI connection is opened once and the second
+        # checkout gets the pooled connection back.
+        #
+        # Dispose first so `__init__`-time connects (e.g. WAL PRAGMA)
+        # don't pre-inflate the counter.
+        store._engine.dispose()
+
+        connects: list[int] = [0]
+
+        @event.listens_for(store._engine, "connect")
+        def _count(_dbapi_conn, _conn_record):
+            connects[0] += 1
+
         raw1 = store._engine.raw_connection()
         raw1.close()
         raw2 = store._engine.raw_connection()
         raw2.close()
-        # Two sequential checkouts return pooled connections — we assert
-        # the pool is alive (has connections) rather than identity, since
-        # identity is a QueuePool internal detail.
-        assert store._engine.pool.checkedin() >= 1
+
+        assert connects[0] == 1, (
+            f"pool opened {connects[0]} DBAPI connections for 2 "
+            f"sequential checkouts — expected 1 (reuse)"
+        )
 
     def test_busy_timeout_set_on_new_connections(self, tmp_path):
         """The connect-event listener in store.engine should apply

@@ -8,13 +8,10 @@ store or auth DB call runs. Tests that monkeypatch `AZIRO_DATA_DIR` /
 confusing UNIQUE-constraint failures (test #2's "alice" collides with
 test #1's "alice" in the leaked engine's DB).
 
-The autouse fixture below resets the engine around every test, and also
-pops `store.engine` from `sys.modules` so any import after the reset
-re-runs URL resolution from the current env vars.
+The autouse fixture below calls `reset_engine()` around every test so
+the next `get_engine()` re-resolves against the current env.
 """
 from __future__ import annotations
-
-import sys
 
 import pytest
 
@@ -26,6 +23,14 @@ def _reset_process_engine_between_tests():
     # Don't swallow failures here — a reset_engine() exception means
     # the previous test leaked state and the next test would silently
     # run with wrong isolation; let it surface immediately.
+    #
+    # NOTE: we used to also `sys.modules.pop("store.engine", None)` at
+    # teardown — that was counterproductive. `store/db.py` and
+    # `auth/db.py` bind `get_engine` at import time, so popping the
+    # module left them pointing at the OLD module object's
+    # `_PROCESS_ENGINE` while any fresh `import store.engine` would
+    # create a second module instance with its own `_PROCESS_ENGINE`.
+    # `reset_engine()` alone gives a clean reset without the schism.
     from store.engine import reset_engine
     reset_engine()
 
@@ -35,4 +40,3 @@ def _reset_process_engine_between_tests():
     # the engine built by a test that did.
     from store.engine import reset_engine as _reset_engine
     _reset_engine()
-    sys.modules.pop("store.engine", None)

@@ -56,10 +56,13 @@ def app_with_tight_limits(tmp_path, monkeypatch):
          patch("targets.TargetManager") as MockTargets, \
          patch("agent.Agent"), \
          patch("agent.AgentSession"), \
-         patch("store.EventStore"), \
+         patch("store.EventStore") as MockStore, \
          patch("store.metrics.MetricCollector"):
         MockTargets.return_value.load_safe.return_value = []
         MockSessions.return_value.load.return_value = []
+        # /readyz reads _store._engine.dialect.name for the check key;
+        # give the mock a concrete string so jsonify() doesn't choke.
+        MockStore.return_value._engine.dialect.name = "sqlite"
         yield _reload_web()
 
 

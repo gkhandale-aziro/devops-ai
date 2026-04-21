@@ -115,29 +115,39 @@ def _assert_full_parity(engine) -> None:
             f"{table} index drift — missing: {indexes - actual}, "
             f"unexpected: {actual - indexes}"
         )
-    for table, names in EXPECTED_UNIQUES.items():
+    # Uniques: compare the full set of named unique constraints per
+    # table with equality — a subset check would let an unexpected new
+    # unique (typo'd column name, mis-scoped composite) slip through.
+    for table in EXPECTED_COLUMNS:
         actual = {u["name"] for u in insp.get_unique_constraints(table)}
-        assert names <= actual, (
-            f"{table} unique-constraint drift — missing: {names - actual}"
+        # SQLite auto-indexes UniqueConstraint — some dialects expose it
+        # as both a unique index and a unique constraint; drop unnamed
+        # entries (name=None) so the comparison stays dialect-neutral.
+        actual.discard(None)
+        expected = EXPECTED_UNIQUES.get(table, set())
+        assert actual == expected, (
+            f"{table} unique-constraint drift — "
+            f"missing: {expected - actual}, unexpected: {actual - expected}"
         )
-    for table, fks in EXPECTED_FKS.items():
-        actual = insp.get_foreign_keys(table)
-        for col, (ref_table, ref_col, ondelete) in fks.items():
-            matches = [
-                fk for fk in actual
-                if fk["constrained_columns"] == [col]
-                and fk["referred_table"] == ref_table
-                and fk["referred_columns"] == [ref_col]
-            ]
-            assert matches, (
-                f"{table}.{col} FK drift — no FK to {ref_table}.{ref_col}, "
-                f"got: {actual}"
-            )
-            got_ondelete = (matches[0].get("options") or {}).get("ondelete", "")
-            assert (got_ondelete or "").upper() == ondelete, (
-                f"{table}.{col} FK ondelete drift — "
-                f"expected {ondelete!r}, got {got_ondelete!r}"
-            )
+    # FKs: normalise to a canonical tuple per FK so equality catches
+    # both missing and unexpected relationships.
+    for table in EXPECTED_COLUMNS:
+        actual = {
+            (tuple(fk["constrained_columns"]),
+             fk["referred_table"],
+             tuple(fk["referred_columns"]),
+             (fk.get("options") or {}).get("ondelete", "").upper() or "")
+            for fk in insp.get_foreign_keys(table)
+        }
+        expected = {
+            ((col,), ref_table, (ref_col,), ondelete)
+            for col, (ref_table, ref_col, ondelete) in
+            EXPECTED_FKS.get(table, {}).items()
+        }
+        assert actual == expected, (
+            f"{table} FK drift — "
+            f"missing: {expected - actual}, unexpected: {actual - expected}"
+        )
 
 
 class TestMetadataCreateAll:

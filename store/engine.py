@@ -81,12 +81,20 @@ def _check_sqlite_version() -> None:
 
 
 def ensure_capable(engine: Engine) -> None:
-    """Re-apply the capability checks `build_engine()` performs, for stores
-    that accept a pre-built `engine=` injection and would otherwise bypass
-    them. No-op for non-SQLite engines.
+    """Re-apply the capability checks and connect hooks `build_engine()`
+    performs, for stores that accept a pre-built `engine=` injection and
+    would otherwise bypass them. No-op for non-SQLite engines.
+
+    Attaches `_apply_sqlite_pragmas` if it isn't already on the engine —
+    without this, an injected SQLite engine would run without WAL,
+    foreign_keys, or busy_timeout, which made runtime behaviour depend
+    on how the engine was constructed (isolated vs. via `build_engine`).
     """
-    if engine.dialect.name == "sqlite":
-        _check_sqlite_version()
+    if engine.dialect.name != "sqlite":
+        return
+    _check_sqlite_version()
+    if not event.contains(engine, "connect", _apply_sqlite_pragmas):
+        event.listen(engine, "connect", _apply_sqlite_pragmas)
 
 
 def build_engine(url: str) -> Engine:
