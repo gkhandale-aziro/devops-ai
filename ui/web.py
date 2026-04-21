@@ -589,7 +589,9 @@ def api_readyz():
     ok = True
 
     try:
-        _store._conn().execute("SELECT 1").fetchone()
+        from sqlalchemy import text as _sa_text
+        with _store._conn() as _c:
+            _c.execute(_sa_text("SELECT 1")).fetchone()
         checks["sqlite"] = "ok"
     except Exception as e:
         checks["sqlite"] = f"fail: {str(e)[:80]}"

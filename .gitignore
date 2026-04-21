@@ -12,6 +12,9 @@ build/
 venv/
 .aziro_key
 aziro.db
+aziro.db-shm
+aziro.db-wal
+scratch*.db*
 
 # Playwright
 frontend/test-results/
