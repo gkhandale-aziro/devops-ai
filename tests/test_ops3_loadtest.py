@@ -13,11 +13,7 @@ of the smoke silently losing its teeth.
 
     TestK6SmokeScript   — ops/loadtest/smoke.js contents
     TestLoadTestReadme  — ops/loadtest/README.md covers the runbook surface
-
-A TestSloSync class (cross-ref against docs/ops/slo.md +
-docs/ops/v1.0-checklist.md) will be added once DOCS-1 (#38) lands on
-develop and OPS-3 rebases — those doc files don't exist on this branch
-yet, so cross-ref assertions would error on collection.
+    TestSloSync         — slo.md + v1.0-checklist.md reference the smoke
 """
 from __future__ import annotations
 
@@ -28,6 +24,7 @@ import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
 _LOADTEST = _REPO / "ops" / "loadtest"
+_DOCS_OPS = _REPO / "docs" / "ops"
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
@@ -40,6 +37,16 @@ def smoke_js() -> str:
 @pytest.fixture(scope="module")
 def loadtest_readme() -> str:
     return (_LOADTEST / "README.md").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def slo_doc() -> str:
+    return (_DOCS_OPS / "slo.md").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def v10_checklist() -> str:
+    return (_DOCS_OPS / "v1.0-checklist.md").read_text(encoding="utf-8")
 
 
 # ── TestK6SmokeScript ───────────────────────────────────────────────────────
@@ -198,5 +205,60 @@ class TestLoadTestReadme:
             "events_200_rate",
         ):
             assert needle in loadtest_readme, f"runbook missing symptom: {needle}"
+
+
+# ── TestSloSync ─────────────────────────────────────────────────────────────
+
+class TestSloSync:
+    """Cross-ref smoke.js against the two ops docs it gates on.
+
+    Without these assertions, the smoke and the SLO/checklist docs can
+    drift silently: a threshold can change in one place without the
+    other, and nobody notices until a release gate passes that shouldn't
+    have or fails that shouldn't have.
+    """
+
+    def test_slo_doc_references_loadtest(self, slo_doc):
+        """slo.md's LAT-1 row should name the k6 smoke as the
+        release-time measurement mechanism. Without it, a reader has no
+        way to know where the 400ms target gets enforced before ship."""
+        assert "ops/loadtest/smoke.js" in slo_doc, (
+            "slo.md should name ops/loadtest/smoke.js as the LAT-1 "
+            "release-gate measurement — otherwise the target is an "
+            "aspiration, not a contract"
+        )
+
+    def test_checklist_walks_the_smoke(self, v10_checklist):
+        """v1.0 exit criterion says 'green under k6 load test'. The
+        checklist must walk it — otherwise §9 sign-off is a lie."""
+        assert "smoke" in v10_checklist.lower() or "k6" in v10_checklist.lower(), (
+            "v1.0-checklist.md must surface the k6 smoke step"
+        )
+
+    def test_smoke_p95_target_matches_slo(self, smoke_js, slo_doc):
+        """Both the threshold and the SLO say the same number. Any
+        drift means one of the two docs is lying about the contract.
+        Regex is strict on both sides so a reformat (e.g. `< 400` vs
+        `<400`) is caught early."""
+        # smoke.js: 'http_req_duration{name:events}': ['p(95)<400']
+        smoke_match = re.search(
+            r"'http_req_duration\{name:events\}':\s*\[\s*'p\(95\)<(\d+)'\s*\]",
+            smoke_js,
+        )
+        assert smoke_match, "smoke.js missing events p95 threshold"
+        smoke_p95 = int(smoke_match.group(1))
+
+        # slo.md LAT-1 row: `| LAT-1 | … | ≤ 400 ms | …`
+        slo_match = re.search(
+            r"LAT-1\s*\|[^|]*\|\s*≤\s*(\d+)\s*ms",
+            slo_doc,
+        )
+        assert slo_match, "slo.md missing LAT-1 target"
+        slo_p95 = int(slo_match.group(1))
+
+        assert smoke_p95 == slo_p95, (
+            f"LAT-1 drift: smoke.js enforces p95<{smoke_p95}ms, "
+            f"slo.md targets ≤ {slo_p95}ms"
+        )
 
 
