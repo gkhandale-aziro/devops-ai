@@ -1878,6 +1878,14 @@ _EXECUTE_ALLOWED_VERBS = {
     "label", "annotate", "cordon", "uncordon", "drain", "taint",
 }
 
+# Shell metacharacters that let an operator-supplied kubectl command
+# escape kubectl and run arbitrary shell. tools/base.run_command uses
+# shell=True (required for AI-agent chained commands), so our only
+# defense for user input is to reject these up front. Single/double
+# quotes are fine — they're consumed by the shell's own tokenizer
+# without introducing new commands.
+_SHELL_METACHARS = frozenset(";&|<>`$()\n\r\\")
+
 
 def _first_token_after_kubectl(cmd: str) -> str:
     parts = cmd.strip().split()
@@ -1909,6 +1917,9 @@ def _validate_kubectl_command(command: str) -> tuple[str | None, str]:
         return "command required", ""
     if not cmd.startswith("kubectl "):
         return "only kubectl commands are allowed", ""
+    bad = sorted({c for c in cmd if c in _SHELL_METACHARS})
+    if bad:
+        return "shell metacharacters not allowed: " + "".join(bad), ""
     verb = _first_token_after_kubectl(cmd)
     if verb not in _EXECUTE_ALLOWED_VERBS:
         return "verb not allowed", verb
@@ -1926,6 +1937,52 @@ def _validation_error_response(err: str, verb: str):
     return jsonify(body), 400
 
 
+# `kubectl delete pod <name> [-n|--namespace <ns>]` — the one remediation
+# shape we need to special-case, because the pod object identified by
+# `name` vanishes the instant we execute and the ReplicaSet replaces it
+# with a pod with a freshly-generated name. Without the pivot below, the
+# verifier polls a name that no longer exists and times out.
+_DELETE_POD_RE = re.compile(
+    r"^\s*kubectl\s+delete\s+pod(?:s)?\s+(?P<name>\S+)"
+    r"(?:.*?(?:-n|--namespace)(?:=|\s+)(?P<ns>\S+))?"
+)
+
+
+def _maybe_delete_pod_target(command: str) -> tuple[str, str] | None:
+    m = _DELETE_POD_RE.match(command or "")
+    if not m:
+        return None
+    return m.group("name"), (m.group("ns") or "default")
+
+
+_POD_TEMPLATE_HASH_RE = re.compile(r"^[a-z0-9]{5,12}$")
+
+
+def _capture_pod_selector(executor_fn, name: str, ns: str) -> str:
+    """Read the pod's ``pod-template-hash`` label *before* the delete
+    takes effect. Returned string — e.g. ``pod-template-hash=7c6d9f``
+    — is a kubectl label selector the verifier uses to follow the
+    ReplicaSet's replacement pod. Empty string means the pod is either
+    bare (no controller, so no replacement is coming) or already gone;
+    in both cases the verifier's by-name probe is still the right fit.
+
+    We validate the output against the DNS-label shape kubernetes uses
+    for pod-template-hash (lowercase alphanumerics) so a shell quirk —
+    jsonpath emitting noise, the executor returning an error string —
+    can't produce a corrupt selector that breaks the verifier."""
+    probe = (
+        f"kubectl get pod {name} -n {ns} "
+        f"-o jsonpath='{{.metadata.labels.pod-template-hash}}' 2>/dev/null"
+    )
+    try:
+        out = (executor_fn(probe) or "").strip().strip("'").strip()
+    except Exception:
+        return ""
+    if not _POD_TEMPLATE_HASH_RE.match(out):
+        return ""
+    return f"pod-template-hash={out}"
+
+
 def _execute_and_verify(event: dict, command: str, executor_fn) -> dict:
     """Run one remediation against ``event``, snapshot both the execution
     and the verification probe trail, and (on success) auto-resolve the
@@ -1937,6 +1994,18 @@ def _execute_and_verify(event: dict, command: str, executor_fn) -> dict:
     Dashboard fix. Once we're inside this helper, they're the same.
     """
     event_id = event["id"]
+
+    # If this remediation is `kubectl delete pod X`, capture the pod's
+    # pod-template-hash before we run it. The verifier uses that as a
+    # label selector to follow the ReplicaSet's replacement pod, which
+    # comes back with a new generated name. Copy the event so the
+    # override is scoped to this request and never hits the DB.
+    delete_target = _maybe_delete_pod_target(command)
+    if delete_target:
+        pod_name, pod_ns = delete_target
+        selector = _capture_pod_selector(executor_fn, pod_name, pod_ns)
+        if selector:
+            event = {**event, "_verify_selector": selector}
 
     t0 = time.time()
     try:
@@ -1958,9 +2027,20 @@ def _execute_and_verify(event: dict, command: str, executor_fn) -> dict:
         result = verify_resolution(executor_fn, event)
         verification = result.to_dict()
     except Exception as e:
+        # Keep this payload shape identical to VerificationResult.to_dict()
+        # — the frontend treats reason/predicate/final_state as always
+        # present, and a verifier crash is exactly when we can't afford
+        # to ship a contract-breaking response.
         log.exception("execute.verify_failed", extra={"event_id": event_id})
-        verification = {"success": False, "note": f"verifier crashed: {e}",
-                        "attempts": [], "duration_s": 0.0}
+        verification = {
+            "success":     False,
+            "reason":      "verifier-error",
+            "predicate":   "verification did not run",
+            "attempts":    [],
+            "duration_s":  0.0,
+            "final_state": "",
+            "note":        f"verifier crashed: {e}",
+        }
 
     try:
         _store.save_snapshot(event_id, "verification", json.dumps(verification))
@@ -2046,7 +2126,7 @@ def api_target_execute_resolve(tid):
     if err:
         return _validation_error_response(err, verb)
 
-    target_name = getattr(target, "name", "") or tid
+    target_name = (target.get("name") if isinstance(target, dict) else None) or tid
     event = _store.find_or_create_event(
         target_id=tid, target_name=target_name,
         obj=obj, namespace=ns, reason=reason,

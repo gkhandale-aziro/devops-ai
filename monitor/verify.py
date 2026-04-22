@@ -130,6 +130,35 @@ def _probe_pod_running(ns: str, name: str) -> str:
     )
 
 
+def _probe_pod_running_by_selector(ns: str, selector: str) -> str:
+    # Same shape as _probe_pod_running, but follows the newest pod
+    # matching ``selector`` rather than a fixed name. Dashboard's
+    # pre-filled `kubectl delete pod X` makes the ReplicaSet spawn a
+    # replacement with a new generated name — if we keep polling X we
+    # time out even though the workload recovered. The -1 slice picks
+    # the most recent pod after kubectl sorts ascending by creation.
+    return (
+        f"kubectl get pod -l {selector} {_ns_flag(ns)} "
+        f"--sort-by=.metadata.creationTimestamp "
+        f"-o jsonpath='{{range .items[-1:]}}{{.status.phase}}|"
+        f"{{range .status.containerStatuses[*]}}{{.restartCount}}+{{end}}"
+        f"{{end}}' 2>/dev/null"
+    )
+
+
+def _probe_pod_ready_by_selector(ns: str, selector: str) -> str:
+    # Same follow-the-replacement rationale as _probe_pod_running_by_selector,
+    # but emits the "true true …" ready-flag list _is_healthy_pod_ready
+    # expects, scoped to the newest pod matching the selector.
+    return (
+        f"kubectl get pod -l {selector} {_ns_flag(ns)} "
+        f"--sort-by=.metadata.creationTimestamp "
+        f"-o jsonpath='{{range .items[-1:]}}"
+        f"{{range .status.containerStatuses[*]}}{{.ready}} {{end}}"
+        f"{{end}}' 2>/dev/null"
+    )
+
+
 def _probe_pod_scheduled(ns: str, name: str) -> str:
     return (
         f"kubectl get pod {name} {_ns_flag(ns)} "
@@ -147,14 +176,19 @@ def _probe_pod_ready(ns: str, name: str) -> str:
 
 
 def _probe_node_ready(name: str) -> str:
-    # Ready=True is step one; step two is that no pressure condition
-    # is True. `tr` keeps the single-line jsonpath output parseable.
+    # Ready=True is step one; step two is that no pressure or
+    # reachability condition is True. The list must cover every reason
+    # routed to this verifier (see _NODE_REASONS) — otherwise an event
+    # like NetworkUnavailable would flip to success the moment Ready
+    # came back, even with the offending condition still True.
     return (
         f"kubectl get node {name} "
         f"-o jsonpath='Ready={{.status.conditions[?(@.type==\"Ready\")].status}} "
         f"Mem={{.status.conditions[?(@.type==\"MemoryPressure\")].status}} "
         f"Disk={{.status.conditions[?(@.type==\"DiskPressure\")].status}} "
-        f"PID={{.status.conditions[?(@.type==\"PIDPressure\")].status}}' 2>/dev/null"
+        f"PID={{.status.conditions[?(@.type==\"PIDPressure\")].status}} "
+        f"Net={{.status.conditions[?(@.type==\"NetworkUnavailable\")].status}} "
+        f"OutOfDisk={{.status.conditions[?(@.type==\"OutOfDisk\")].status}}' 2>/dev/null"
     )
 
 
@@ -184,13 +218,18 @@ def _is_healthy_pod_ready(out: str, _prev: Optional[str]) -> bool:
     return bool(tokens) and all(t == "true" for t in tokens)
 
 
+_NODE_BAD_TOKENS = frozenset({
+    "Mem=True", "Disk=True", "PID=True", "Net=True", "OutOfDisk=True",
+})
+
+
 def _is_healthy_node(out: str, _prev: Optional[str]) -> bool:
     if "Ready=True" not in out:
         return False
-    # Any pressure still True → not healthy. Split on whitespace so we
-    # don't regex the jsonpath output itself.
+    # Any pressure or reachability condition still True → not healthy.
+    # Split on whitespace so we don't regex the jsonpath output itself.
     for tok in out.split():
-        if tok in ("Mem=True", "Disk=True", "PID=True"):
+        if tok in _NODE_BAD_TOKENS:
             return False
     return True
 
@@ -200,13 +239,27 @@ def _is_healthy_node(out: str, _prev: Optional[str]) -> bool:
 def _pick_verifier(event: dict):
     """Return (reason_bucket, predicate_label, probe_fn, healthy_fn)
     matched to this event. Fallback is pod-Running or node-Ready based
-    on the `object` kind prefix."""
-    reason = event.get("reason", "")
-    obj    = event.get("object", "")
-    ns     = event.get("namespace", "default") or "default"
+    on the `object` kind prefix.
+
+    If ``event["_verify_selector"]`` is set (populated upstream when the
+    remediation was a `kubectl delete pod` — the original pod will
+    vanish and the ReplicaSet will spawn a replacement with a new
+    generated name), we pivot pod probes from by-name to by-label so
+    the verifier follows the replacement instead of timing out on a
+    name that no longer exists.
+    """
+    reason   = event.get("reason", "")
+    obj      = event.get("object", "")
+    ns       = event.get("namespace", "default") or "default"
+    selector = (event.get("_verify_selector") or "").strip()
     kind, name = _split_object(obj)
 
     if reason in _POD_HEALTH_REASONS:
+        if selector:
+            return ("pod-running",
+                    f"newest pod matching {selector} reaches Running and restarts hold steady",
+                    lambda: _probe_pod_running_by_selector(ns, selector),
+                    _is_healthy_pod_running)
         return ("pod-running",
                 f"pod {name} reaches Running and restart count holds steady",
                 lambda: _probe_pod_running(ns, name), _is_healthy_pod_running)
@@ -215,6 +268,11 @@ def _pick_verifier(event: dict):
                 f"pod {name} has a node assigned",
                 lambda: _probe_pod_scheduled(ns, name), _is_healthy_pod_scheduled)
     if reason in _POD_IMAGE_REASONS:
+        if selector:
+            return ("pod-ready",
+                    f"newest pod matching {selector} pulls images and reports ready",
+                    lambda: _probe_pod_ready_by_selector(ns, selector),
+                    _is_healthy_pod_ready)
         return ("pod-ready",
                 f"pod {name} container images pull and containers report ready",
                 lambda: _probe_pod_ready(ns, name), _is_healthy_pod_ready)
@@ -228,6 +286,11 @@ def _pick_verifier(event: dict):
         return ("node-ready",
                 f"node {name} is Ready with no pressure conditions",
                 lambda: _probe_node_ready(name), _is_healthy_node)
+    if selector:
+        return ("pod-running",
+                f"newest pod matching {selector} reaches Running and restarts hold steady",
+                lambda: _probe_pod_running_by_selector(ns, selector),
+                _is_healthy_pod_running)
     return ("pod-running",
             f"pod {name} reaches Running and restart count holds steady",
             lambda: _probe_pod_running(ns, name), _is_healthy_pod_running)
