@@ -8,18 +8,18 @@ These are **not** aspirational — every SLO below has a probe or a script that 
 
 ## SLO table
 
-| ID       | SLO                                    | Target                         | Measured by                                   | Window  |
-|----------|----------------------------------------|--------------------------------|-----------------------------------------------|---------|
-| AVAIL-1  | Liveness (`/api/v1/healthz`)           | ≥ 99.5 % HTTP 200              | Prometheus blackbox probe / curl loop         | 30 d    |
-| AVAIL-2  | Readiness (`/api/v1/readyz`) — PG up   | ≥ 99.0 % HTTP 200              | Prometheus blackbox probe                     | 30 d    |
-| LAT-1    | `GET /api/v1/events` p95               | ≤ 400 ms                       | UI request log / gunicorn access log          | 7 d     |
-| LAT-2    | `GET /api/v1/events` p99               | ≤ 1.0 s                        | UI request log                                | 7 d     |
-| LAT-3    | AI triage answer (SEV2 enrichment)     | ≤ 20 s p95                     | `monitor/triage.py` log timestamps            | 7 d     |
-| RECO-1   | Readyz recovery after PG restart       | ≤ 30 s                         | `ops/chaos/kill-postgres.sh`                  | per run |
-| RECO-2   | Liveness stays green during PG outage  | 100 %                          | `ops/chaos/kill-postgres.sh`                  | per run |
-| BAK-1    | Backup freshness                       | last object ≤ 26 h old in MinIO | `scripts/check_backup_freshness.py` (nightly) | daily   |
-| BAK-2    | Nightly restore-verify passes          | ≥ 29 of last 30 runs           | Loki `aziro-restore-verify` label             | 30 d    |
-| DATA-1   | Audit-log write durability             | 100 % — no dropped events      | `events` row count vs `audit_log` row count   | —       |
+| ID       | SLO                                    | Target                          | Measured by                                                               | Window  |
+|----------|----------------------------------------|---------------------------------|---------------------------------------------------------------------------|---------|
+| AVAIL-1  | Liveness (`/api/v1/healthz`)           | ≥ 99.5 % HTTP 200               | Prometheus blackbox probe / curl loop                                     | 30 d    |
+| AVAIL-2  | Readiness (`/api/v1/readyz`) — PG up   | ≥ 99.0 % HTTP 200               | Prometheus blackbox probe                                                 | 30 d    |
+| LAT-1    | `GET /api/v1/events` p95               | ≤ 400 ms                        | gunicorn access log (continuous) + `ops/loadtest/smoke.js` (release gate) | 7 d     |
+| LAT-2    | `GET /api/v1/events` p99               | ≤ 1.0 s                         | gunicorn access log                                                       | 7 d     |
+| LAT-3    | AI triage answer (SEV2 enrichment)     | ≤ 20 s p95                      | `monitor/triage.py` log timestamps                                        | 7 d     |
+| RECO-1   | Readyz recovery after PG restart       | ≤ 30 s                          | `ops/chaos/kill-postgres.sh`                                              | per run |
+| RECO-2   | Liveness stays green during PG outage  | 100 %                           | `ops/chaos/kill-postgres.sh`                                              | per run |
+| BAK-1    | Backup freshness                       | last object ≤ 26 h old in MinIO | `scripts/check_backup_freshness.py` (nightly)                             | daily   |
+| BAK-2    | Nightly restore-verify passes          | ≥ 29 of last 30 runs            | Loki `aziro-restore-verify` label                                         | 30 d    |
+| DATA-1   | Audit-log write durability             | 100 % — no dropped events       | `events` row count vs `audit_log` row count                               | —       |
 
 ---
 
