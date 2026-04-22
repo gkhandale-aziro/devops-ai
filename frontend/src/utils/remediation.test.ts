@@ -20,7 +20,13 @@ describe("suggestRemediation", () => {
     }
   });
 
-  it("returns empty string for reasons where delete is unsafe (FailedScheduling, etc.)", () => {
+  it("suggests delete-pod for stuck-pending states", () => {
+    for (const r of ["Pending", "ContainerCreating", "PodInitializing"]) {
+      expect(suggestRemediation(r, "p", "n")).toBe("kubectl delete pod p -n n");
+    }
+  });
+
+  it("returns empty string for reasons with no safe pod-level default", () => {
     expect(suggestRemediation("FailedScheduling", "p", "n")).toBe("");
     expect(suggestRemediation("Running", "p", "n")).toBe("");
     expect(suggestRemediation("", "p", "n")).toBe("");

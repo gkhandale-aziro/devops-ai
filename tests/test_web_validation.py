@@ -206,6 +206,19 @@ class TestApiResourceValidation:
         r = c.get("/api/v1/resource/t1?kind=pod&name=nginx&ns=default")
         assert r.status_code == 200
 
+    def test_pod_response_includes_yaml_key(self, client):
+        c, mock_targets, mock_tools = client
+        mock_targets.get.return_value = {"type": "kubernetes", "config": {}}
+        mock_tools.execute.return_value = "apiVersion: v1\nkind: Pod\n"
+        r = c.get("/api/v1/resource/t1?kind=pod&name=nginx&ns=default")
+        assert r.status_code == 200
+        body = r.get_json()
+        # modal's YAML tab depends on this contract; tripwire covers regressions.
+        assert "yaml" in body
+        assert {"describe", "logs", "previous", "yaml"}.issubset(body.keys())
+        invoked = [args[0][1] for args in mock_tools.execute.call_args_list]
+        assert any("kubectl get pod nginx -n default -o yaml" in cmd for cmd in invoked)
+
 
 class TestApiTargetsValidation:
     def test_add_without_name_returns_400(self, client):

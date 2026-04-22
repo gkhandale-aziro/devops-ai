@@ -180,10 +180,20 @@ export function NodeTable({ raw, target }: { raw: string; target: Target }) {
 /** Statuses considered failing — used for row tint, summary counts, AI badge.
  *  Typed as Set<string> for .has(arbitraryString) ergonomics, but literal
  *  values are checked against `PodStatus` via `satisfies`. */
-const POD_BAD_STATUSES: ReadonlySet<string> = new Set([
+const POD_BAD_STATUS_LIST = [
   "CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff",
   "ErrImagePull", "CreateContainerConfigError", "Failed", "Init:Error",
-] satisfies PodStatus[]);
+] as const satisfies PodStatus[];
+const POD_BAD_STATUSES: ReadonlySet<string> = new Set(POD_BAD_STATUS_LIST);
+
+/** Superset of BAD that also includes stuck-pending states. These are not
+ *  red-tinted (they're warnings, not errors) but the operator should still
+ *  get a "Resolve & Verify" action — delete often unsticks a stalled pull
+ *  or init loop, and the YAML tab helps diagnose FailedScheduling cases. */
+const POD_RESOLVABLE_STATUSES: ReadonlySet<string> = new Set([
+  ...POD_BAD_STATUS_LIST,
+  "Pending", "ContainerCreating", "PodInitializing",
+] as const satisfies PodStatus[]);
 
 /** Maps a pod status string → display color. Accepts any string since kubectl
  *  may emit values outside the known `PodStatus` union (e.g. custom reasons). */
@@ -464,7 +474,7 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
       const label = row.isBad ? "AI Diagnose" : "AI Analyze";
       actions.push({ label, icon: <Sparkles size={14} />, onClick: () => fetchAIBadge(row.name, row.ns, row.status) });
     }
-    if (canResolveHere && row.isBad) {
+    if (canResolveHere && POD_RESOLVABLE_STATUSES.has(row.status)) {
       actions.push({
         label:   "Resolve & Verify",
         icon:    <Wrench size={14} />,

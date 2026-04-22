@@ -42,7 +42,9 @@ const TARGET: Target = {
 
 const POD_RAW = `NAMESPACE   NAME        READY   STATUS             RESTARTS   AGE
 default     web-1       1/1     Running            0          3d
-default     web-2       0/1     CrashLoopBackOff   5          1h`;
+default     web-2       0/1     CrashLoopBackOff   5          1h
+default     web-3       0/1     Pending            0          5m
+default     web-4       0/1     ContainerCreating  0          30s`;
 
 describe("PodTable Resolve & Verify (admin)", () => {
   it("exposes the Resolve & Verify action only on unhealthy rows", async () => {
@@ -66,5 +68,32 @@ describe("PodTable Resolve & Verify (admin)", () => {
     // Command pre-filled from suggestRemediation() for CrashLoopBackOff.
     const textarea = screen.getByLabelText(/kubectl command/i) as HTMLTextAreaElement;
     expect(textarea.value).toBe("kubectl delete pod web-2 -n default");
+  });
+
+  it("exposes the action for Pending pods (stuck-scheduling / image-pull timeout)", async () => {
+    render(<PodTable raw={POD_RAW} target={TARGET} />);
+    const kebabs = screen.getAllByLabelText("Row actions");
+    // Row 3 is the Pending pod.
+    fireEvent.click(kebabs[2]);
+    fireEvent.click(await screen.findByText(/resolve & verify/i));
+
+    expect(await screen.findByText(/execute & verify — web-3/i)).toBeInTheDocument();
+    const textarea = screen.getByLabelText(/kubectl command/i) as HTMLTextAreaElement;
+    expect(textarea.value).toBe("kubectl delete pod web-3 -n default");
+  });
+
+  it("exposes the action for ContainerCreating pods (stalled image pull / CNI)", async () => {
+    render(<PodTable raw={POD_RAW} target={TARGET} />);
+    const kebabs = screen.getAllByLabelText("Row actions");
+    fireEvent.click(kebabs[3]);
+    expect(await screen.findByText(/resolve & verify/i)).toBeInTheDocument();
+  });
+
+  it("does NOT expose the action on Running rows", async () => {
+    render(<PodTable raw={POD_RAW} target={TARGET} />);
+    const kebabs = screen.getAllByLabelText("Row actions");
+    fireEvent.click(kebabs[0]);
+    // The kebab is open; assert no Resolve option.
+    expect(screen.queryByText(/resolve & verify/i)).not.toBeInTheDocument();
   });
 });

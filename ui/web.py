@@ -1144,6 +1144,7 @@ def api_resource(tid):
             "describe": f"kubectl describe pod {name}{ns_flag} 2>&1",
             "logs":     f"kubectl logs {name}{ns_flag} --tail=150 2>&1",
             "previous": f"kubectl logs {name}{ns_flag} --previous --tail=50 2>&1 || echo '[no previous container]'",
+            "yaml":     f"kubectl get pod {name}{ns_flag} -o yaml 2>&1",
         })
     else:
         result = {"describe": _tools.execute(target, f"kubectl describe {kind} {name}{ns_flag} 2>&1")}

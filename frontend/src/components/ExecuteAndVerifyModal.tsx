@@ -1,11 +1,42 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Play, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import { X, Play, CheckCircle2, AlertTriangle, Loader2, FileCode2, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import type { StoredEvent, ExecuteResult } from "../types";
 import { api } from "../api/client";
 import {
   C, FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW, SPACE, Z_INDEX,
 } from "../utils/theme";
+
+// `managedFields` is a 50-200 line block kubectl includes in `-o yaml` output
+// that documents which controller last modified each field. It's noise for an
+// operator deciding whether to remediate — strip it before rendering.
+//
+// YAML-aware: the block's list items (`- key: value`) sit at the SAME indent
+// as the parent key, so we only emerge when we hit a sibling key (letter at
+// blockIndent) — not when we see a list dash.
+function stripManagedFields(yaml: string): string {
+  const lines = yaml.split("\n");
+  const out: string[] = [];
+  let skip = false;
+  let blockIndent = -1;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const indent = line.length - line.trimStart().length;
+    if (!skip && trimmed === "managedFields:") {
+      skip = true;
+      blockIndent = indent;
+      continue;
+    }
+    if (skip) {
+      if (trimmed === "") continue;
+      if (indent > blockIndent) continue;
+      if (indent === blockIndent && trimmed.startsWith("-")) continue;
+      skip = false;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
 
 /**
  * Modal that closes the Detect → Diagnose → Resolve → Verify loop from the UI.
@@ -52,6 +83,21 @@ function modeLabels(mode: ExecuteAndVerifyModalMode): { object: string; targetNa
   return { object: mode.object, targetName: mode.targetName };
 }
 
+type TabKey = "command" | "yaml";
+
+function modeContext(mode: ExecuteAndVerifyModalMode):
+  { targetId: string | undefined; name: string; namespace: string } {
+  if (mode.kind === "event") {
+    return {
+      targetId:  mode.event.target_id,
+      // StoredEvent.object is occasionally prefixed "pod/…" depending on source
+      name:      mode.event.object.replace(/^pod\//, ""),
+      namespace: mode.event.namespace,
+    };
+  }
+  return { targetId: mode.targetId, name: mode.object, namespace: mode.namespace };
+}
+
 export function ExecuteAndVerifyModal({
   open,
   mode,
@@ -63,6 +109,10 @@ export function ExecuteAndVerifyModal({
   const [phase,   setPhase]   = useState<Phase>("idle");
   const [result,  setResult]  = useState<ExecuteResult | null>(null);
   const [error,   setError]   = useState<string | null>(null);
+  const [tab,     setTab]     = useState<TabKey>("command");
+  const [yaml,    setYaml]    = useState<string | null>(null);
+  const [yamlLoading, setYamlLoading] = useState(false);
+  const [yamlError,   setYamlError]   = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   // Reset whenever the modal opens afresh — a stale result from a previous
@@ -73,8 +123,41 @@ export function ExecuteAndVerifyModal({
     setPhase("idle");
     setResult(null);
     setError(null);
+    setTab("command");
+    setYaml(null);
+    setYamlError(null);
     dialogRef.current?.focus();
   }, [open, initialCommand]);
+
+  async function loadYaml() {
+    // Single-shot lazy load — cached for the lifetime of this modal open.
+    if (yaml !== null || yamlLoading) return;
+    const ctx = modeContext(mode);
+    if (!ctx.targetId) {
+      setYamlError("no target id on event — cannot fetch yaml");
+      return;
+    }
+    if (!ctx.name) {
+      setYamlError("missing object name");
+      return;
+    }
+    setYamlLoading(true);
+    setYamlError(null);
+    try {
+      const res  = await api.resource(ctx.targetId, "pod", ctx.name, ctx.namespace || "");
+      const raw  = res.yaml ?? "";
+      setYaml(raw ? stripManagedFields(raw) : "(no yaml returned)");
+    } catch (e) {
+      setYamlError((e as Error)?.message ?? "failed to fetch yaml");
+    } finally {
+      setYamlLoading(false);
+    }
+  }
+
+  function switchTab(next: TabKey) {
+    setTab(next);
+    if (next === "yaml") void loadYaml();
+  }
 
   if (!open) return null;
 
@@ -160,52 +243,57 @@ export function ExecuteAndVerifyModal({
           </button>
         </div>
 
-        <div style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary, marginBottom: SPACE.md, lineHeight: 1.5 }}>
-          Runs the command against{" "}
-          <strong style={{ color: C.text.primary }}>
-            {labels.targetName}
-          </strong>{" "}
-          and polls{" "}
-          <code style={{ background: C.bg.base, padding: "1px 4px", borderRadius: RADIUS.sm }}>
-            kubectl
-          </code>{" "}
-          until the object is healthy (up to 60s). Command is editable — review
-          before clicking Execute.
-        </div>
+        <TabBar active={tab} onSwitch={switchTab} disabled={phase === "running"} />
 
-        <label htmlFor="execute-verify-command" style={{ display: "block", fontSize: FONT_SIZE.sm, color: C.text.secondary, marginBottom: SPACE.xs }}>
-          kubectl command
-        </label>
-        <textarea
-          id="execute-verify-command"
-          value={command}
-          onChange={e => setCommand(e.target.value)}
-          disabled={phase !== "idle"}
-          spellCheck={false}
-          rows={3}
-          style={{
-            width: "100%", boxSizing: "border-box",
-            fontFamily: "var(--font-mono, monospace)",
-            fontSize: FONT_SIZE.sm,
-            background: C.bg.base, color: C.text.primary,
-            border: `1px solid ${C.border.muted}`,
-            borderRadius: RADIUS.md, padding: SPACE.sm,
-            resize: "vertical",
-          }}
-        />
+        {tab === "command" && (
+          <>
+            <div style={{ fontSize: FONT_SIZE.sm, color: C.text.secondary, marginBottom: SPACE.md, lineHeight: 1.5 }}>
+              Runs the command against{" "}
+              <strong style={{ color: C.text.primary }}>
+                {labels.targetName}
+              </strong>{" "}
+              and polls{" "}
+              <code style={{ background: C.bg.base, padding: "1px 4px", borderRadius: RADIUS.sm }}>
+                kubectl
+              </code>{" "}
+              until the object is healthy (up to 60s). Command is editable — review
+              before clicking Execute.
+            </div>
 
-        {error && (
-          <div style={{ marginTop: SPACE.sm, fontSize: FONT_SIZE.sm, color: "var(--c-sev1)", display: "flex", alignItems: "center", gap: 6 }}>
-            <AlertTriangle size={14} /> {error}
-          </div>
+            <label htmlFor="execute-verify-command" style={{ display: "block", fontSize: FONT_SIZE.sm, color: C.text.secondary, marginBottom: SPACE.xs }}>
+              kubectl command
+            </label>
+            <textarea
+              id="execute-verify-command"
+              value={command}
+              onChange={e => setCommand(e.target.value)}
+              disabled={phase !== "idle"}
+              spellCheck={false}
+              rows={3}
+              style={{
+                width: "100%", boxSizing: "border-box",
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: FONT_SIZE.sm,
+                background: C.bg.base, color: C.text.primary,
+                border: `1px solid ${C.border.muted}`,
+                borderRadius: RADIUS.md, padding: SPACE.sm,
+                resize: "vertical",
+              }}
+            />
+
+            {error && (
+              <div style={{ marginTop: SPACE.sm, fontSize: FONT_SIZE.sm, color: "var(--c-sev1)", display: "flex", alignItems: "center", gap: 6 }}>
+                <AlertTriangle size={14} /> {error}
+              </div>
+            )}
+
+            {phase === "running" && <RunningPanel />}
+            {phase === "done" && result && <ResultPanel result={result} />}
+          </>
         )}
 
-        {phase === "running" && (
-          <RunningPanel />
-        )}
-
-        {phase === "done" && result && (
-          <ResultPanel result={result} />
+        {tab === "yaml" && (
+          <YamlPanel yaml={yaml} loading={yamlLoading} error={yamlError} />
         )}
 
         <div style={{ display: "flex", gap: SPACE.sm, marginTop: SPACE.lg, justifyContent: "flex-end" }}>
@@ -244,6 +332,86 @@ export function ExecuteAndVerifyModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function TabBar({ active, onSwitch, disabled }: { active: TabKey; onSwitch: (k: TabKey) => void; disabled: boolean }) {
+  const tabStyle = (isActive: boolean): React.CSSProperties => ({
+    background: "none",
+    border: "none",
+    borderBottom: `2px solid ${isActive ? "var(--c-accent)" : "transparent"}`,
+    color: isActive ? C.text.primary : C.text.secondary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: isActive ? FONT_WEIGHT.semibold : FONT_WEIGHT.medium,
+    padding: `${SPACE.xs} ${SPACE.sm}`,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+  });
+  return (
+    <div role="tablist" style={{
+      display: "flex", gap: SPACE.md,
+      borderBottom: `1px solid ${C.border.muted}`,
+      marginBottom: SPACE.md,
+    }}>
+      <button
+        role="tab"
+        aria-selected={active === "command"}
+        disabled={disabled}
+        onClick={() => onSwitch("command")}
+        style={tabStyle(active === "command")}
+      >
+        <Terminal size={14} /> Command
+      </button>
+      <button
+        role="tab"
+        aria-selected={active === "yaml"}
+        disabled={disabled}
+        onClick={() => onSwitch("yaml")}
+        style={tabStyle(active === "yaml")}
+      >
+        <FileCode2 size={14} /> Current YAML
+      </button>
+    </div>
+  );
+}
+
+function YamlPanel({ yaml, loading, error }: { yaml: string | null; loading: boolean; error: string | null }) {
+  if (loading) {
+    return (
+      <div style={{
+        padding: SPACE.md, background: C.bg.base,
+        border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.md,
+        fontSize: FONT_SIZE.sm, color: C.text.secondary,
+        display: "flex", alignItems: "center", gap: SPACE.sm,
+      }}>
+        <Loader2 size={16} className="spin" style={{ color: "var(--c-accent)" }} />
+        Fetching <code>kubectl get … -o yaml</code> …
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div style={{ fontSize: FONT_SIZE.sm, color: "var(--c-sev1)", display: "flex", alignItems: "center", gap: 6 }}>
+        <AlertTriangle size={14} /> {error}
+      </div>
+    );
+  }
+  return (
+    <pre
+      aria-label="Current YAML"
+      style={{
+        background: C.bg.base, color: C.text.secondary,
+        border: `1px solid ${C.border.muted}`, borderRadius: RADIUS.md,
+        padding: SPACE.sm, fontSize: FONT_SIZE.xs,
+        maxHeight: 420, overflowY: "auto", whiteSpace: "pre-wrap",
+        fontFamily: "var(--font-mono, monospace)", margin: 0,
+      }}
+    >
+      {yaml ?? ""}
+    </pre>
   );
 }
 
