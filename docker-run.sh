@@ -54,6 +54,38 @@ fi
 # any future writes (aws configure, gcloud auth login, etc.)
 mkdir -p ~/.kube ~/.aws ~/.config/gcloud ~/.azure ~/.ssh
 
+# DB-3 — if the operator pointed AZIRO_DB_URL at a Postgres in .env, probe it
+# before launching so the app doesn't crash in a boot race. Container-internal
+# hostnames (docker-compose service names, e.g. `postgres`) don't resolve from
+# the host; those loops exhaust the retries and we skip with a warning — the
+# container itself will still retry at app startup via pool_pre_ping.
+if [[ -f .env ]] && grep -qE '^\s*AZIRO_DB_URL=postgres' .env; then
+    db_url=$(grep -E '^\s*AZIRO_DB_URL=' .env | head -1 | cut -d= -f2- | tr -d '"')
+    hostport=$(echo "$db_url" | sed -n 's|.*@\([^/?]*\).*|\1|p')
+    db_host="${hostport%%:*}"
+    db_port="${hostport##*:}"
+    [[ "$db_host" = "$db_port" || -z "$db_port" ]] && db_port=5432
+    if [[ -n "$db_host" ]]; then
+        echo "Waiting for Postgres at $db_host:$db_port (up to 30s)..."
+        ok=0
+        for _ in $(seq 1 30); do
+            # bash /dev/tcp is a builtin — no `nc` dependency on the host.
+            if (exec 3<>/dev/tcp/"$db_host"/"$db_port") 2>/dev/null; then
+                exec 3<&-; exec 3>&-
+                ok=1
+                break
+            fi
+            sleep 1
+        done
+        if [[ "$ok" = 1 ]]; then
+            echo "Postgres reachable."
+        else
+            echo "WARN: Postgres at $db_host:$db_port not reachable from host — " \
+                 "continuing (container may still reach it via internal network)."
+        fi
+    fi
+fi
+
 echo "Starting $NAME on port $PORT (volume: $DATA_VOLUME, image: $IMAGE)..."
 docker run -d --name "$NAME" \
     --network "$NETWORK" \
