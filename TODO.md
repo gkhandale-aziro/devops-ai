@@ -45,7 +45,7 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 - [x] **SEC-7** Feature flag / kill switch for experimental paths (S) — shipped: `config/features.py` registry (env `AZIRO_FEATURE_<NAME>` + in-process runtime overrides, fail-closed on unknown names); gates `auto_monitor`, `agent_tools`, `analyze_endpoint`; admin API at `/api/v1/admin/features` (GET open to any authed user, POST/DELETE admin-only); disabled endpoints return 503 + Retry-After; agent loop short-circuits tool calls with a placeholder when `agent_tools` is off
 
 ### Runtime hardening
-- [x] **RUN-1** Gunicorn + gevent workers behind nginx (drop Flask dev server) (S) — shipped in Phase D
+- [x] **RUN-1** Gunicorn + gevent workers (drop Flask dev server) (S) — shipped in Phase D. nginx front-door deferred post-v1.0 (single-container deploy exposes gunicorn on :5000 directly).
 - [x] **RUN-2** `/healthz` (liveness) + `/readyz` (DB + LLM reachability) (S) — shipped in Phase C
 - [x] **RUN-3** Prometheus `/metrics` — request counts, LLM tokens, tool-call latencies (M) — shipped 2026-04-17: `observability/metrics.py`, gunicorn multi-process mode, Prometheus container in obs-run.sh, `Aziro — Metrics` dashboard
 - [x] **RUN-4** structlog JSON logging + self-hosted Loki aggregation (S) — shipped: JSON envelope via `observability.configure_logging`, Alloy tails Docker stdout → Loki → Grafana `Aziro — Logs` dashboard. Loki replaces Sentry (no external SaaS per architecture call)
@@ -56,9 +56,9 @@ ships as one themed PR — bundle related fixes, don't split per-bug.
 Sequenced as 4 PRs (A → D). Full design in [docs/db-v1-plan.md](docs/db-v1-plan.md).
 
 - [x] **DB-1 / PR-A** SQLAlchemy Core + Alembic, dual-backend (SQLite default, Postgres opt-in via `AZIRO_DB_URL`) — shipped 2026-04-21 (PR #31). Alembic revision `0001_baseline` freezes the pre-SA-Core schema; schema-parity tripwires in `tests/test_schema_parity.py` cover tables/columns/indexes/uniques/FKs; SQLite ≥ 3.35 asserted at engine build for `INSERT … RETURNING`; full suite 554/554 on SQLite. Postgres runtime exercise deferred to PR-C.
-- [ ] **DB-2 / PR-B** Redis 7 integration — rate-limit storage (`AZIRO_RATELIMIT_STORAGE_URI=redis://…`), monitor SSE pub/sub fan-out across workers, flask-session server-side sessions. Docker-compose adds `redis:7-alpine`; in-memory fallback for dev.
-- [ ] **DB-3 / PR-C** Postgres 16 production migration — docker-compose adds `postgres:16-alpine`; `AZIRO_DB_URL=postgresql+psycopg://…` path exercised in CI; SQLite→PG data copy script (`scripts/migrate_sqlite_to_pg.py`) with dry-run + row-count verification; `pg_stat_statements` extension + connection pool sizing.
-- [ ] **DB-4 / PR-D** Backups + restore drill — `pg_dump --format=custom` nightly cron, 30-day retention on MinIO (S3-compatible, self-hosted), restore-verification script that boots a scratch DB and runs schema-diff; runbook entry in `docs/ops/backup-restore.md`.
+- [x] **DB-2 / PR-B** Redis 7 integration — shipped 2026-04-21 (PR #33, 88be6c6). Limiter + sessions + monitor pub/sub all on Redis; in-memory fallback retained for dev/pytest.
+- [x] **DB-3 / PR-C** Postgres 16 production migration — shipped 2026-04-21 (5c0a4dd). `postgres:16-alpine` in compose, `scripts/migrate_sqlite_to_pg.py` verified on VM during §2 walkthrough.
+- [x] **DB-4 / PR-D** Backups + restore drill — shipped 2026-04-22 on develop. `pg_dump --format=custom` nightly via ofelia, 30-day retention on MinIO, `ops/backup/restore-verify.sh` runs schema-diff + row-count at 02:30 UTC. Drill green on VM (863/863 events, pg16 `\restrict` nonces stripped before diff).
 
 Decisions locked in (see plan for rationale):
 - SQLAlchemy Core (not ORM) — thin abstraction, preserves existing SQL fidelity
@@ -69,26 +69,29 @@ Decisions locked in (see plan for rationale):
 ### Deploy & CI
 - [x] **OPS-1** Dockerfile (multi-stage) + docker-compose.yml (app + postgres + redis) — shipped pre-v0.0.1
 - [ ] **OPS-2** GitHub Actions CI: pytest + ruff + pip-audit + Trivy on every PR (S)
-- [ ] **OPS-3** Load test with k6: 50 concurrent users, 10 SSE streams, sustained chat (M)
+- [x] **OPS-3** Load test with k6: 50 concurrent users, 10 SSE streams, sustained chat (M) — shipped 2026-04-21 (PR #39, 6c1659b). p95 + error-rate gates in `ops/loadtest/smoke.js`.
 - [x] **OPS-4** LLM cost controls: per-user token budgets + circuit breaker on agent loops (M) — shipped: `store.llm_usage` table (user_id/model/tokens/ts) + `record_llm_usage` / `user_tokens_today`; `LLMClient.chat` populates `usage_out` dict and fires wired-in `usage_sink` callback per call; agent loop tracks cumulative `total_tokens` and aborts once `AZIRO_AGENT_RUN_TOKEN_CAP` (default 50000) is crossed; `_check_llm_budget()` returns 429 when `AZIRO_USER_DAILY_TOKEN_BUDGET` (default 200000) is exhausted; wired into all four chat/analyze endpoints
 
 ### Docs & release
-- [ ] **DOCS-1** Deploy guide, ops runbook, backup/restore, SLO definitions (M)
-- [ ] **REL-1** Chaos test — kill postgres, verify graceful degradation (M)
+- [x] **DOCS-1** Deploy guide, ops runbook, backup/restore, SLO definitions (M) — shipped 2026-04-21 (PR #38, 8fa501c). `docs/ops/{deploy-guide,slo,chaos-drills,backup-restore,v1.0-checklist}.md`.
+- [x] **REL-1** Chaos test — kill postgres, verify graceful degradation (M) — shipped as `ops/chaos/kill-postgres.sh`. Drill executed on VM 2026-04-22: healthz stayed 200, readyz flipped to 503 under DB-down, recovered in 1s.
 - [ ] **REL-2** Tag v1.0.0 + changelog + release notes (S)
 - [ ] **REL-3** Onboard 2–3 internal pilot users; collect feedback (S)
 - [ ] **REL-4** Post-launch monitoring dashboard (errors, p95, cost) live (S)
 
 ### v1.0 exit criteria (from priority roadmap)
+
 All must be true to tag v1.0.0:
-- [ ] Two roles enforced on every route (SEC-1)
-- [ ] Running under gunicorn + nginx (RUN-1)
-- [ ] Postgres-backed with daily backups + verified restore (DB-1, DB-4)
-- [ ] Deployable via `docker compose up` or single-replica Helm chart
-- [ ] `/healthz`, `/readyz`, `/metrics` green under k6 load test (RUN-2/3, OPS-3)
-- [ ] Sentry capturing errors; Prometheus scraping metrics (RUN-3/4)
-- [ ] CI green: tests, lint, pip-audit, Trivy (OPS-2)
-- [ ] Deploy guide + ops runbook + LLM cost controls documented (DOCS-1, OPS-4)
+
+- [x] Two roles enforced on every route (SEC-1) — `@require_role` in ui/web.py
+- [x] Running under gunicorn (RUN-1) — nginx front-door deferred post-v1.0
+- [x] Postgres-backed with daily backups + verified restore (DB-1, DB-4)
+- [x] Deployable via `docker compose up` (single-replica Helm deferred post-v1.0)
+- [x] `/healthz`, `/readyz`, `/metrics` green under k6 load test (RUN-2/3, OPS-3)
+- [x] Loki aggregating errors + Prometheus scraping metrics (RUN-3/4)
+      Note: Sentry replaced with Loki per project decision — no external SaaS.
+- [ ] CI green: tests, lint, pip-audit, Trivy (OPS-2) — Jenkins, Wave 4/5 post-v1.0
+- [x] Deploy guide + ops runbook + LLM cost controls documented (DOCS-1, OPS-4)
 - [ ] v1.0.0 tagged on main with changelog (REL-2)
 
 ---
