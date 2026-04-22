@@ -17,6 +17,7 @@ import time
 import os
 import secrets
 import hmac
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, Response
@@ -33,6 +34,7 @@ from targets   import TargetManager
 from agent     import needs_tools, AgentSession, Agent
 from agent.manager import _trim, MAX_HISTORY
 from monitor   import EventWatcher, Triage, capture_snapshots
+from monitor.verify import verify_resolution
 from store     import EventStore
 from store.metrics import MetricCollector
 from sandbox.redact import StreamRedactor
@@ -1857,6 +1859,284 @@ def api_event_update(event_id):
     if not _store.update_event_status(event_id, status):
         return jsonify({"error": "invalid status"}), 400
     return jsonify({"ok": True})
+
+
+# ── Resolve & Verify ─────────────────────────────────────────────────────────
+# Closes the Detect → Diagnose → **Resolve → Verify** loop inside the tool.
+# The operator reviews the AI-proposed command in the UI, edits if
+# needed, and POSTs it here; we run it via the same per-target executor
+# the snapshot path uses, then poll the object until it's healthy, then
+# auto-flip the event to resolved. Everything lands in snapshots and
+# audit_log so History/DevTools show the full paper trail.
+
+# kubectl verbs we'll actually let through. Intentionally narrow — no
+# `exec`, `port-forward`, `proxy`, `cp`, `auth`, `config`, `attach`,
+# `debug`: those either open interactive sessions (wedges the request
+# thread) or mutate kubeconfig state we don't want the web to touch.
+_EXECUTE_ALLOWED_VERBS = {
+    "apply", "delete", "scale", "rollout", "patch",
+    "label", "annotate", "cordon", "uncordon", "drain", "taint",
+}
+
+# Shell metacharacters that let an operator-supplied kubectl command
+# escape kubectl and run arbitrary shell. tools/base.run_command uses
+# shell=True (required for AI-agent chained commands), so our only
+# defense for user input is to reject these up front. Single/double
+# quotes are fine — they're consumed by the shell's own tokenizer
+# without introducing new commands. Braces are blocked because bash
+# brace expansion (`pod-{a,b}`, `{1..5}`) can widen a delete's blast
+# radius past the single pod the operator thinks they're touching.
+_SHELL_METACHARS = frozenset(";&|<>`$()\n\r\\{}")
+
+
+def _first_token_after_kubectl(cmd: str) -> str:
+    parts = cmd.strip().split()
+    if len(parts) < 2 or parts[0] != "kubectl":
+        return ""
+    # Skip global flags like `-n foo` / `--context=bar` to land on the
+    # actual verb; a `kubectl -n demo apply -f x.yaml` must validate as
+    # `apply`, not `-n`.
+    i = 1
+    while i < len(parts) and parts[i].startswith("-"):
+        # --key=value is one token; --key value eats the next.
+        if "=" not in parts[i] and i + 1 < len(parts):
+            i += 2
+        else:
+            i += 1
+    return parts[i] if i < len(parts) else ""
+
+
+def _validate_kubectl_command(command: str) -> tuple[str | None, str]:
+    """Gatekeeper shared by /events/<id>/execute and /targets/<tid>/execute-resolve.
+
+    Returns (error_message | None, verb). The caller decides the HTTP status
+    — both current callers return 400 on any non-None error, and echo the
+    verb + allowlist back to the client when the verb itself was the
+    problem (so the UI can render a helpful hint, not a flat "denied").
+    """
+    cmd = (command or "").strip()
+    if not cmd:
+        return "command required", ""
+    if not cmd.startswith("kubectl "):
+        return "only kubectl commands are allowed", ""
+    bad = sorted({c for c in cmd if c in _SHELL_METACHARS})
+    if bad:
+        return "shell metacharacters not allowed: " + "".join(bad), ""
+    verb = _first_token_after_kubectl(cmd)
+    if verb not in _EXECUTE_ALLOWED_VERBS:
+        return "verb not allowed", verb
+    return None, verb
+
+
+def _validation_error_response(err: str, verb: str):
+    """Shape the JSON body both execute endpoints return on a bad command.
+    Kept centralized so the frontend can rely on `verb`/`allowed` always
+    being present when — and only when — the verb itself was rejected."""
+    body: dict = {"error": err}
+    if err == "verb not allowed":
+        body["verb"]    = verb
+        body["allowed"] = sorted(_EXECUTE_ALLOWED_VERBS)
+    return jsonify(body), 400
+
+
+# `kubectl delete pod <name> [-n|--namespace <ns>]` — the one remediation
+# shape we need to special-case, because the pod object identified by
+# `name` vanishes the instant we execute and the ReplicaSet replaces it
+# with a pod with a freshly-generated name. Without the pivot below, the
+# verifier polls a name that no longer exists and times out.
+_DELETE_POD_RE = re.compile(
+    r"^\s*kubectl\s+delete\s+pod(?:s)?\s+(?P<name>\S+)"
+    r"(?:.*?(?:-n|--namespace)(?:=|\s+)(?P<ns>\S+))?"
+)
+
+
+def _maybe_delete_pod_target(command: str) -> tuple[str, str] | None:
+    m = _DELETE_POD_RE.match(command or "")
+    if not m:
+        return None
+    return m.group("name"), (m.group("ns") or "default")
+
+
+_POD_TEMPLATE_HASH_RE = re.compile(r"^[a-z0-9]{5,12}$")
+
+
+def _capture_pod_selector(executor_fn, name: str, ns: str) -> str:
+    """Read the pod's ``pod-template-hash`` label *before* the delete
+    takes effect. Returned string — e.g. ``pod-template-hash=7c6d9f``
+    — is a kubectl label selector the verifier uses to follow the
+    ReplicaSet's replacement pod. Empty string means the pod is either
+    bare (no controller, so no replacement is coming) or already gone;
+    in both cases the verifier's by-name probe is still the right fit.
+
+    We validate the output against the DNS-label shape kubernetes uses
+    for pod-template-hash (lowercase alphanumerics) so a shell quirk —
+    jsonpath emitting noise, the executor returning an error string —
+    can't produce a corrupt selector that breaks the verifier."""
+    probe = (
+        f"kubectl get pod {name} -n {ns} "
+        f"-o jsonpath='{{.metadata.labels.pod-template-hash}}' 2>/dev/null"
+    )
+    try:
+        out = (executor_fn(probe) or "").strip().strip("'").strip()
+    except Exception:
+        return ""
+    if not _POD_TEMPLATE_HASH_RE.match(out):
+        return ""
+    return f"pod-template-hash={out}"
+
+
+def _execute_and_verify(event: dict, command: str, executor_fn) -> dict:
+    """Run one remediation against ``event``, snapshot both the execution
+    and the verification probe trail, and (on success) auto-resolve the
+    event. Shared by the event-scoped and target-scoped endpoints so the
+    audit trail is identical regardless of entry point.
+
+    The two endpoints differ only in *where the event comes from* — a
+    pre-existing triaged incident vs. one synthesized for a user-initiated
+    Dashboard fix. Once we're inside this helper, they're the same.
+    """
+    event_id = event["id"]
+
+    # If this remediation is `kubectl delete pod X`, capture the pod's
+    # pod-template-hash before we run it. The verifier uses that as a
+    # label selector to follow the ReplicaSet's replacement pod, which
+    # comes back with a new generated name. Copy the event so the
+    # override is scoped to this request and never hits the DB.
+    delete_target = _maybe_delete_pod_target(command)
+    if delete_target:
+        pod_name, pod_ns = delete_target
+        selector = _capture_pod_selector(executor_fn, pod_name, pod_ns)
+        if selector:
+            event = {**event, "_verify_selector": selector}
+
+    t0 = time.time()
+    try:
+        output = executor_fn(command) or ""
+    except Exception as e:
+        output = f"[ERROR] {e}"
+    execution = {
+        "command":    command,
+        "output":     output,
+        "timestamp":  datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "duration_s": round(time.time() - t0, 3),
+    }
+    try:
+        _store.save_snapshot(event_id, "execution", json.dumps(execution))
+    except Exception:
+        log.exception("execute.snapshot_write_failed", extra={"event_id": event_id})
+
+    try:
+        result = verify_resolution(executor_fn, event)
+        verification = result.to_dict()
+    except Exception as e:
+        # Keep this payload shape identical to VerificationResult.to_dict()
+        # — the frontend treats reason/predicate/final_state as always
+        # present, and a verifier crash is exactly when we can't afford
+        # to ship a contract-breaking response.
+        log.exception("execute.verify_failed", extra={"event_id": event_id})
+        verification = {
+            "success":     False,
+            "reason":      "verifier-error",
+            "predicate":   "verification did not run",
+            "attempts":    [],
+            "duration_s":  0.0,
+            "final_state": "",
+            "note":        f"verifier crashed: {e}",
+        }
+
+    try:
+        _store.save_snapshot(event_id, "verification", json.dumps(verification))
+    except Exception:
+        log.exception("execute.verification_write_failed",
+                      extra={"event_id": event_id})
+
+    final_status = "resolved" if verification.get("success") else "needs_attention"
+    if verification.get("success"):
+        _store.update_event_status(event_id, "resolved")
+
+    return {
+        "event_id":     event_id,
+        "execution":    execution,
+        "verification": verification,
+        "final_status": final_status,
+    }
+
+
+@app.route("/api/v1/events/<int:event_id>/execute", methods=["POST"])
+@require_role("admin")
+def api_event_execute(event_id):
+    """Execute a remediation kubectl command against the event's target,
+    then verify the object became healthy. Admin-only — mutating cluster
+    state is not something a viewer role should do.
+
+    Body: {"command": "kubectl ..."}
+
+    Response: {event_id, execution, verification, final_status}
+    """
+    event = _store.get_event(event_id)
+    if not event:
+        return jsonify({"error": "event not found"}), 404
+
+    command = ((request.json or {}).get("command") or "").strip()
+    err, verb = _validate_kubectl_command(command)
+    if err:
+        return _validation_error_response(err, verb)
+
+    tid = (event.get("target_id") or "").strip()
+    target = _targets.get(tid) if tid else None
+    if not target:
+        return jsonify({
+            "error": "event's target is no longer available",
+            "target_id": tid,
+        }), 409
+
+    executor_fn = lambda cmd: _tools.execute(target, cmd)
+    return jsonify(_execute_and_verify(event, command, executor_fn))
+
+
+@app.route("/api/v1/targets/<tid>/execute-resolve", methods=["POST"])
+@require_role("admin")
+def api_target_execute_resolve(tid):
+    """Dashboard-initiated Resolve & Verify.
+
+    The user is looking at a pod (or node) on the Dashboard, sees it's
+    unhealthy, and wants to fix it without round-tripping through
+    Alerts/History. We find or create an event for that object/namespace
+    so the execution + verification snapshots still attach to a durable
+    audit row — and if the monitor has already caught the incident, the
+    user's fix lands on that row instead of creating a parallel one.
+
+    Body: {"object": "pod/x", "namespace": "default",
+            "reason": "CrashLoopBackOff", "command": "kubectl ..."}
+
+    Response: {event_id, execution, verification, final_status}
+    """
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"error": "target not found", "target_id": tid}), 404
+
+    body    = request.json or {}
+    obj     = (body.get("object") or "").strip()
+    ns      = (body.get("namespace") or "default").strip() or "default"
+    reason  = (body.get("reason") or "UserInitiated").strip() or "UserInitiated"
+    command = (body.get("command") or "").strip()
+
+    if not obj:
+        return jsonify({"error": "object required"}), 400
+
+    err, verb = _validate_kubectl_command(command)
+    if err:
+        return _validation_error_response(err, verb)
+
+    target_name = (target.get("name") if isinstance(target, dict) else None) or tid
+    event = _store.find_or_create_event(
+        target_id=tid, target_name=target_name,
+        obj=obj, namespace=ns, reason=reason,
+        source="user-initiated",
+        message=f"Operator-initiated resolve for {obj} in {ns}",
+    )
+    executor_fn = lambda cmd: _tools.execute(target, cmd)
+    return jsonify(_execute_and_verify(event, command, executor_fn))
 
 
 @app.route("/api/v1/events/object/<path:name>", methods=["GET"])

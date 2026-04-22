@@ -1,6 +1,7 @@
 import type {
   Target, TargetType, StoredEvent, Stats, ChatSession, TriageLevel,
-  TopologyResponse, SearchResponse, HealthSummary,
+  TopologyResponse, SearchResponse, HealthSummary, ExecuteResult,
+  TargetExecuteResolveBody,
 } from "../types";
 
 const BASE = "";  // same origin — Vite proxy handles /api in dev
@@ -82,6 +83,15 @@ export const api = {
       }),
     test: (id: string) =>
       req<{ status: string; message: string }>(`/api/v1/targets/${id}/test`),
+    // Dashboard-initiated Resolve → Verify. The backend find-or-creates an
+    // event for this object so the execution trail unifies with any
+    // monitor-caught incident for the same pod/ns. Admin-only server-side.
+    executeResolve: (id: string, body: TargetExecuteResolveBody) =>
+      req<ExecuteResult>(`/api/v1/targets/${id}/execute-resolve`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      }),
   },
 
   // ── Cloud auth check ──────────────────────────────────────────────────────
@@ -226,6 +236,16 @@ export const api = {
         method:  "PATCH",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ status }),
+      }),
+    // Resolve → Verify: run a kubectl remediation against the event's
+    // target, then poll until the object is healthy. Admin-only server-side.
+    // The verify loop can take up to ~60s, so callers should show a busy
+    // state rather than blocking the UI thread.
+    execute: (id: number, command: string) =>
+      req<ExecuteResult>(`/api/v1/events/${id}/execute`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ command }),
       }),
   },
 

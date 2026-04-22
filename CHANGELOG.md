@@ -3,6 +3,110 @@
 All notable changes to AziroOps are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.0] — 2026-04-22
+
+First production-ready release. Turns the v0.0.1 demo into a hardened,
+durable, observable service: multi-user auth, Postgres + Redis + MinIO
+for durable state, Loki + Prometheus for observability, verified
+backups + restore drill, chaos drill, load smoke, and a full ops
+runbook. Tagged after end-to-end walkthrough of
+`docs/ops/v1.0-checklist.md` on a production VM.
+
+### Security
+- **SEC-1** Flask-Login session auth with `users` table, bcrypt, and two
+  roles (`admin`, `viewer`); `@require_role` guards every mutating API
+- **SEC-2** `audit_log` table: user, action, target, status, remote IP,
+  request ID — populated via after-request middleware for full coverage
+- **SEC-3** Flask-Limiter rate limits on `/login` (brute-force) and
+  `/api/v1/chat/*/stream` (LLM cost cap); Redis-backed for multi-worker
+- **SEC-4** CSRF protection and security headers (CSP, HSTS gated on
+  `AZIRO_ENABLE_HSTS`, X-Frame-Options, session cookie `HttpOnly`/`SameSite=Lax`)
+- **SEC-5** SSH host-key verification with pinned-key strict mode
+- **SEC-6** PII scrubbing on stored snapshots (shared detectors with
+  SSE redactor); env-driven event retention (`AZIRO_EVENT_RETENTION_DAYS`,
+  default 30) with cascade-delete on snapshots
+- **SEC-7** Feature-flag registry (`config/features.py`) gating
+  `auto_monitor`, `agent_tools`, `analyze_endpoint`; admin-only API at
+  `/api/v1/admin/features`; disabled endpoints return 503 + Retry-After
+
+### Runtime & observability
+- **RUN-1** Gunicorn + gevent workers (Flask dev server retired)
+- **RUN-2** `/healthz` (liveness) and `/readyz` (DB + LLM reachability)
+- **RUN-3** Prometheus `/metrics` — RED metrics, LLM token usage,
+  tool-call latencies; multi-process-mode gunicorn; `Aziro — Metrics`
+  Grafana dashboard
+- **RUN-4** structlog JSON logging aggregated to self-hosted Loki via
+  Alloy; `Aziro — Logs` Grafana dashboard. Replaces Sentry — no
+  external SaaS per architecture decision
+- **RUN-5** Graceful shutdown: SIGTERM drains SSE streams, terminates
+  tracked `kubectl` subprocesses, readyz returns 503 + Retry-After:30
+  during drain
+
+### Durable state
+- **DB-1** SQLAlchemy Core + Alembic baseline migration; dual-backend
+  (SQLite default, Postgres via `AZIRO_DB_URL`); schema-parity tripwires
+- **DB-2** Redis 7 — limiter storage, flask-session server-side
+  sessions, monitor SSE pub/sub fan-out across workers
+- **DB-3** Postgres 16 as the production backend; SQLite→PG migration
+  script (`scripts/migrate_sqlite_to_pg.py`) with dry-run + row-count
+  verification; `pg_stat_statements` enabled
+- **DB-4** Nightly `pg_dump --format=custom` to MinIO (S3-compatible,
+  self-hosted) with 30-day retention; nightly restore-verify drill
+  (`ops/backup/restore-verify.sh`) boots a scratch DB, runs schema-diff,
+  and asserts row-count non-regression; pg16 `\restrict`/`\unrestrict`
+  nonce noise stripped before diff
+
+### Operations & docs
+- **OPS-3** k6 load smoke — 50 VUs, 10 concurrent SSE streams,
+  sustained chat; p95 + error-rate SLO gates (`ops/loadtest/smoke.js`)
+- **OPS-4** Per-user LLM token budgets with daily reset; agent-loop
+  circuit breaker at `AZIRO_AGENT_RUN_TOKEN_CAP` (default 50k/run)
+- **DOCS-1** Full ops runbook: deploy guide, SLOs, chaos drills,
+  backup/restore, v1.0 release checklist (`docs/ops/*.md`)
+- **REL-1** Chaos drills — `kill-postgres.sh` verifies graceful
+  degradation (healthz stable, readyz 503 under DB-down, recovery in
+  single-digit seconds); `run-backup-drill.sh` end-to-end verifies
+  dump → MinIO → scratch-DB restore
+
+### Diagnosis & remediation
+
+- **Resolve & Verify** — closes the Detect → Diagnose → Resolve → Verify
+  loop inside the tool. Operators execute an editable `kubectl` command
+  against the event's target; the backend polls the object (5s interval,
+  15s of continuous health required, 60s total budget) and auto-flips
+  the event to `resolved` on success or keeps it open with the full
+  attempt trail on failure. Two entry points (single modal):
+  - **History drawer** — `POST /api/v1/events/<id>/execute` dispatches
+    against an existing event; admin-only, kubectl verb allowlist
+    enforced (`get|describe|delete|rollout|apply|scale|patch|logs`)
+  - **Dashboard pod kebab** — `POST /api/v1/targets/<tid>/execute-resolve`
+    for user-initiated fixes on unhealthy pods; backend find-or-creates
+    an event so the audit trail unifies with any monitor-caught
+    incident for the same object/namespace
+  - Execution + verification persisted as event snapshots so the
+    attempt trail renders inline in the History detail drawer
+
+### UI polish
+- Day + Night themes with system-default detection and persisted override
+- Toast feedback on every mutating action; SEV1/SEV2 banner notifications
+- DataTable migration across all resource lists
+- Onboarding tour for new users
+- Cmd+K command palette including actions (not just nav)
+- Keyboard cheat sheet with 15+ shortcuts; 12-step keyboard-only DoD
+- Lighthouse accessibility score **100**
+- All 7 differentiators preserved (Cmd+K, AI badges, multi-cloud
+  sidebar, topology graph, two-model AI display, AddTarget wizard,
+  log tray)
+
+### Intentionally deferred post-v1.0
+- nginx front-door (single-container deploy exposes gunicorn direct)
+- Single-replica Helm chart (docker compose is the supported deploy)
+- Jenkins CI (tests, lint, pip-audit, Trivy) — Wave 4/5 post-v1.0
+- Web terminal, inline YAML editor, notification channels (Slack/PD),
+  multi-node HA, OIDC/SSO — see `docs/ops/deploy-guide.md`
+
+---
+
 ## [0.0.1] — 2026-04-12
 
 First tagged release.

@@ -64,8 +64,48 @@ export interface Snapshot {
   id:        number;
   event_id:  number;
   timestamp: string;
-  kind:      "describe" | "logs" | "logs_previous" | "events";
+  kind:      "describe" | "logs" | "logs_previous" | "events" | "execution" | "verification";
   content:   string;
+}
+
+// ── Resolve → Verify lifecycle (matches monitor/verify.py contract) ──────────
+
+export interface ExecutionRecord {
+  command:    string;
+  output:     string;
+  timestamp:  string;
+  duration_s: number;
+}
+
+export interface VerifyAttempt {
+  ts:      number;
+  probe:   string;
+  output:  string;
+  healthy: boolean;
+}
+
+export interface VerificationRecord {
+  success:      boolean;
+  reason:       string;
+  predicate:    string;
+  attempts:     VerifyAttempt[];
+  duration_s:   number;
+  final_state:  string;
+  note:         string;
+}
+
+export interface ExecuteResult {
+  event_id:     number;
+  execution:    ExecutionRecord;
+  verification: VerificationRecord;
+  final_status: "resolved" | "needs_attention";
+}
+
+export interface TargetExecuteResolveBody {
+  object:    string;
+  namespace: string;
+  reason:    string;
+  command:   string;
 }
 
 export interface Analysis {
