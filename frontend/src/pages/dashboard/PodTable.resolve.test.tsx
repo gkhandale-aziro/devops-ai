@@ -86,7 +86,11 @@ describe("PodTable Resolve & Verify (admin)", () => {
     render(<PodTable raw={POD_RAW} target={TARGET} />);
     const kebabs = screen.getAllByLabelText("Row actions");
     fireEvent.click(kebabs[3]);
-    expect(await screen.findByText(/resolve & verify/i)).toBeInTheDocument();
+    fireEvent.click(await screen.findByText(/resolve & verify/i));
+
+    expect(await screen.findByText(/execute & verify — web-4/i)).toBeInTheDocument();
+    const textarea = screen.getByLabelText(/kubectl command/i) as HTMLTextAreaElement;
+    expect(textarea.value).toBe("kubectl delete pod web-4 -n default");
   });
 
   it("does NOT expose the action on Running rows", async () => {
