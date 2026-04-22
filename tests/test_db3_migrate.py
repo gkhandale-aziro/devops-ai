@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine, select, text
@@ -264,6 +265,76 @@ class TestAssertTargetEmpty:
         """Empty target (schema applied, zero rows) is the happy path for
         --execute — the guard must not raise."""
         mig._assert_target_empty(dst_engine, force=False)
+
+
+# ── TestResetSequences ──────────────────────────────────────────────────────
+
+def _fake_pg_engine(max_id):
+    """Build a MagicMock engine that mimics a Postgres connection just
+    well enough for `_reset_sequences` to run. Records every `execute`
+    call on `.calls` so the test can assert on the exact SQL emitted.
+
+    `max_id` is what the fake SELECT MAX(id) returns — None simulates an
+    empty table (the bug path), an int simulates a populated table.
+    """
+    calls = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt)
+        calls.append((sql, params))
+        result = MagicMock()
+        if "MAX(id)" in sql:
+            result.scalar.return_value = max_id
+        return result
+
+    fake_conn = MagicMock()
+    fake_conn.execute.side_effect = _execute
+    fake_engine = MagicMock()
+    fake_engine.dialect.name = "postgresql"
+    fake_engine.begin.return_value.__enter__.return_value = fake_conn
+    fake_engine.begin.return_value.__exit__.return_value = False
+    fake_engine.calls = calls
+    return fake_engine
+
+
+class TestResetSequences:
+    def test_empty_table_emits_setval_is_called_false(self):
+        """Empty table: must emit `setval(seq, 1, false)`. Postgres rejects
+        `setval(seq, 0, ...)` with SQLSTATE 22023 because sequences default
+        to MINVALUE 1; using is_called=false with value 1 is the canonical
+        way to leave the next nextval() at 1."""
+        engine = _fake_pg_engine(max_id=None)
+        mig._reset_sequences(engine)
+
+        setvals = [sql for sql, _ in engine.calls if "setval" in sql]
+        assert setvals, "expected at least one setval call"
+        for sql in setvals:
+            assert "1, false" in sql, (
+                f"empty-table path must use is_called=false, got {sql}"
+            )
+            assert "0, true" not in sql, (
+                f"forbidden: setval(seq, 0, true) breaks on MINVALUE 1: {sql}"
+            )
+
+    def test_non_empty_table_emits_setval_max_id_true(self):
+        """Populated table: `setval(seq, MAX(id), true)` so the next
+        nextval() returns MAX(id)+1 and avoids PK collisions with the
+        rows we just copied over."""
+        engine = _fake_pg_engine(max_id=42)
+        mig._reset_sequences(engine)
+
+        setvals = [(sql, params) for sql, params in engine.calls if "setval" in sql]
+        assert setvals
+        for sql, params in setvals:
+            assert params == {"v": 42}
+            assert ", true" in sql
+
+    def test_noop_on_sqlite_dialect(self, dst_engine):
+        """Guard: on non-Postgres targets the function must return without
+        touching the connection — SQLite has no setval, and the test
+        suite itself relies on this short-circuit to stay live-PG-free."""
+        # Real SQLite engine; would explode if it tried to run setval.
+        mig._reset_sequences(dst_engine)
 
 
 # ── TestValidateUrls ────────────────────────────────────────────────────────
