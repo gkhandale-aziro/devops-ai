@@ -19,6 +19,7 @@ The tests are split into:
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -188,6 +189,30 @@ class TestBucketInitScript:
         dump. Explicit `mc anonymous set none` defeats a stray
         `set public` mistake by the next init re-run."""
         assert "mc anonymous set none" in init_sh
+
+    def test_mc_alias_set_has_error_handling(self, backup_sh, restore_sh, init_sh):
+        """All three scripts pipe mc errors to /dev/null so the operator
+        doesn't see credential strings in stdout. Without explicit
+        error-handling on `mc alias set`, an auth failure flows through
+        silently and the next mc call fails with a confusing "alias not
+        found" error. Every script must catch and surface the real cause.
+
+        The mc alias set command is always written on one logical line
+        that ends with a line-continuation `\\` followed by either
+        `|| fail "..."` (backup/restore pattern) or `|| { log error ...;
+        exit 1; }` (init pattern). The regex accepts either form and
+        rejects a bare `mc alias set ...` with nothing after."""
+        pattern = re.compile(
+            r"mc alias set[^\n]*(?:\\\s*\n[^\n]*)*\|\|\s*(?:fail|\{)",
+            re.MULTILINE,
+        )
+        for name, body in [("backup", backup_sh),
+                           ("restore-verify", restore_sh),
+                           ("minio-bucket-init", init_sh)]:
+            assert pattern.search(body), (
+                f"{name}.sh: mc alias set lacks explicit error handling "
+                "(expect `|| fail \"...\"` or `|| { log error ...; exit 1; }`)"
+            )
 
 
 # ── TestBackupDockerfile ────────────────────────────────────────────────────

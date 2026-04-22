@@ -44,8 +44,14 @@ log() {
 
 log info "starting bucket init"
 
+# `mc alias set` writes a config file — an invalid endpoint format or an
+# unreachable MinIO will surface here, not on the later mc mb / mc ilm
+# calls where the error would be less obvious. `set -eu` would abort
+# silently; match the explicit-error pattern in backup.sh / restore-
+# verify.sh so Loki gets a clear message.
 mc alias set "$MC_ALIAS" "$MINIO_ENDPOINT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" \
-  >/dev/null 2>&1
+  >/dev/null 2>&1 \
+  || { log error "mc alias set failed — check MINIO_ENDPOINT and credentials" "endpoint=${MINIO_ENDPOINT}"; exit 1; }
 
 # `mc mb --ignore-existing` is idempotent — succeeds whether the bucket
 # was just created or already existed.
