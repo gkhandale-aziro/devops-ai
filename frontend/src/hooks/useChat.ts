@@ -126,6 +126,26 @@ export function useTargetChat(targetId: string | null) {
       const tools: ToolCall[] = [];
       let approval: PendingApproval | undefined;
 
+      // Single update point: rebuilds the last assistant message from current
+      // stream state and always carries `approval` forward. Inline rewrites at
+      // each event used to drop `approval`, so any token or tool frame after
+      // await_approval made the Approve/Deny card vanish mid-stream.
+      const patchLastAssistant = (patch: Partial<ChatMsg> = {}) => {
+        setMessages((prev: ChatMsg[]) => {
+          if (prev.length === 0) return prev;
+          const next = [...prev];
+          next[next.length - 1] = {
+            role: "assistant",
+            content: full,
+            cmds: [...cmds],
+            tools: [...tools],
+            approval,
+            ...patch,
+          };
+          return next;
+        });
+      };
+
       for await (const evt of readSSE(res)) {
         if (timedController.signal.aborted) break;
         resetTimer(); // got data, reset stall timer
@@ -138,11 +158,7 @@ export function useTargetChat(targetId: string | null) {
         }
         if (typeof evt.t === "string") {
           full += evt.t;
-          setMessages((prev: ChatMsg[]) => {
-            const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools] };
-            return next;
-          });
+          patchLastAssistant();
         }
         if (typeof evt.cmd === "string") {
           cmds.push(evt.cmd);
@@ -150,11 +166,7 @@ export function useTargetChat(targetId: string | null) {
         if (evt.tool_start) {
           const tc = evt.tool_start as { cmd: string };
           tools.push({ cmd: tc.cmd, status: "running" });
-          setMessages((prev: ChatMsg[]) => {
-            const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools] };
-            return next;
-          });
+          patchLastAssistant();
         }
         if (evt.tool_end) {
           const tc = evt.tool_end as { cmd: string; output?: string; duration_ms?: number; status?: string };
@@ -167,45 +179,23 @@ export function useTargetChat(targetId: string | null) {
               status: (tc.status === "error" ? "error" : "done") as ToolCall["status"],
             };
           }
-          setMessages((prev: ChatMsg[]) => {
-            const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools] };
-            return next;
-          });
+          patchLastAssistant();
         }
         if (evt.await_approval) {
           const a = evt.await_approval as { approval_id: string; cmd: string };
           approval = { approvalId: a.approval_id, cmd: a.cmd };
-          setMessages((prev: ChatMsg[]) => {
-            const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools], approval };
-            return next;
-          });
+          patchLastAssistant();
         }
         if (evt.approval_decision) {
           const d = evt.approval_decision as { approval_id: string; decision: "approved" | "denied" | "timeout" };
           if (approval && approval.approvalId === d.approval_id) {
             approval = { ...approval, decision: d.decision };
-            setMessages((prev: ChatMsg[]) => {
-              const next = [...prev];
-              next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools], approval };
-              return next;
-            });
+            patchLastAssistant();
           }
         }
         if (Array.isArray(evt.suggestions)) {
           const suggestions = (evt.suggestions as unknown[]).filter((s): s is string => typeof s === "string");
-          setMessages((prev: ChatMsg[]) => {
-            const next = [...prev];
-            next[next.length - 1] = {
-              role: "assistant",
-              content: full,
-              cmds: [...cmds],
-              tools: [...tools],
-              suggestions,
-            };
-            return next;
-          });
+          patchLastAssistant({ suggestions });
         }
       }
       // Safety net: if stream ended but assistant message is still empty, show error

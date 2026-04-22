@@ -82,11 +82,13 @@ class _FakeSession:
     def trim(self, msgs): return msgs
 
 
-def _fresh_agent_module():
+def _fresh_agent_module(monkeypatch):
     # SEC-7: keep agent_tools ON for these tests — we're exercising the
-    # approval branch, not the kill switch.
-    os.environ.pop("AZIRO_FEATURE_AGENT_TOOLS", None)
-    os.environ["AZIRO_AGENT_RUN_TOKEN_CAP"] = "0"
+    # approval branch, not the kill switch. monkeypatch auto-restores the
+    # env on teardown so test order can't leak into the SEC-7 kill-switch
+    # tests that care whether AZIRO_FEATURE_AGENT_TOOLS is set.
+    monkeypatch.delenv("AZIRO_FEATURE_AGENT_TOOLS", raising=False)
+    monkeypatch.setenv("AZIRO_AGENT_RUN_TOKEN_CAP", "0")
     sys.modules.pop("config", None)
     sys.modules.pop("config.features", None)
     sys.modules.pop("agent", None)
@@ -188,7 +190,7 @@ class TestAgentApprovalFlow:
         return out
 
     def test_approval_allows_command_to_execute(self, monkeypatch):
-        Agent = _fresh_agent_module()
+        Agent = _fresh_agent_module(monkeypatch)
         llm = _DestructiveOnceLLM()
         execu = _RecordingExecutor()
         agent = Agent(llm, execu)
@@ -218,7 +220,7 @@ class TestAgentApprovalFlow:
         assert captured["cmd"] == "kubectl delete pod foo -n default"
 
     def test_denial_skips_command_execution(self, monkeypatch):
-        Agent = _fresh_agent_module()
+        Agent = _fresh_agent_module(monkeypatch)
         llm = _DestructiveOnceLLM()
         execu = _RejectingExecutor()  # will AssertionError if ever called
         agent = Agent(llm, execu)
@@ -237,7 +239,7 @@ class TestAgentApprovalFlow:
         assert not any(k == "cmd" for k, _ in events)
 
     def test_timeout_is_treated_as_denial(self, monkeypatch):
-        Agent = _fresh_agent_module()
+        Agent = _fresh_agent_module(monkeypatch)
         llm = _DestructiveOnceLLM()
         execu = _RejectingExecutor()
         agent = Agent(llm, execu)
@@ -260,7 +262,7 @@ class TestAgentApprovalFlow:
         # Regression guard: callers that don't pass on_confirm (CLI, older
         # tests) should see the original auto-proceed behaviour — no
         # await_approval events, command runs immediately.
-        Agent = _fresh_agent_module()
+        Agent = _fresh_agent_module(monkeypatch)
         llm = _DestructiveOnceLLM()
         execu = _RecordingExecutor()
         agent = Agent(llm, execu)

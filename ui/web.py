@@ -50,6 +50,7 @@ from auth import (
     AuthStore, auth_bp,
     init_login_manager, audit_after_request,
     AUTH_MODE_APIKEY, AUTH_MODE_SESSION, AUTH_MODE_BOTH,
+    ROLE_ADMIN,
 )
 from auth.middleware import get_auth_mode, session_auth_check, role_check, require_role
 from config.features import (
@@ -1372,12 +1373,32 @@ def _make_on_confirm():
 
 
 @app.route("/api/v1/chat/approvals/<approval_id>", methods=["POST"])
-@require_role("admin")
 def api_chat_approve(approval_id):
     """Deliver an approve/deny decision for a destructive tool call the
     agent is waiting on. Admin-only because destructive verbs are
     admin-gated everywhere else in the product; a viewer should never be
-    able to greenlight a ``kubectl delete`` via chat."""
+    able to greenlight a ``kubectl delete`` via chat.
+
+    Authorizes either:
+      * a session-backed admin (``session`` / ``both`` modes), or
+      * a valid API-key bearer (``apikey`` / ``both`` modes) — the bearer
+        is already validated upstream by ``_auth_middleware`` and is
+        treated as admin-equivalent everywhere else in the app.
+
+    Using ``@require_role("admin")`` here would 401 every API-key caller
+    because Flask-Login has no session user for them, even though the
+    request is fully authenticated."""
+    mode = get_auth_mode()
+    api_key_authed = (
+        mode in (AUTH_MODE_APIKEY, AUTH_MODE_BOTH)
+        and _check_auth() is None
+    )
+    if not api_key_authed:
+        if not current_user.is_authenticated:
+            return jsonify({"error": "authentication required"}), 401
+        if current_user.role != ROLE_ADMIN:
+            return jsonify({"error": "role 'admin' required"}), 403
+
     body = request.json or {}
     decision = body.get("decision")
     if decision not in ("approve", "deny"):
