@@ -737,6 +737,10 @@ class TestShellMetacharRejection:
         " `whoami`",
         " $(id)",
         "\nrm -rf /",
+        # Brace expansion widens a single-target delete into many —
+        # `kubectl delete pod web-{a,b,c}` touches three pods, not one.
+        "{,-backup}",
+        " {1..5}",
     ])
     def test_shell_metacharacters_rejected(self, app_with_execute, tail):
         web, c = app_with_execute

@@ -1883,8 +1883,10 @@ _EXECUTE_ALLOWED_VERBS = {
 # shell=True (required for AI-agent chained commands), so our only
 # defense for user input is to reject these up front. Single/double
 # quotes are fine — they're consumed by the shell's own tokenizer
-# without introducing new commands.
-_SHELL_METACHARS = frozenset(";&|<>`$()\n\r\\")
+# without introducing new commands. Braces are blocked because bash
+# brace expansion (`pod-{a,b}`, `{1..5}`) can widen a delete's blast
+# radius past the single pod the operator thinks they're touching.
+_SHELL_METACHARS = frozenset(";&|<>`$()\n\r\\{}")
 
 
 def _first_token_after_kubectl(cmd: str) -> str:
