@@ -57,9 +57,16 @@ class TestK6SmokeScript:
     def test_has_sse_scenario(self, smoke_js):
         """10 concurrent SSE streams is the OPS-3 spec in TODO.md.
         Dropping this scenario would leave 'usable under load' untested —
-        the UI is SSE-driven, not request/response."""
+        the UI is SSE-driven, not request/response. The VU count is
+        pinned because thresholds assume 10; bumping to 20 without
+        re-baselining p95 would mask real regressions."""
         assert "/api/v1/monitor/stream" in smoke_js
         assert re.search(r"executor:\s*'constant-vus'", smoke_js)
+        # Pin the SSE concurrency value so a future refactor can't quietly
+        # drop it to 1 (which would still "pass" without actually testing
+        # concurrent connections).
+        assert re.search(r"sse:\s*\{[^}]*vus:\s*10\b", smoke_js, re.DOTALL), \
+            "SSE scenario must declare vus: 10 (OPS-3 spec)"
 
     def test_probes_use_ramping_vus(self, smoke_js):
         """ramping-vus avoids the thundering-herd artifact you get from
@@ -103,6 +110,38 @@ class TestK6SmokeScript:
             r"'readyz_200_rate':\s*\[\s*'rate>=0\.99'\s*\]",
             smoke_js,
         )
+
+    def test_has_metrics_threshold(self, smoke_js):
+        """Prometheus scraping /metrics is how every other SLO is
+        measured — if /metrics drops to 503 under load, we lose
+        observability exactly when we need it most. Any non-200 on
+        /metrics must fail the run."""
+        assert re.search(
+            r"'metrics_200_rate':\s*\[\s*'rate>=0\.999'\s*\]",
+            smoke_js,
+        )
+
+    def test_sse_hold_has_threshold(self, smoke_js):
+        """Without a Rate-backed threshold, the SSE scenario's only
+        signal was a plain check() — which doesn't fail the run. A
+        regression that silently cut SSE off at 30s would have slipped.
+        The sse_held_rate threshold makes the scenario non-zero-exit."""
+        # The Rate must exist…
+        assert re.search(
+            r"new Rate\('sse_held_rate'\)",
+            smoke_js,
+        ), "sse_held_rate Rate metric missing"
+        # …and be wired to a threshold that fails the run on any early
+        # disconnect (rate>=1 means every recorded hold was long enough).
+        assert re.search(
+            r"'sse_held_rate':\s*\[\s*'rate>=1'\s*\]",
+            smoke_js,
+        ), "sse_held_rate threshold missing or wrong predicate"
+        # …and populated by the SSE scenario using SSE_HOLD_S.
+        assert re.search(
+            r"sseHeldOk\.add\(",
+            smoke_js,
+        ), "sse_held_rate Rate must be fed via sseHeldOk.add()"
 
     def test_events_threshold_gated_on_api_key(self, smoke_js):
         """Without AZIRO_API_KEY every /events request is 401, which

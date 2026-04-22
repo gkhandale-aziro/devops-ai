@@ -47,6 +47,11 @@ const healthzOk = new Rate('healthz_200_rate');
 const readyzOk  = new Rate('readyz_200_rate');
 const metricsOk = new Rate('metrics_200_rate');
 const eventsOk  = new Rate('events_200_rate');
+// sseHeldOk backs the sse_held_rate threshold — without a Rate the SSE
+// scenario's only signal was a plain `check()` which doesn't fail the
+// run, so a regression that silently cut SSE off at 30s would have
+// passed. A Rate wired into thresholds makes that non-zero-exit.
+const sseHeldOk = new Rate('sse_held_rate');
 
 // ── Scenarios + thresholds ─────────────────────────────────────────────────
 
@@ -85,6 +90,10 @@ export const options = {
     'readyz_200_rate':                  ['rate>=0.99'],
     // /metrics is a Prom scrape endpoint; must always return 200.
     'metrics_200_rate':                 ['rate>=0.999'],
+    // SSE: every VU must hold its connection for ≥ 90% of SSE_HOLD_S.
+    // Any VU that disconnected early (server timeout, worker restart,
+    // gunicorn SIGTERM) flips this Rate and the run fails.
+    'sse_held_rate':                    ['rate>=1'],
     // /api/v1/events is authed — only assert green if API_KEY was provided.
     // Without the key every request is 401, so we'd fail the run for a
     // config reason, not a real regression. Guard with __ENV.
@@ -146,7 +155,11 @@ export function sse() {
   );
   // We don't assert 200 here — without auth the server returns 401 or
   // 302 and that's legit config-dependent behavior. What we assert is
-  // that k6's socket stayed open long enough to count: the `http_req_duration`
-  // for sse should be ≥ SSE_HOLD_S * 0.95.
-  check(res, { 'sse held ≥90% of target': (r) => r.timings.duration >= SSE_HOLD_S * 900 });
+  // that k6's socket stayed open long enough to count: the HTTP-level
+  // duration (in ms) should be ≥ 90% of SSE_HOLD_S * 1000. Compute once,
+  // feed both the threshold-backed Rate and the human-readable check()
+  // so failures show in both the summary and the exit code.
+  const heldLongEnough = res.timings.duration >= SSE_HOLD_S * 900;
+  sseHeldOk.add(heldLongEnough);
+  check(res, { 'sse held ≥90% of target': () => heldLongEnough });
 }
