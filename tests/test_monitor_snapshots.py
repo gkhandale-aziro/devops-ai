@@ -136,6 +136,29 @@ class TestCaptureSnapshots:
         assert "describe" not in result
         assert {"logs", "logs_previous", "events"}.issubset(result.keys())
 
+    def test_strips_resource_prefix_from_object(self, store):
+        """Kubectl `get events` emits objects as `pod/crashloop`, but
+        `kubectl describe pod pod/crashloop` errors — kubectl refuses the
+        redundant resource type. If the prefix isn't stripped, every
+        command fails, the silent try/except swallows it, and §3.9 is
+        empty even with the handler wired up (exactly the regression
+        that slipped past the first fix for this bug)."""
+        eid = _seed_event(store)
+        seen = []
+
+        def capturing(cmd):
+            seen.append(cmd)
+            return "ok"
+
+        capture_snapshots(capturing, store, "pod/crashloop", "demo", eid)
+
+        describe_cmds = [c for c in seen if "describe" in c]
+        assert describe_cmds, "describe command never issued"
+        # Must NOT contain the duplicate resource form kubectl rejects.
+        assert "pod pod/" not in describe_cmds[0], (
+            f"object prefix not stripped — kubectl would reject: {describe_cmds[0]}"
+        )
+
     def test_no_store_write_without_event_id(self, store):
         """event_id=None happens when the caller wants a dry-capture
         (e.g. debug tooling) — still return the dict, but don't write.

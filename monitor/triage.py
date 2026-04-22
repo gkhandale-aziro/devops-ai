@@ -43,10 +43,14 @@ def capture_snapshots(executor_fn, store, obj, ns, event_id):
         return {}
 
     ns_flag = f"-n {ns}" if ns and ns != "default" else f"-n {ns}"
+    # `object` arrives as either "pod/crashloop" (kubectl-events form) or
+    # "crashloop" (pod-poll form). kubectl rejects `describe pod pod/x` so
+    # normalise to the bare name and let the command supply the resource.
+    pod = obj.split("/", 1)[-1] if "/" in obj else obj
     commands = {
-        "describe":      f"kubectl describe pod {obj} {ns_flag} 2>/dev/null",
-        "logs":          f"kubectl logs {obj} {ns_flag} --tail=150 2>/dev/null",
-        "logs_previous": f"kubectl logs {obj} {ns_flag} --previous --tail=150 2>/dev/null || echo '[no previous container]'",
+        "describe":      f"kubectl describe pod {pod} {ns_flag} 2>/dev/null",
+        "logs":          f"kubectl logs {pod} {ns_flag} --tail=150 2>/dev/null",
+        "logs_previous": f"kubectl logs {pod} {ns_flag} --previous --tail=150 2>/dev/null || echo '[no previous container]'",
         "events":        f"kubectl get events {ns_flag} --sort-by=.lastTimestamp --no-headers 2>/dev/null | tail -30",
     }
 
