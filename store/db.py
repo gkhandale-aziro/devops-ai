@@ -220,6 +220,68 @@ class EventStore:
             log.warning("store.purge_old_failed", extra=_err_meta(e))
         return int(eid)
 
+    def find_or_create_event(
+        self,
+        *,
+        target_id:   str,
+        target_name: str,
+        obj:         str,
+        namespace:   str,
+        reason:      str,
+        source:      str = "user-initiated",
+        level:       str = "SEV2",
+        message:     str = "",
+    ) -> dict:
+        """Return the newest non-closed event matching (target_id, obj, namespace),
+        or create one. Used by the Dashboard-initiated Resolve flow so user
+        fixes converge with monitor-caught incidents in a single audit row.
+
+        "non-closed" means status ∈ {open, acknowledged}: an acknowledged
+        event that the user is actively fixing should collect the execution
+        and verification snapshots on that same row, not spawn a parallel
+        one. A resolved event is deliberately excluded — re-resolving an
+        already-resolved row would overwrite the existing success trail.
+        """
+        with self._engine.begin() as conn:
+            eid = conn.execute(
+                text("""SELECT id FROM events
+                         WHERE target_id = :tid
+                           AND object    = :obj
+                           AND namespace = :ns
+                           AND status IN ('open', 'acknowledged')
+                         ORDER BY id DESC LIMIT 1"""),
+                {"tid": target_id, "obj": obj, "ns": namespace},
+            ).scalar()
+        if eid is not None:
+            existing = self.get_event(int(eid))
+            if existing is not None:
+                return existing
+        # No matching open event — create one so the resolve action still
+        # produces a durable audit trail with execution + verification
+        # snapshots attached.
+        new_id = self.save_event(
+            {
+                "source":    source,
+                "reason":    reason,
+                "object":    obj,
+                "namespace": namespace,
+                "message":   message,
+            },
+            level=level,
+            target_id=target_id,
+            target_name=target_name,
+        )
+        created = self.get_event(new_id)
+        # save_event always persists, so get_event should always return a
+        # row here; the fallback is defensive against a test harness that
+        # monkey-patches one but not the other.
+        return created or {
+            "id": new_id, "target_id": target_id, "target_name": target_name,
+            "object": obj, "namespace": namespace, "reason": reason,
+            "source": source, "level": level, "message": message,
+            "status": "open", "snapshots": [], "analyses": [],
+        }
+
     def update_event_status(self, event_id: int, status: str) -> bool:
         """Update event status: open | acknowledged | resolved.
 
