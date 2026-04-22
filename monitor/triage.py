@@ -34,6 +34,35 @@ _SEV1_REASONS = {
 }
 
 
+def capture_snapshots(executor_fn, store, obj, ns, event_id):
+    """Run kubectl {describe,logs,logs --previous,get events} and persist
+    each non-empty output as a snapshot row keyed on `event_id`. The web
+    monitor reaches for this directly (no Triage instance) so the event
+    detail pane has the before-state even when triage is classify-only."""
+    if not executor_fn:
+        return {}
+
+    ns_flag = f"-n {ns}" if ns and ns != "default" else f"-n {ns}"
+    commands = {
+        "describe":      f"kubectl describe pod {obj} {ns_flag} 2>/dev/null",
+        "logs":          f"kubectl logs {obj} {ns_flag} --tail=150 2>/dev/null",
+        "logs_previous": f"kubectl logs {obj} {ns_flag} --previous --tail=150 2>/dev/null || echo '[no previous container]'",
+        "events":        f"kubectl get events {ns_flag} --sort-by=.lastTimestamp --no-headers 2>/dev/null | tail -30",
+    }
+
+    results = {}
+    for kind, cmd in commands.items():
+        try:
+            out = executor_fn(cmd)
+            if out and out.strip():
+                results[kind] = out
+                if store and event_id:
+                    store.save_snapshot(event_id, kind, out)
+        except Exception:
+            pass
+    return results
+
+
 class Triage:
     """
     Classifies events, captures snapshots immediately, stores everything,
@@ -165,33 +194,7 @@ class Triage:
     # ── snapshot capture ─────────────────────────────────────────────────────
 
     def _capture_snapshots(self, obj, ns, event_id):
-        """
-        Run kubectl commands immediately and store results.
-        Called the moment an event fires — captures logs before pod restarts.
-        Returns dict of {kind: content}.
-        """
-        if not self._exec:
-            return {}
-
-        ns_flag = f"-n {ns}" if ns and ns != "default" else f"-n {ns}"
-        commands = {
-            "describe":      f"kubectl describe pod {obj} {ns_flag} 2>/dev/null",
-            "logs":          f"kubectl logs {obj} {ns_flag} --tail=150 2>/dev/null",
-            "logs_previous": f"kubectl logs {obj} {ns_flag} --previous --tail=150 2>/dev/null || echo '[no previous container]'",
-            "events":        f"kubectl get events {ns_flag} --sort-by=.lastTimestamp --no-headers 2>/dev/null | tail -30",
-        }
-
-        results = {}
-        for kind, cmd in commands.items():
-            try:
-                out = self._exec(cmd)
-                if out and out.strip():
-                    results[kind] = out
-                    if self._store and event_id:
-                        self._store.save_snapshot(event_id, kind, out)
-            except Exception:
-                pass
-        return results
+        return capture_snapshots(self._exec, self._store, obj, ns, event_id)
 
     # ── history context ───────────────────────────────────────────────────────
 

@@ -1,2 +1,2 @@
 from .watcher import EventWatcher
-from .triage  import Triage
+from .triage  import Triage, capture_snapshots

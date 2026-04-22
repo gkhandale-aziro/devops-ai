@@ -32,7 +32,7 @@ from sessions  import SessionManager
 from targets   import TargetManager
 from agent     import needs_tools, AgentSession, Agent
 from agent.manager import _trim, MAX_HISTORY
-from monitor   import EventWatcher, Triage
+from monitor   import EventWatcher, Triage, capture_snapshots
 from store     import EventStore
 from store.metrics import MetricCollector
 from sandbox.redact import StreamRedactor
@@ -1614,9 +1614,27 @@ def api_monitor_start(tid):
             existing.stop()
         watcher = EventWatcher(executor)
         tname = target.get("name", "")
-        watcher.on_event(lambda e, _tid=tid, _tn=tname: _web_triage_handle(e, target_id=_tid, target_name=_tn))
-        # only persist Warning events — Normal events are informational noise
-        watcher.on_event(lambda e, _tid=tid, _tn=tname: _store.save_event(e, _web_classify(e), target_id=_tid, target_name=_tn) if e.get("type") == "Warning" else None)
+
+        # Single handler so event_id from save_event can flow into
+        # capture_snapshots — splitting them is what left §3.9 of the v1.0
+        # checklist (snapshot history on event detail) silently empty.
+        def _handle(e, _tid=tid, _tn=tname, _exec=executor):
+            _web_triage_handle(e, target_id=_tid, target_name=_tn)
+            if e.get("type") != "Warning":
+                return
+            level = _web_classify(e)
+            eid = _store.save_event(e, level, target_id=_tid, target_name=_tn)
+            if level in ("SEV1", "SEV2") and eid:
+                # Run kubectl capture off-thread — logs/describe can each take
+                # a second or two and the watcher loop must not block.
+                threading.Thread(
+                    target=capture_snapshots,
+                    args=(_exec, _store, e.get("object", ""),
+                          e.get("namespace", "default"), eid),
+                    daemon=True,
+                ).start()
+
+        watcher.on_event(_handle)
         watcher.watch()
         _web_watchers[tid] = watcher
         _metric_collector.start(tid, target, executor)
