@@ -77,7 +77,9 @@ If k6 exits non-zero, the summary has the failing threshold in red. The two fail
 | `readyz_200_rate < 0.99` | DB connection pool exhausted | `docker compose logs postgres`; check `max_connections` |
 | `http_req_duration{name:events}` p95 > 400 ms | DB not analyzed, or events table fragmented | `docker compose exec postgres psql -U aziro -c 'ANALYZE events;'` |
 | `metrics_200_rate < 0.999` | Multiprocess Prom collector contention | `observability/metrics.py`; verify `PROMETHEUS_MULTIPROC_DIR` env |
-| `sse held ≥90%` check failing | gunicorn timeout too short or worker class wrong | `gunicorn.conf.py` — must be gevent with `--timeout 0` on SSE path |
+| `sse_held_rate < 1` (aka "sse held ≥90%" check) | gunicorn timeout too short or worker class wrong | `gunicorn.conf.py` — must be gevent with `--timeout 0` on SSE path |
+| `http_req_failed{scenario:probes}` rate ≥ 0.01 | Server is returning 5xx under load — LLM fan-out, DB pool exhaust, rate-limiter misconfig | `docker compose logs aziro`; inspect error distribution by endpoint tag |
+| `events_200_rate < 0.99` (only when `AZIRO_API_KEY` set) | Auth middleware regression, or rate-limit cap hit by the smoke itself | `docker compose logs aziro` for 401/429; check `AZIRO_RATELIMIT_*` in .env |
 
 ---
 

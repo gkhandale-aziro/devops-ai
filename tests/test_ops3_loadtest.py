@@ -179,14 +179,23 @@ class TestLoadTestReadme:
         assert "SSE_HOLD_SECONDS"   in loadtest_readme
 
     def test_has_troubleshooting_table(self, loadtest_readme):
-        """Each threshold should map to a first-action — otherwise
-        'healthz_200_rate breached' is just a scary string."""
+        """Each threshold the smoke can breach must map to a first-action
+        in the runbook — otherwise 'sse_held_rate breached' is just a
+        scary string at 2am. This test keeps README.md and smoke.js
+        honest: if a new threshold is added, the runbook row has to go
+        with it."""
         assert "Troubleshooting" in loadtest_readme or "Likely cause" in loadtest_readme
-        # Each threshold that can fail should be named in the symptoms column.
+        # Every threshold named in smoke.js must have a symptom row.
+        # events_200_rate is conditional (only activates when AZIRO_API_KEY
+        # is set), but it CAN fail, so the runbook must still document it.
         for needle in (
             "healthz_200_rate",
             "readyz_200_rate",
             "http_req_duration{name:events}",
+            "metrics_200_rate",
+            "sse_held_rate",
+            "http_req_failed{scenario:probes}",
+            "events_200_rate",
         ):
             assert needle in loadtest_readme, f"runbook missing symptom: {needle}"
 
