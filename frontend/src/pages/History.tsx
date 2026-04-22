@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from "react";
-import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight, Clock, Server, Layers } from "lucide-react";
+import { X, Sparkles, ArrowRight, ChevronDown, ChevronRight, Clock, Server, Layers, Play } from "lucide-react";
 import { Breadcrumb } from "../components/ui/breadcrumb";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { StoredEvent, TriageLevel, Snapshot, Analysis, IncidentStatus } from "../types";
@@ -7,6 +7,8 @@ import { LEVEL_COLORS, LEVEL_LABELS } from "../types";
 import { api } from "../api/client";
 import { LevelBadge }   from "../components/LevelBadge";
 import { AIDrawer }      from "../components/AIDrawer";
+import { ExecuteAndVerifyModal } from "../components/ExecuteAndVerifyModal";
+import { useAuth } from "../auth/AuthContext";
 import { skeletonStyle } from "../utils/animations";
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACE } from "../utils/theme";
 import { DataTable }     from "@/components/ui/data-table";
@@ -202,6 +204,11 @@ export function History() {
   const [aiDrawerOpen, setAiDrawerOpen]   = useState(false);
   const [aiContext,    setAiContext]       = useState("");
   const [aiTitle,      setAiTitle]        = useState("");
+
+  // Execute & Verify modal — admin-only, gated on analysis.remediation
+  const { canWrite } = useAuth();
+  const [executeOpen,    setExecuteOpen]    = useState(false);
+  const [executeCommand, setExecuteCommand] = useState("");
 
   // Expanded workload groups
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -707,13 +714,14 @@ export function History() {
                     <Sparkles size={14} /> Ask AI to Explain
                   </button>
 
-                  {/* snapshots */}
-                  {(["describe", "logs", "logs_previous", "events"] as Snapshot["kind"][]).map(kind => {
+                  {/* snapshots — describe/logs from triage, execution/verification from Execute flow */}
+                  {(["describe", "logs", "logs_previous", "events", "execution", "verification"] as Snapshot["kind"][]).map(kind => {
                     const snap = detail.snapshots?.find(s => s.kind === kind);
                     if (!snap) return null;
                     const labels: Record<string, string> = {
                       describe: "kubectl describe", logs: "kubectl logs",
                       logs_previous: "kubectl logs --previous", events: "Cluster events",
+                      execution: "Execution (kubectl run)", verification: "Verification (health probe)",
                     };
                     return (
                       <CollapsibleSection key={kind} label={labels[kind]}>
@@ -729,6 +737,24 @@ export function History() {
                       <div style={{ background: "var(--c-bg-raised)", border: "1px solid var(--c-sev2-bg)", borderRadius: RADIUS.md, padding: SPACE.md, fontSize: FONT_SIZE.sm, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--c-sev2)" }}>
                         {a.remediation}
                       </div>
+                      {canWrite && extractKubectl(a.remediation) && detail.status !== "resolved" && (
+                        <button
+                          onClick={() => {
+                            setExecuteCommand(extractKubectl(a.remediation) ?? "");
+                            setExecuteOpen(true);
+                          }}
+                          style={{
+                            marginTop: 10, width: "100%", padding: "10px 14px",
+                            background: "var(--c-accent)", border: "none",
+                            color: "var(--c-accent-fg, #fff)",
+                            borderRadius: RADIUS.lg, fontSize: FONT_SIZE.md,
+                            fontWeight: FONT_WEIGHT.semibold, cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                          }}
+                        >
+                          <Play size={14} /> Execute &amp; Verify
+                        </button>
+                      )}
                     </Section>
                   ) : null)}
 
@@ -750,8 +776,38 @@ export function History() {
       {/* AI Drawer */}
       <AIDrawer open={aiDrawerOpen} context={aiContext} title={aiTitle} onClose={() => setAiDrawerOpen(false)} />
 
+      {/* Execute & Verify — refetch detail on completion so the execution /
+          verification snapshots render in the drawer alongside describe/logs. */}
+      {detail && (
+        <ExecuteAndVerifyModal
+          open={executeOpen}
+          mode={{ kind: "event", event: detail }}
+          initialCommand={executeCommand}
+          onClose={() => setExecuteOpen(false)}
+          onCompleted={() => { openDetail(detail.id); }}
+        />
+      )}
+
     </div>
   );
+}
+
+/**
+ * Extract the first `kubectl …` command from a free-text remediation string.
+ * Mirrors monitor/verify.py's parse_proposed_command — the backend validates
+ * again, this is only for pre-filling the modal so the operator doesn't have
+ * to type the command themselves.
+ */
+function extractKubectl(remediation: string): string | null {
+  if (!remediation) return null;
+  for (const raw of remediation.split("\n")) {
+    let line = raw.trim().replace(/^`+/, "").replace(/`+$/, "").trim();
+    for (const prefix of ["$ ", "# ", "> "]) {
+      if (line.startsWith(prefix)) line = line.slice(prefix.length);
+    }
+    if (line.startsWith("kubectl ")) return line;
+  }
+  return null;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────

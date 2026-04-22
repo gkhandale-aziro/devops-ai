@@ -19,13 +19,16 @@ import type { ColumnDef } from "@tanstack/react-table";
 import type { Target, PodStatus } from "../../types";
 import { api, readSSE } from "../../api/client";
 import { parseKubectl } from "../../utils/parseKubectl";
-import { Sparkles, Play, FileText, Clipboard, Check, X } from "lucide-react";
+import { Sparkles, Play, FileText, Clipboard, Check, X, Wrench } from "lucide-react";
 import { Pre, LoadingSpinner, PodSummaryBar } from "./primitives";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT, Z_INDEX } from "../../utils/theme";
 import { DataTable, type RowAction } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Markdown } from "../../components/Markdown";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useAuth } from "../../auth/AuthContext";
+import { ExecuteAndVerifyModal } from "../../components/ExecuteAndVerifyModal";
+import { suggestRemediation } from "../../utils/remediation";
 
 // ── Node table ──────────────────────────────────────────────────────────────
 
@@ -317,6 +320,7 @@ function buildPodColumns(opts: {
  *                     button that streams container output to the LogStream tray.
  */
 export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: Target; onStreamLogs?: (pod: string, ns: string) => void }) {
+  const { canWrite } = useAuth();
   const [resource,     setResource]     = useState<{ kind: string; name: string; ns: string; data: Record<string, string> } | null>(null);
   const [loading,      setLoading]      = useState(false);
   const [nsFilter,     setNsFilter]     = useState("");
@@ -325,6 +329,9 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
     try { return JSON.parse(sessionStorage.getItem(`ai-badges-${target.id}`) || "{}"); } catch { return {}; }
   });
   const [badgeLoading, setBadgeLoading] = useState<Record<string, boolean>>({});
+  const [resolveCtx,   setResolveCtx]   = useState<{
+    object: string; namespace: string; reason: string; command: string;
+  } | null>(null);
 
   const deferredSearch = useDeferredValue(search);
 
@@ -433,6 +440,17 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
     [aiBadges, badgeLoading, dismissBadge]
   );
 
+  const canResolveHere = canWrite && target.type === "kubernetes";
+
+  const openResolve = useCallback((row: PodRowData) => {
+    setResolveCtx({
+      object:    row.name,
+      namespace: row.ns,
+      reason:    row.status,
+      command:   suggestRemediation(row.status, row.name, row.ns),
+    });
+  }, []);
+
   /** Kebab menu actions per pod row. */
   const podRowActions = useCallback((row: PodRowData): RowAction[] => {
     const actions: RowAction[] = [
@@ -446,8 +464,15 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
       const label = row.isBad ? "AI Diagnose" : "AI Analyze";
       actions.push({ label, icon: <Sparkles size={14} />, onClick: () => fetchAIBadge(row.name, row.ns, row.status) });
     }
+    if (canResolveHere && row.isBad) {
+      actions.push({
+        label:   "Resolve & Verify",
+        icon:    <Wrench size={14} />,
+        onClick: () => openResolve(row),
+      });
+    }
     return actions;
-  }, [openResource, onStreamLogs, aiBadges, badgeLoading, fetchAIBadge]);
+  }, [openResource, onStreamLogs, aiBadges, badgeLoading, fetchAIBadge, canResolveHere, openResolve]);
 
   if (!raw || raw.includes("ERROR") || raw.includes("not found")) {
     return <div style={{ padding: SPACE.xl, color: C.text.muted, fontSize: FONT_SIZE.md }}>kubectl not available or no pods found.</div>;
@@ -495,6 +520,22 @@ export function PodTable({ raw, target, onStreamLogs }: { raw: string; target: T
           loading={loading}
           targetId={target.id}
           onClose={() => setResource(null)}
+        />
+      )}
+
+      {resolveCtx && (
+        <ExecuteAndVerifyModal
+          open
+          mode={{
+            kind:       "target",
+            targetId:   target.id,
+            targetName: target.name,
+            object:     resolveCtx.object,
+            namespace:  resolveCtx.namespace,
+            reason:     resolveCtx.reason,
+          }}
+          initialCommand={resolveCtx.command}
+          onClose={() => setResolveCtx(null)}
         />
       )}
     </div>

@@ -9,8 +9,29 @@ vi.mock("../api/client", () => ({
       list: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue({}),
       updateStatus: vi.fn().mockResolvedValue({}),
+      execute: vi.fn().mockResolvedValue({}),
     },
   },
+}));
+
+// History uses useAuth() to gate the admin-only Execute & Verify button.
+// Default the stub to viewer-scope so legacy tests (which don't know about
+// that button) keep observing exactly what they did before.
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({
+    user:            null,
+    loading:         false,
+    isAuthenticated: false,
+    canWrite:        false,
+    login:           vi.fn(),
+    logout:          vi.fn(),
+    refresh:         vi.fn(),
+  }),
+}));
+
+vi.mock("../components/ExecuteAndVerifyModal", () => ({
+  ExecuteAndVerifyModal: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="execute-verify-modal" /> : null,
 }));
 
 vi.mock("../components/LevelBadge", () => ({

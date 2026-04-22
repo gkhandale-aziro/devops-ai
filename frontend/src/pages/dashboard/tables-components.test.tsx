@@ -17,6 +17,17 @@ vi.mock("../../api/client", () => ({
   readSSE: (...args: unknown[]) => mockReadSSE(...args),
 }));
 
+// PodTable now calls useAuth() to gate the "Resolve & Verify" kebab action.
+// Stub to viewer-scope here; the admin-gated action is covered in its own
+// dedicated test file (ExecuteAndVerifyModal.test.tsx + PodTable resolve test).
+vi.mock("../../auth/AuthContext", () => ({
+  useAuth: () => ({ user: null, canWrite: false, isLoggedIn: false }),
+}));
+
+vi.mock("../../components/ExecuteAndVerifyModal", () => ({
+  ExecuteAndVerifyModal: () => null,
+}));
+
 import { NodeTable, PodTable, ResourceModal, LogsTab } from "./tables";
 import type { Target } from "../../types";
 
