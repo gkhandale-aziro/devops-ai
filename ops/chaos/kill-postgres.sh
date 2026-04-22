@@ -41,8 +41,13 @@ say() { printf '[chaos] %s\n' "$*"; }
 
 probe() {
   # $1 = path, $2 = expected status. Returns 0 on match, non-zero otherwise.
+  # --connect-timeout + --max-time bound the call so a hung socket can't
+  # stall the drill — a real LB probe would time out in single-digit
+  # seconds, so the drill should too.
   _path="$1"; _expected="$2"
-  _code=$(curl -s -o /tmp/chaos-body.$$ -w '%{http_code}' "${AZIRO_URL}${_path}" || echo "000")
+  _code=$(curl -s --connect-timeout 3 --max-time 5 \
+    -o /tmp/chaos-body.$$ -w '%{http_code}' \
+    "${AZIRO_URL}${_path}" || echo "000")
   if [ "$_code" = "$_expected" ]; then
     say "  ${_path} → ${_code} (expected ${_expected}) ✓"
     rm -f /tmp/chaos-body.$$
@@ -57,7 +62,9 @@ probe() {
 wait_for_readyz_ok() {
   _i=0
   while [ "$_i" -lt "$WAIT_SECONDS" ]; do
-    _code=$(curl -s -o /dev/null -w '%{http_code}' "${AZIRO_URL}/api/v1/readyz" || echo "000")
+    _code=$(curl -s --connect-timeout 2 --max-time 3 \
+      -o /dev/null -w '%{http_code}' \
+      "${AZIRO_URL}/api/v1/readyz" || echo "000")
     if [ "$_code" = "200" ]; then
       say "  readyz recovered after ${_i}s"
       return 0

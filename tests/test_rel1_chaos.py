@@ -101,6 +101,25 @@ class TestKillPostgresScript:
         assert 'WAIT_SECONDS="${WAIT_SECONDS:-30}"' in kill_sh
         assert "wait_for_readyz_ok" in kill_sh
 
+    def test_all_curl_calls_have_explicit_timeouts(self, kill_sh):
+        """Without --max-time, a hung socket stalls the drill for curl's
+        default (~120s), which blurs pass/fail. Every curl invocation
+        must bound both connect and overall time."""
+        # Find every `curl ` invocation (treat backslash-newlines as the
+        # same logical call) and assert each has both bounds.
+        curl_calls = re.findall(
+            r"curl\s[^\n]*(?:\\\s*\n[^\n]*)*",
+            kill_sh,
+        )
+        assert curl_calls, "expected at least one curl invocation"
+        for call in curl_calls:
+            assert "--connect-timeout" in call, (
+                f"curl missing --connect-timeout: {call[:120]}"
+            )
+            assert "--max-time" in call, (
+                f"curl missing --max-time: {call[:120]}"
+            )
+
 
 # ── TestRunBackupDrillScript ────────────────────────────────────────────────
 
@@ -138,6 +157,25 @@ class TestRunBackupDrillScript:
         Just Works regardless of project-name munging."""
         assert "docker compose exec" in drill_sh
         assert re.search(r"^\s*docker exec\b", drill_sh, re.MULTILINE) is None
+
+    def test_mc_ls_pipelines_use_pipefail(self, drill_sh):
+        """`mc ls | wc -l` without pipefail swallows mc's exit code —
+        a failed listing (wrong alias, unreachable MinIO) then looks
+        identical to an empty bucket, which can mask a real outage.
+        Every `mc ls` pipeline inside a `sh -c` must set pipefail first."""
+        # Find every `sh -c '...mc ls...'` and assert pipefail is set
+        # inside. Using a non-greedy match so multiple sh -c blocks are
+        # checked independently.
+        sh_c_blocks = re.findall(
+            r"sh -c\s+\\?\s*\n?\s*'([^']*mc ls[^']*)'",
+            drill_sh,
+            re.MULTILINE,
+        )
+        assert sh_c_blocks, "expected at least one `sh -c '…mc ls…'` invocation"
+        for block in sh_c_blocks:
+            assert "set -o pipefail" in block, (
+                f"mc ls pipeline missing `set -o pipefail`: {block[:120]}"
+            )
 
 
 # ── TestChaosRunbook ────────────────────────────────────────────────────────

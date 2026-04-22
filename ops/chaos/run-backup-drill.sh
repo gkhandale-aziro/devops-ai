@@ -34,8 +34,16 @@ say "step 1/4 — snapshot MinIO object count before backup"
 # `mc ls --recursive` against the bucket; the count line is what we compare.
 # Running inside the sidecar so we reuse its `mc` alias + creds rather than
 # plumbing them out to the host shell.
+#
+# `set -o pipefail` is critical here: without it, `mc ls | wc -l` returns
+# wc's exit code (always 0 on a valid stream, even an empty one from a
+# failed mc). A misconfigured alias or unreachable MinIO would then look
+# like "0 objects" — which compared to post-backup "0 objects" would
+# trigger a false-negative drill failure OR worse, mask a real backup
+# outage. Alpine's ash supports pipefail.
 _before=$(docker compose exec -T "$BACKUP_SVC" sh -c \
-  'mc ls --recursive aziro/aziro-backups 2>/dev/null | wc -l' | tr -d '[:space:]')
+  'set -o pipefail; mc ls --recursive aziro/aziro-backups | wc -l' \
+  | tr -d '[:space:]')
 say "  objects before: ${_before}"
 
 say "step 2/4 — triggering backup.sh"
@@ -46,7 +54,8 @@ say "  backup.sh completed in $((_t1 - _t0))s"
 
 say "step 3/4 — verifying object count incremented"
 _after=$(docker compose exec -T "$BACKUP_SVC" sh -c \
-  'mc ls --recursive aziro/aziro-backups 2>/dev/null | wc -l' | tr -d '[:space:]')
+  'set -o pipefail; mc ls --recursive aziro/aziro-backups | wc -l' \
+  | tr -d '[:space:]')
 say "  objects after: ${_after}"
 if [ "$_after" -le "$_before" ]; then
   say "  ✗ object count did not increase (${_before} → ${_after})"

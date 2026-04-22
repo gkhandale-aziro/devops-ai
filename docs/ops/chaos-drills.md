@@ -37,7 +37,8 @@ Individual `/api/*` endpoints that hit the store will 500 under PG-down. That's 
 ```
 
 Pass looks like:
-```
+
+```text
 [chaos] === REL-1 chaos drill: kill-postgres ===
 [chaos] step 1/5 — baseline probes (both should be 200)
 [chaos]   /api/v1/healthz → 200 (expected 200) ✓
@@ -92,7 +93,8 @@ This is a manual trigger of the same two scripts that run on Ofelia at 02:00 / 0
 ```
 
 Pass looks like:
-```
+
+```text
 [drill] === REL-1 chaos drill: run-backup-drill ===
 [drill] step 1/4 — snapshot MinIO object count before backup
 [drill]   objects before: 3
@@ -114,7 +116,7 @@ The drill writes a real dump to the real `aziro-backups` bucket. Running it repe
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `mc alias set failed` | Wrong `MINIO_ROOT_USER`/`PASSWORD` in `.env` | Rotate credentials (see `docs/ops/backup-restore.md#credential-rotation`) |
+| `mc alias set failed` | Wrong `MINIO_ROOT_USER`/`PASSWORD` in `.env` | Rotate credentials (see [backup-restore.md](./backup-restore.md#rotating-minio-credentials)) |
 | `pg_dump: error: connection …` | `AZIRO_DB_URL` wrong inside the backup container | Check `docker compose config backup` |
 | Object count didn't increase | `backup.sh` exited 0 without writing — very unlikely (it has `set -eu`). Check `docker compose logs backup` | File a bug |
 | `restore-verify` fails on row count | Live DB row count dropped between dump and verify — rare but possible if a delete ran in that 30-min window | Re-run; if persistent, investigate the deletion path |
