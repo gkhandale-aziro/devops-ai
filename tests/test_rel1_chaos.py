@@ -147,9 +147,21 @@ class TestRunBackupDrillScript:
 
     def test_fails_if_object_count_did_not_increase(self, drill_sh):
         """The assertion is the test. Without it, 'backup.sh exited 0' is
-        the only signal — which isn't the same as 'a backup exists'."""
-        assert re.search(r'if\s*\[\s*"\$_after"\s*-le\s*"\$_before"\s*\]', drill_sh)
-        assert re.search(r"exit\s+1", drill_sh)
+        the only signal — which isn't the same as 'a backup exists'.
+
+        Couple `exit 1` to the non-increasing-count `if` block — checking
+        for `exit 1` anywhere in the file is too loose (any unrelated
+        abort branch would satisfy it). The regex below matches the
+        `if … -le …; then … exit 1 … fi` shape as one unit."""
+        block = re.search(
+            r'if\s*\[\s*"\$_after"\s*-le\s*"\$_before"\s*\]\s*;?\s*then'
+            r'[\s\S]*?exit\s+1[\s\S]*?fi',
+            drill_sh,
+        )
+        assert block, (
+            "expected `if [ \"$_after\" -le \"$_before\" ]; then … exit 1; fi` "
+            "block wiring the count-did-not-increase branch to a hard failure"
+        )
 
     def test_uses_docker_compose_exec_not_docker_exec(self, drill_sh):
         """`docker exec` needs a container name which varies by compose
