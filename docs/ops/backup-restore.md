@@ -271,3 +271,9 @@ Extracted from [db-v1-plan.md](../db-v1-plan.md) risk register:
 - [ ] `restore-verify.sh` has exited 0 at least once against a real dump (Loki shows a `"msg":"restore-verify complete"` line)
 - [ ] Manual restore drill executed once (this runbook, end-to-end) and timed — note duration in `docs/ops/incident-log.md`
 - [ ] MinIO lifecycle rule confirmed active: `mc ilm rule ls aziro/aziro-backups/` shows the `aziro-retention` rule
+
+---
+
+## See also
+
+- [Chaos Drills Runbook](./chaos-drills.md) — on-demand `run-backup-drill` wraps `backup.sh` + `restore-verify.sh` for manual pre-release verification; `kill-postgres` drill verifies the LB probe contract (healthz/readyz) behaves correctly when Postgres is down.
