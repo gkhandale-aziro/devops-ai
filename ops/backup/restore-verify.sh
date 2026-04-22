@@ -55,7 +55,10 @@ cleanup() {
       -c "DROP DATABASE IF EXISTS ${SCRATCH_DB} WITH (FORCE);" \
       >/dev/null 2>&1 || true
   fi
-  rm -f /tmp/verify.dump /tmp/live-schema.sql /tmp/restored-schema.sql 2>/dev/null || true
+  rm -f /tmp/verify.dump \
+        /tmp/live-schema.sql     /tmp/restored-schema.sql \
+        /tmp/live-schema.clean   /tmp/restored-schema.clean \
+        2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -130,9 +133,18 @@ pg_dump --schema-only --no-owner --no-privileges "$SCRATCH_URL" \
   > /tmp/restored-schema.sql 2>/dev/null \
   || fail "pg_dump (restored schema) failed"
 
-if ! diff -q /tmp/live-schema.sql /tmp/restored-schema.sql >/dev/null; then
+# Postgres 16's pg_dump emits `\restrict <nonce>` / `\unrestrict <nonce>`
+# psql meta-commands with a newly-randomised token on every run. They
+# gate interactive psql from executing untrusted SQL and are not part
+# of the schema, but identical live vs restored schemas still diff
+# here on every drill. Strip before comparison — the rest of the file
+# is the real schema surface we want gated on drift.
+grep -v '^\\restrict ' /tmp/live-schema.sql     | grep -v '^\\unrestrict ' > /tmp/live-schema.clean
+grep -v '^\\restrict ' /tmp/restored-schema.sql | grep -v '^\\unrestrict ' > /tmp/restored-schema.clean
+
+if ! diff -q /tmp/live-schema.clean /tmp/restored-schema.clean >/dev/null; then
   log error "schema drift detected between live and restored" \
-    "live=/tmp/live-schema.sql" "restored=/tmp/restored-schema.sql"
+    "live=/tmp/live-schema.clean" "restored=/tmp/restored-schema.clean"
   exit 1
 fi
 

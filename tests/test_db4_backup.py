@@ -158,6 +158,18 @@ class TestRestoreVerifyScript:
         assert "pg_dump --schema-only" in restore_sh
         assert "diff" in restore_sh
 
+    def test_schema_diff_strips_pg16_restrict_nonces(self, restore_sh):
+        r"""Postgres 16's pg_dump emits \restrict <nonce> and \unrestrict
+        <nonce> psql meta-commands with a FRESHLY RANDOMISED token on
+        every run. Diffing the raw files guarantees drift on every
+        drill — which is exactly what took restore-verify down the
+        first time §4.4 ran on the v1.0 VM. Strip both lines before
+        diff or the release gate is a coin flip, not a contract."""
+        assert r"^\\restrict " in restore_sh or r"^\\restrict" in restore_sh, \
+            "restore-verify must filter \\restrict nonces before diff"
+        assert r"^\\unrestrict " in restore_sh or r"^\\unrestrict" in restore_sh, \
+            "restore-verify must filter \\unrestrict nonces before diff"
+
     def test_row_count_smoke_check(self, restore_sh):
         """Risk #6 from docs/db-v1-plan.md: an empty dump restores
         cleanly and matches the empty-live schema — silently passing
