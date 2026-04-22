@@ -202,7 +202,7 @@ services:
   # docker.sock is the only privilege grant. Labels on the `backup`
   # service define the jobs; ofelia is otherwise stateless.
   ofelia:
-    image: mcuadros/ofelia:v0.3.20
+    image: mcuadros/ofelia:0.3.22
     command: daemon --docker
     depends_on:
       backup:
