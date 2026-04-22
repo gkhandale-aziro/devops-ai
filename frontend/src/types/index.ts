@@ -220,8 +220,9 @@ export interface SearchResponse {
 /** Known pod phase / waiting-reason values surfaced in `kubectl get pods`. */
 export type PodStatus =
   | "Running" | "Pending" | "Succeeded" | "Completed" | "Terminating"
+  | "ContainerCreating" | "PodInitializing"
   | "CrashLoopBackOff" | "ImagePullBackOff" | "ErrImagePull"
-  | "CreateContainerConfigError" | "OOMKilled" | "Error" | "Failed"
+  | "CreateContainerConfigError" | "OOMKilled" | "Evicted" | "Error" | "Failed"
   | "Init:Error" | "Unknown";
 
 // ── Tab commands ──────────────────────────────────────────────────────────────

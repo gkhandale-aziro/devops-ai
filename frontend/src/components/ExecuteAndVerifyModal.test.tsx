@@ -5,8 +5,9 @@ import type { StoredEvent, ExecuteResult } from "../types";
 
 vi.mock("../api/client", () => ({
   api: {
-    events:  { execute:        vi.fn() },
-    targets: { executeResolve: vi.fn() },
+    events:   { execute:        vi.fn() },
+    targets:  { executeResolve: vi.fn() },
+    resource: vi.fn(),
   },
 }));
 
@@ -246,6 +247,112 @@ describe("ExecuteAndVerifyModal", () => {
     );
     expect(screen.getByText(/execute & verify — nginx-abc/i)).toBeInTheDocument();
     expect(screen.getByText(/prod-cluster/)).toBeInTheDocument();
+  });
+
+  describe("Current YAML tab", () => {
+    it("lazy-fetches pod yaml via api.resource and renders it", async () => {
+      (api.resource as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        describe: "...", logs: "...", previous: "...",
+        yaml: "apiVersion: v1\nkind: Pod\nmetadata:\n  name: nginx-abc\n",
+      });
+
+      render(
+        <ExecuteAndVerifyModal
+          open
+          mode={{ kind: "event", event: EVENT }}
+          initialCommand="kubectl delete pod nginx-abc"
+          onClose={vi.fn()}
+        />
+      );
+
+      // Not called on open — lazy by design.
+      expect(api.resource).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("tab", { name: /current yaml/i }));
+
+      await waitFor(() =>
+        expect(api.resource).toHaveBeenCalledWith("t1", "pod", "nginx-abc", "default")
+      );
+      expect(await screen.findByLabelText(/current yaml/i)).toHaveTextContent(/kind: Pod/);
+    });
+
+    it("strips managedFields noise from the yaml before rendering", async () => {
+      (api.resource as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        yaml: [
+          "apiVersion: v1",
+          "kind: Pod",
+          "metadata:",
+          "  name: nginx-abc",
+          "  managedFields:",
+          "  - apiVersion: v1",
+          "    fieldsType: FieldsV1",
+          "    manager: kube-controller-manager",
+          "  namespace: default",
+          "spec: {}",
+        ].join("\n"),
+      });
+
+      render(
+        <ExecuteAndVerifyModal
+          open
+          mode={{ kind: "event", event: EVENT }}
+          initialCommand="kubectl delete pod nginx-abc"
+          onClose={vi.fn()}
+        />
+      );
+      fireEvent.click(screen.getByRole("tab", { name: /current yaml/i }));
+
+      const pre = await screen.findByLabelText(/current yaml/i);
+      // Surrounding metadata keys survive, managedFields block is gone.
+      await waitFor(() => expect(pre).toHaveTextContent(/name: nginx-abc/));
+      expect(pre).toHaveTextContent(/namespace: default/);
+      expect(pre.textContent).not.toContain("managedFields");
+      expect(pre.textContent).not.toContain("kube-controller-manager");
+    });
+
+    it("shows an error state when resource fetch fails", async () => {
+      (api.resource as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("kubectl get failed: not found"),
+      );
+
+      render(
+        <ExecuteAndVerifyModal
+          open
+          mode={{ kind: "event", event: EVENT }}
+          initialCommand="kubectl delete pod nginx-abc"
+          onClose={vi.fn()}
+        />
+      );
+      fireEvent.click(screen.getByRole("tab", { name: /current yaml/i }));
+
+      await waitFor(() =>
+        expect(screen.getByText(/kubectl get failed: not found/i)).toBeInTheDocument()
+      );
+    });
+
+    it("does not re-fetch yaml when switching tabs back and forth", async () => {
+      (api.resource as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        yaml: "apiVersion: v1\nkind: Pod\n",
+      });
+
+      render(
+        <ExecuteAndVerifyModal
+          open
+          mode={{ kind: "event", event: EVENT }}
+          initialCommand="kubectl delete pod nginx-abc"
+          onClose={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("tab", { name: /current yaml/i }));
+      await waitFor(() => expect(api.resource).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(screen.getByRole("tab", { name: /command/i }));
+      fireEvent.click(screen.getByRole("tab", { name: /current yaml/i }));
+
+      // Still exactly one call — cached across tab swaps for the modal's lifetime.
+      expect(api.resource).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("disables Cancel while running to prevent half-applied state", async () => {
