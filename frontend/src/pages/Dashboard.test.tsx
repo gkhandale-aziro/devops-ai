@@ -27,6 +27,7 @@ vi.mock("../hooks/useChat", () => ({
     retry: vi.fn(),
     edit: vi.fn(),
     clear: vi.fn(),
+    respondToApproval: vi.fn(),
   }),
 }));
 
