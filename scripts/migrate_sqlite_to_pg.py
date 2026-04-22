@@ -132,11 +132,11 @@ def _reset_sequences(dst_engine: Engine) -> None:
     """Bump the Postgres sequence for every autoincrement PK past the
     max id we just inserted.
 
-    Without this, the first INSERT after migration would reuse id=1 and
-    collide with the copied rows. `setval(seq, max(id), true)` makes the
-    next `nextval` return `max(id) + 1`. `COALESCE(max(id), 0)` handles
-    empty tables — `setval(seq, 0, false)` tells PG the next id is 1,
-    which is what a fresh sequence starts at anyway.
+    Non-empty table: `setval(seq, max(id), true)` so the next `nextval`
+    returns `max(id) + 1`. Empty table: `setval(seq, 1, false)` so the
+    next `nextval` returns 1 — we can't use `setval(seq, 0, true)` here
+    because PG sequences default to `MINVALUE 1` and reject 0 with
+    `ERROR 22023: setval: value 0 is out of bounds`.
 
     SQLite has no sequences; the equivalent is `sqlite_sequence` rows that
     INSERT updates automatically, so this function no-ops there. Keeps the
@@ -152,13 +152,16 @@ def _reset_sequences(dst_engine: Engine) -> None:
             continue
         seq = f"{table.name}_id_seq"
         with dst_engine.begin() as conn:
-            conn.execute(
-                text(
-                    f"SELECT setval('{seq}', "
-                    f"COALESCE((SELECT MAX(id) FROM {table.name}), 0), "
-                    "true)"
+            max_id = conn.execute(
+                text(f"SELECT MAX(id) FROM {table.name}")
+            ).scalar()
+            if max_id is None:
+                conn.execute(text(f"SELECT setval('{seq}', 1, false)"))
+            else:
+                conn.execute(
+                    text(f"SELECT setval('{seq}', :v, true)"),
+                    {"v": max_id},
                 )
-            )
 
 
 def _assert_target_empty(dst_engine: Engine, force: bool) -> None:

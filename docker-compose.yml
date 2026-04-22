@@ -97,6 +97,15 @@ services:
   # extensions that must exist before the first migration applies.
   postgres:
     image: postgres:16-alpine
+    # shared_preload_libraries is read at server startup, not at CREATE
+    # EXTENSION time. Without this, pg-init.sql's `CREATE EXTENSION
+    # pg_stat_statements` succeeds but every later query against the
+    # pg_stat_statements view fails with SQLSTATE 55000. Pass via -c
+    # here since postgres:alpine ships no postgresql.conf override path.
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
     # POSTGRES_PASSWORD comes from .env via env_file so the secret never
     # lives in a tracked file. POSTGRES_DB / POSTGRES_USER are non-sensitive
     # and stay in `environment:` for visibility.
