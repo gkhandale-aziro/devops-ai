@@ -60,7 +60,12 @@ sudo usermod -aG docker "$USER"
 # Clone
 git clone https://github.com/gkhandale-aziro/devops-ai.git /opt/aziro
 cd /opt/aziro
-git checkout main   # v1.0 lives here after REL-2
+
+# Pick the branch:
+#   pre-tag  → `develop`    (what the v1.0 checklist validates)
+#   post-tag → `main`       (where v1.0.0 lives after REL-2)
+#   specific → `v1.0.0`     (once the tag exists)
+git checkout develop
 ```
 
 **Verify:**
@@ -219,7 +224,7 @@ docker compose run --rm -e "AZIRO_DB_URL=postgresql+psycopg://aziro:${POSTGRES_P
   aziro python -m scripts.migrate_sqlite_to_pg --verify
 ```
 
-**Verify:** the `--verify` step prints `row counts match` for every table. If it doesn't, STOP — don't flip the DSN, investigate first (see `docs/ops/backup-restore.md`).
+**Verify:** the `--verify` step prints a per-table row labelled `ok` and ends with `OK: all tables match`. If any table is flagged `MISMATCH` (the run will end with `FAIL: N table(s) drifted` and exit non-zero), STOP — don't flip the DSN, investigate first (see [backup-restore.md](./backup-restore.md)).
 
 ### Cut over
 
@@ -308,16 +313,29 @@ Prove that a backing-service outage doesn't crash the app:
 ```bash
 # Via the UI: Settings → Change Password
 
-# Via CLI (if locked out):
+# Via CLI (if locked out) — there's no public `set_password` helper, so
+# we rewrite the row's password_hash directly through AuthStore's engine.
+# The audit_log row from the new login will fire on next sign-in.
 docker compose exec aziro python - <<'PY'
+import getpass
+import bcrypt
+from sqlalchemy import text
 from auth.db import AuthStore
-from store.engine import build_engine
-import os, getpass
-store = AuthStore(build_engine(os.environ["AZIRO_DB_URL"]))
-new = getpass.getpass("new admin password: ")
-store.set_password("admin", new)
+
+store = AuthStore()          # uses the app's configured engine
+new   = getpass.getpass("new admin password: ").encode("utf-8")
+pw    = bcrypt.hashpw(new, bcrypt.gensalt(rounds=12)).decode("utf-8")
+
+with store._engine.begin() as conn:
+    updated = conn.execute(
+        text("UPDATE users SET password_hash = :pw WHERE username = :u"),
+        {"pw": pw, "u": "admin"},
+    ).rowcount
+print(f"updated {updated} row(s)")
 PY
 ```
+
+> If `admin` is gone entirely (deleted, not just locked out), use `AuthStore.create_user("admin", NEW_PW, role="admin")` instead — or drop the `users` row and restart the app so the `AZIRO_BOOTSTRAP_ADMIN_PASSWORD` bootstrap re-runs.
 
 ### Rotate MinIO root credentials
 

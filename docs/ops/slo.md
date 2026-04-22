@@ -117,9 +117,11 @@ Empty output = SLO breached.
 
 ```logql
 count_over_time(
-  {com_aziro_service="restore-verify"} |= "verify ok" [30d]
+  {job="docker"} | json | component="aziro-restore-verify" |= "restore-verify complete" [30d]
 )
 ```
+
+(The JSON envelope from `ops/backup/restore-verify.sh` uses `component` as the service label — not `com_aziro_service` — and its final success line is `restore-verify complete`, not `verify ok`.)
 
 ≥29 = pass.
 
