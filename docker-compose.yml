@@ -131,7 +131,92 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # DB-4 — MinIO object store holds the nightly pg_dump archives. S3 API
+  # compatible so ops can swap to AWS S3 / Cloudflare R2 later by changing
+  # MINIO_ENDPOINT in .env. `mc ready local` is the official liveness probe
+  # (exit 0 when quorum is reached). Bucket + 30-day lifecycle rule are
+  # created idempotently by ops/backup/minio-bucket-init.sh on every
+  # backup-sidecar start, so a fresh volume is bootstrapped automatically.
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    env_file:
+      - .env
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - aziro-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    labels:
+      com.aziro.logs: "true"
+      com.aziro.service: "minio"
+    restart: unless-stopped
+
+  # DB-4 — Backup sidecar. Stays up (CMD=sleep infinity) so ofelia can
+  # `docker exec` into it on schedule. Labels below are read by the
+  # ofelia container to register two cron jobs:
+  #   02:00 UTC — backup.sh (pg_dump → MinIO)
+  #   02:30 UTC — restore-verify.sh (restore latest dump → diff schema)
+  # On first boot against a fresh MinIO volume, the container also runs
+  # minio-bucket-init.sh as a one-shot entrypoint so the bucket and
+  # lifecycle rule exist before the first scheduled backup fires.
+  backup:
+    build: ./ops/backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+    volumes:
+      - aziro-backup-tmp:/tmp
+    # Bootstrap bucket + lifecycle, then sleep so ofelia can exec us.
+    command:
+      - "sh"
+      - "-c"
+      - "minio-bucket-init.sh && exec sleep infinity"
+    labels:
+      com.aziro.logs: "true"
+      com.aziro.service: "backup"
+      # Ofelia picks these up automatically (see ofelia service below).
+      # Cron format is 6-field (sec min hour dom mon dow) — ofelia extends
+      # standard cron with a seconds column.
+      ofelia.enabled: "true"
+      ofelia.job-exec.backup.schedule: "0 0 2 * * *"
+      ofelia.job-exec.backup.command: "/usr/local/bin/backup.sh"
+      ofelia.job-exec.restore-verify.schedule: "0 30 2 * * *"
+      ofelia.job-exec.restore-verify.command: "/usr/local/bin/restore-verify.sh"
+    restart: unless-stopped
+
+  # DB-4 — Ofelia scheduler. Reads docker labels on other containers in
+  # daemon mode and invokes commands at cron-schedule time. Ran inside
+  # the same compose project so no extra auth is needed — the mounted
+  # docker.sock is the only privilege grant. Labels on the `backup`
+  # service define the jobs; ofelia is otherwise stateless.
+  ofelia:
+    image: mcuadros/ofelia:v0.3.20
+    command: daemon --docker
+    depends_on:
+      backup:
+        condition: service_started
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      com.aziro.logs: "true"
+      com.aziro.service: "ofelia"
+    restart: unless-stopped
+
 volumes:
   aziro-data:
   aziro-redis-data:
   aziro-pg-data:
+  aziro-minio-data:
+  aziro-backup-tmp:

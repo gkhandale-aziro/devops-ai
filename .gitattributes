@@ -1,0 +1,16 @@
+# Force LF on files read by container shells — CRLF (which Windows git
+# silently inserts on checkout when core.autocrlf=true) breaks alpine's
+# /bin/sh with "bad interpreter: /bin/sh^M: no such file or directory".
+# Symptom: ./docker-run.sh works locally on Windows; `docker exec …` of
+# the same script inside a container exits 127 with a cryptic error.
+#
+# The rule of thumb: anything a Linux container parses (shell, Dockerfile,
+# YAML loaded by a compose daemon on a Linux host) stays LF regardless
+# of the developer's OS. Source files Python / Node read stay auto so
+# Windows IDEs keep native line endings.
+*.sh         text eol=lf
+*.bash       text eol=lf
+Dockerfile   text eol=lf
+*.Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+docker-compose.*.yml text eol=lf
