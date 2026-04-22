@@ -34,7 +34,7 @@ from targets   import TargetManager
 from agent     import needs_tools, AgentSession, Agent
 from agent.manager import _trim, MAX_HISTORY
 from monitor   import EventWatcher, Triage, capture_snapshots
-from monitor.verify import verify_resolution, parse_proposed_command
+from monitor.verify import verify_resolution
 from store     import EventStore
 from store.metrics import MetricCollector
 from sandbox.redact import StreamRedactor
