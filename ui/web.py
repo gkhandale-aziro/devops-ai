@@ -937,10 +937,13 @@ TAB_COMMANDS = {
         "outputs": {"output": "terraform output 2>/dev/null"},
     },
     "jenkins": {
-        "pipelines": {"output": "list_jobs"},
+        # overview/pipelines/agents emit JSON (consumed by rich UI components).
+        # builds/queue stay as text tables rendered via GenericTab.
+        "overview":  {"output": "overview_json"},
+        "pipelines": {"output": "list_pipelines_json"},
         "builds":    {"output": "list_builds"},
         "queue":     {"output": "list_queue"},
-        "agents":    {"output": "list_agents"},
+        "agents":    {"output": "list_agents_json"},
     },
 }
 TAB_COMMANDS["local"] = TAB_COMMANDS["ssh"]
@@ -1111,6 +1114,38 @@ def api_tab(tid, tab):
         return jsonify(fixed)
 
     return jsonify(_run_many(target, cmds))
+
+
+_SAFE_JOB_PATH_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 ._\-/]{0,200}$')
+
+
+@app.route("/api/v1/jenkins/<tid>/build")
+def api_jenkins_build(tid):
+    """Rich per-build details: metadata (causes/parameters/commits), stages, log tail.
+
+    Separate from /api/v1/tab because the existing tab router runs fixed
+    commands; this one needs `pipeline` and `build` query parameters.
+    """
+    target = _targets.get(tid)
+    if not target:
+        return jsonify({"error": "not found"}), 404
+    if target.get("type") != "jenkins":
+        return jsonify({"error": "not a jenkins target"}), 400
+
+    pipeline = (request.args.get("pipeline", "") or "").strip()
+    build    = (request.args.get("build", "") or "").strip()
+    if not pipeline or not _SAFE_JOB_PATH_RE.match(pipeline):
+        return jsonify({"error": "invalid pipeline name"}), 400
+    if not build.isdigit():
+        return jsonify({"error": "invalid build number"}), 400
+
+    from tools.jenkins import get_build_details
+    raw = get_build_details(target.get("config", {}), pipeline, int(build))
+    try:
+        import json as _json
+        return jsonify(_json.loads(raw))
+    except Exception:
+        return jsonify({"error": "invalid response from Jenkins handler", "raw": raw[:500]}), 500
 
 
 @app.route("/api/v1/namespaces/<tid>")

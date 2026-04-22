@@ -115,6 +115,34 @@ export const api = {
     return req<Record<string, string>>(`/api/v1/tab/${targetId}/${tab}${qs}`);
   },
 
+  // ── Jenkins build detail ───────────────────────────────────────────────────
+
+  jenkinsBuild: (targetId: string, pipeline: string, build: number | string) => {
+    const qs = new URLSearchParams({ pipeline, build: String(build) }).toString();
+    return req<{
+      full_name:   string;
+      build_number: number;
+      error?:      string | null;
+      meta?: {
+        number:       number | null;
+        result:       string | null;
+        building:     boolean;
+        timestamp:    number;
+        duration:     number;
+        est_duration: number;
+        url:          string;
+        description:  string;
+        causes:       { description: string; user: string }[];
+        parameters:   { name: string; value: string }[];
+        commits:      { commit: string; author: string; message: string; timestamp: number }[];
+        culprits:     string[];
+      } | null;
+      stages: { name: string; status: string; duration: number; start_ts: number; error: string }[];
+      log_tail:       string;
+      log_truncated:  boolean;
+    }>(`/api/v1/jenkins/${targetId}/build?${qs}`);
+  },
+
   // ── Namespace list ─────────────────────────────────────────────────────────
 
   namespaces: (targetId: string) =>

@@ -24,6 +24,9 @@ import {
   DockerContainersTab, DockerVolumesTab, DockerImagesTab, DockerStatsTab,
   SSHServicesTab, ProcessesTab, SecurityTab,
 } from "./dashboard/tabs";
+import {
+  JenkinsOverviewTab, JenkinsPipelinesTab, JenkinsAgentsTab,
+} from "./dashboard/jenkins";
 
 interface Props {
   target: Target | null;
@@ -438,6 +441,15 @@ function TabContent({ tabId, data, loading, target, onStreamLogs, onRetry }: Tab
   }
 
   const ttype = target.type;
+
+  // Jenkins rich tabs — overview/pipelines/agents use structured JSON;
+  // builds/queue fall through to GenericTab (plain text table).
+  if (ttype === "jenkins") {
+    if (tabId === "overview")  return <JenkinsOverviewTab  data={data} target={target} />;
+    if (tabId === "pipelines") return <JenkinsPipelinesTab data={data} target={target} />;
+    if (tabId === "agents")    return <JenkinsAgentsTab    data={data} target={target} />;
+    return <GenericTab data={data} />;
+  }
 
   // SSH/local specific tabs — must come before K8s "services" check
   if ((ttype === "ssh" || ttype === "local") && tabId === "services")

@@ -294,6 +294,7 @@ export const TABS_BY_TYPE: Record<TargetType, Tab[]> = {
     { id: "outputs", label: "Outputs" },
   ],
   jenkins: [
+    { id: "overview",  label: "Overview"  },
     { id: "pipelines", label: "Pipelines" },
     { id: "builds",    label: "Builds"    },
     { id: "queue",     label: "Queue"     },
