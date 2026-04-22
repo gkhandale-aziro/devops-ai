@@ -301,6 +301,18 @@ class TestComposeWiring:
         assert "daemon" in o["command"]
         assert "--docker" in o["command"]
 
+    def test_ofelia_image_tag_exists_on_dockerhub(self, compose):
+        """mcuadros/ofelia publishes tags as `0.3.22`, NOT `v0.3.22`.
+        A `v`-prefixed tag pulls as `manifest unknown` and kills a fresh
+        deploy at `docker compose up` — one of the real v1.0 VM blockers."""
+        import re
+        image = compose["services"]["ofelia"]["image"]
+        assert image.startswith("mcuadros/ofelia:"), image
+        tag = image.split(":", 1)[1]
+        assert re.fullmatch(r"\d+\.\d+\.\d+", tag), (
+            f"ofelia tag must be N.N.N (no v-prefix, no 'latest'): got {tag!r}"
+        )
+
     def test_backup_labels_declare_cron_schedule(self, compose):
         """Labels are how ofelia learns what to run. Schedule values
         use 6-field cron (sec min hour dom mon dow) — ofelia's format,
