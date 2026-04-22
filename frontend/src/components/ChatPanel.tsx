@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Check, X as XIcon, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown, RotateCcw, Pencil } from "lucide-react";
-import { MAX_MESSAGE_CHARS, type ChatMsg, type ToolCall } from "../hooks/useChat";
+import { Check, X as XIcon, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown, RotateCcw, Pencil, ShieldAlert } from "lucide-react";
+import { MAX_MESSAGE_CHARS, type ChatMsg, type PendingApproval, type ToolCall } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
 import { C, SPACE, RADIUS, FONT_SIZE, FONT_WEIGHT } from "../utils/theme";
 import { api } from "../api/client";
@@ -11,11 +11,14 @@ interface Props {
   onSend:       (text: string) => void;
   onRetry?:     () => void;
   onEdit?:      (msgIndex: number, newText: string) => void;
+  /** Respond to a destructive-command approval the agent is paused on.
+   *  Absent in session-mode chat (no tools → no approvals). */
+  onApproval?:  (approvalId: string, decision: "approve" | "deny") => void;
   placeholder?: string;
   targetId?:    string;
 }
 
-export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placeholder, targetId }: Props) {
+export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, onApproval, placeholder, targetId }: Props) {
   const [text,    setText]    = useState("");
   const [focused, setFocused] = useState(false);
   const [ratings, setRatings] = useState<Record<number, "up" | "down">>({});
@@ -276,6 +279,14 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
                 </div>
               )}
 
+              {/* Approval card — destructive command awaiting human decision */}
+              {!isUser && m.approval && (
+                <ApprovalCard
+                  approval={m.approval}
+                  onRespond={onApproval}
+                />
+              )}
+
               {/* Tool calls — expandable blocks */}
               {m.tools && m.tools.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xs, maxWidth: "82%" }}>
@@ -366,6 +377,108 @@ export function ChatPanel({ messages, loading, onSend, onRetry, onEdit, placehol
               : "Enter to send · Shift+Enter for new line"}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ApprovalCard({ approval, onRespond }: {
+  approval: PendingApproval;
+  onRespond?: (approvalId: string, decision: "approve" | "deny") => void;
+}) {
+  const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
+  const resolved = approval.decision !== undefined;
+
+  function act(decision: "approve" | "deny") {
+    if (resolved || busy) return;
+    setBusy(decision);
+    onRespond?.(approval.approvalId, decision);
+  }
+
+  // Once the server emits a decision event the card locks into a final state.
+  const banner =
+    approval.decision === "approved" ? "Approved — running command"
+    : approval.decision === "denied" ? "Denied — skipping command"
+    : approval.decision === "timeout" ? "Timed out — treated as denied"
+    : "AI wants to run a destructive command. Review before approving.";
+
+  const bannerColor =
+    approval.decision === "approved" ? C.status.success
+    : approval.decision === "denied" || approval.decision === "timeout" ? C.status.danger
+    : C.status.warning;
+
+  return (
+    <div
+      role="alert"
+      aria-label="Destructive command approval required"
+      style={{
+        maxWidth: "82%",
+        background: C.bg.panel,
+        border: `1px solid ${bannerColor}66`,
+        borderLeft: `3px solid ${bannerColor}`,
+        borderRadius: RADIUS.md,
+        padding: `${SPACE.sm}px ${SPACE.md}px`,
+        display: "flex", flexDirection: "column", gap: SPACE.sm,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, fontSize: FONT_SIZE.sm, color: bannerColor, fontWeight: FONT_WEIGHT.semibold }}>
+        <ShieldAlert size={14} />
+        <span>{banner}</span>
+      </div>
+      <div style={{
+        background: C.bg.elevated,
+        border: `1px solid ${C.border.subtle}`,
+        borderRadius: RADIUS.sm,
+        padding: `${SPACE.xs}px ${SPACE.sm}px`,
+        fontFamily: "'Cascadia Code','Consolas',monospace",
+        fontSize: FONT_SIZE.sm,
+        color: C.text.primary,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-all",
+      }}>
+        $ {approval.cmd}
+      </div>
+      {!resolved && (
+        <div style={{ display: "flex", gap: SPACE.sm, justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={() => act("deny")}
+            disabled={busy !== null}
+            aria-label="Deny command"
+            style={{
+              background: "transparent",
+              border: `1px solid ${C.border.muted}`,
+              color: C.text.secondary,
+              borderRadius: RADIUS.sm,
+              padding: `${SPACE.xs}px ${SPACE.md}px`,
+              fontSize: FONT_SIZE.sm,
+              fontWeight: FONT_WEIGHT.semibold,
+              cursor: busy ? "default" : "pointer",
+              opacity: busy === "approve" ? 0.4 : 1,
+            }}
+          >
+            Deny
+          </button>
+          <button
+            type="button"
+            onClick={() => act("approve")}
+            disabled={busy !== null}
+            aria-label="Approve command"
+            style={{
+              background: C.status.danger,
+              border: "none",
+              color: "#fff",
+              borderRadius: RADIUS.sm,
+              padding: `${SPACE.xs}px ${SPACE.md}px`,
+              fontSize: FONT_SIZE.sm,
+              fontWeight: FONT_WEIGHT.semibold,
+              cursor: busy ? "default" : "pointer",
+              opacity: busy === "deny" ? 0.4 : 1,
+            }}
+          >
+            {busy === "approve" ? "Approving…" : "Approve & run"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

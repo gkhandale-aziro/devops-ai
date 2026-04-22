@@ -166,13 +166,23 @@ class Agent:
     # ── Web mode — SSE generators ─────────────────────────────────────────────
 
     def run(self, messages, target, session, target_id,
-            user_id=None, session_db_id=None):
-        """SSE generator for web streaming. Auto-proceeds on destructive commands.
+            user_id=None, session_db_id=None, on_confirm=None):
+        """SSE generator for web streaming.
 
         OPS-4: `user_id` / `session_db_id` flow through to the LLM client so
         per-user token accounting and the per-run cap can attribute usage
         correctly. `session_db_id` is distinct from `target_id` — target_id
         is the cluster/target key, while session_db_id is the chat row.
+
+        on_confirm : callable(cmd) -> (approval_id, wait_fn) | None
+            When provided, destructive commands pause. We emit an
+            `await_approval` SSE event carrying the approval_id, then call
+            wait_fn() which blocks until the user decides (True/False) or
+            the timeout fires (None). A timeout is treated as a denial so
+            the agent loop keeps moving and can write a fallback text
+            answer instead of hanging the stream. When on_confirm is None,
+            destructive commands auto-proceed (used by non-web callers
+            that have already filtered input).
         """
         # Send thinking event immediately so frontend knows we're alive
         yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
@@ -181,10 +191,37 @@ class Agent:
         _full_text = ""
         _last_cmd = None  # most recent tool call, used by suggestion heuristics
 
+        confirm_q = _queue.Queue(maxsize=1) if on_confirm else None
+
         for event in self._run_internal(messages, target, session, target_id,
+                                        confirm_q=confirm_q,
                                         user_id=user_id,
                                         session_db_id=session_db_id):
             t = event["type"]
+            if t == "confirm":
+                cmd = event["cmd"]
+                approval_id, wait_fn = on_confirm(cmd)
+                yield (
+                    "data: "
+                    f"{json.dumps({'await_approval': {'approval_id': approval_id, 'cmd': cmd}})}"
+                    "\n\n"
+                )
+                try:
+                    approved = wait_fn()
+                except Exception:
+                    approved = None
+                if approved is None:
+                    decision = "timeout"
+                    confirm_q.put(False)
+                else:
+                    decision = "approved" if approved else "denied"
+                    confirm_q.put(bool(approved))
+                yield (
+                    "data: "
+                    f"{json.dumps({'approval_decision': {'approval_id': approval_id, 'decision': decision}})}"
+                    "\n\n"
+                )
+                continue
             if t == "cmd":
                 # Backward compat: old cmd event
                 yield f"data: {json.dumps({'cmd': event['cmd']})}\n\n"

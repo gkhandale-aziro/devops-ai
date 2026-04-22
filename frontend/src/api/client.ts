@@ -151,6 +151,16 @@ export const api = {
     });
   },
 
+  /** Approve / deny a destructive command the agent is paused on.
+   *  `decision` is "approve" or "deny"; the backend matches it against
+   *  the approval_id issued in the `await_approval` SSE event. */
+  approveChatCommand: (approvalId: string, decision: "approve" | "deny") =>
+    req<{ ok: boolean; approved: boolean }>(`/api/v1/chat/approvals/${approvalId}`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ decision }),
+    }),
+
   // ── AI analysis ───────────────────────────────────────────────────────────
 
   analyzeStream: (prompt: string, signal?: AbortSignal) => {

@@ -34,7 +34,7 @@ export function Dashboard({ target }: Props) {
   const [tabData,   setTabData]     = useState<Record<string, string>>({});
   const [tabLoading, setTabLoading] = useState(false);
 
-  const { messages, loading: chatLoading, send, retry, edit, clear } = useTargetChat(target?.id ?? null);
+  const { messages, loading: chatLoading, send, retry, edit, clear, respondToApproval } = useTargetChat(target?.id ?? null);
   const [logStream, setLogStream] = useState<{ pod: string; namespace: string } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const reloadTab = useCallback(() => setReloadKey(k => k + 1), []);
@@ -304,6 +304,7 @@ export function Dashboard({ target }: Props) {
                 onSend={send}
                 onRetry={retry}
                 onEdit={edit}
+                onApproval={respondToApproval}
                 placeholder={`Ask about ${target.name}…`}
                 targetId={target.id}
               />

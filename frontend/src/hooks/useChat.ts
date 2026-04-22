@@ -1,6 +1,16 @@
 import { useState, useCallback, useRef } from "react";
 import { api, readSSE } from "../api/client";
 
+async function postApprovalDecision(approvalId: string, decision: "approve" | "deny") {
+  try {
+    await api.approveChatCommand(approvalId, decision);
+  } catch (e) {
+    // Non-fatal: the SSE stream will surface a timeout if the POST
+    // never reaches the server; surfacing a toast here would double up.
+    console.warn("[Chat] approval POST failed:", e);
+  }
+}
+
 export interface ToolCall {
   cmd:       string;
   output?:   string;
@@ -8,11 +18,25 @@ export interface ToolCall {
   status:    "running" | "done" | "error";
 }
 
+/** A destructive command the agent is waiting on human approval for.
+ *  Rendered as a card in the chat feed; clears once the backend sends
+ *  an `approval_decision` event for the same approval_id. */
+export interface PendingApproval {
+  approvalId: string;
+  cmd:        string;
+  /** Resolved decision once the server confirms it. Absent while waiting. */
+  decision?:  "approved" | "denied" | "timeout";
+}
+
 export interface ChatMsg {
   role:    "user" | "assistant";
   content: string;
   cmds?:   string[];
   tools?:  ToolCall[];
+  /** A destructive command pending human approval on this turn. Written
+   *  while the backend is blocked; set to a terminal decision when the
+   *  approval resolves. */
+  approval?: PendingApproval;
   /** Follow-up prompts suggested by the backend heuristic. Only set on the last assistant message. */
   suggestions?: string[];
 }
@@ -100,6 +124,7 @@ export function useTargetChat(targetId: string | null) {
       let full = "";
       const cmds: string[] = [];
       const tools: ToolCall[] = [];
+      let approval: PendingApproval | undefined;
 
       for await (const evt of readSSE(res)) {
         if (timedController.signal.aborted) break;
@@ -147,6 +172,26 @@ export function useTargetChat(targetId: string | null) {
             next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools] };
             return next;
           });
+        }
+        if (evt.await_approval) {
+          const a = evt.await_approval as { approval_id: string; cmd: string };
+          approval = { approvalId: a.approval_id, cmd: a.cmd };
+          setMessages((prev: ChatMsg[]) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools], approval };
+            return next;
+          });
+        }
+        if (evt.approval_decision) {
+          const d = evt.approval_decision as { approval_id: string; decision: "approved" | "denied" | "timeout" };
+          if (approval && approval.approvalId === d.approval_id) {
+            approval = { ...approval, decision: d.decision };
+            setMessages((prev: ChatMsg[]) => {
+              const next = [...prev];
+              next[next.length - 1] = { role: "assistant", content: full, cmds: [...cmds], tools: [...tools], approval };
+              return next;
+            });
+          }
         }
         if (Array.isArray(evt.suggestions)) {
           const suggestions = (evt.suggestions as unknown[]).filter((s): s is string => typeof s === "string");
@@ -196,7 +241,11 @@ export function useTargetChat(targetId: string | null) {
     setMessages([]);
   }, []);
 
-  return { messages, loading, send, retry, edit, clear };
+  const respondToApproval = useCallback((approvalId: string, decision: "approve" | "deny") => {
+    postApprovalDecision(approvalId, decision);
+  }, []);
+
+  return { messages, loading, send, retry, edit, clear, respondToApproval };
 }
 
 export function useSessionChat(sessionId: string | null) {

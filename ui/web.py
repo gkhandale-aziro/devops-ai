@@ -1301,6 +1301,98 @@ def _check_llm_budget():
     return None
 
 
+# ── Chat approval registry ────────────────────────────────────────────────────
+# When the agent wants to run a destructive command during a streaming chat
+# response, the SSE generator blocks on a per-request Queue until the user
+# POSTs approve/deny to /api/v1/chat/approvals/<id>. The SSE thread owns the
+# queue; the POST handler is the only producer. The registry is an in-memory
+# dict, which is fine because approvals are always served by the same worker
+# that owns the open SSE connection — a different worker couldn't respond to
+# the SSE stream anyway, so cross-worker approval delivery would already fail.
+# A timeout keeps hung streams from leaking queues indefinitely.
+
+_APPROVAL_TIMEOUT_S = int(os.environ.get("AZIRO_APPROVAL_TIMEOUT_S", "120"))
+_approvals_lock: threading.Lock = threading.Lock()
+_pending_approvals: dict = {}
+
+
+def _register_approval():
+    """Allocate a fresh approval_id + queue and remember it. Returns
+    (approval_id, queue) — caller yields the id to the frontend and then
+    blocks on queue.get(timeout=...) for the decision."""
+    approval_id = uuid.uuid4().hex
+    q = _queue.Queue(maxsize=1)
+    with _approvals_lock:
+        _pending_approvals[approval_id] = q
+    return approval_id, q
+
+
+def _unregister_approval(approval_id: str) -> None:
+    with _approvals_lock:
+        _pending_approvals.pop(approval_id, None)
+
+
+def _deliver_approval(approval_id: str, approved: bool) -> bool:
+    """Deliver a decision to a waiting SSE stream. Returns True if a queue
+    was found and the decision was enqueued; False when the id is unknown
+    (already consumed, timed out, or never existed)."""
+    with _approvals_lock:
+        q = _pending_approvals.get(approval_id)
+    if q is None:
+        return False
+    try:
+        q.put_nowait(approved)
+        return True
+    except _queue.Full:
+        return False
+
+
+def _make_on_confirm():
+    """Build an on_confirm(cmd) callback suitable for Agent.run().
+
+    The callback registers an approval slot and returns (approval_id,
+    wait_fn). The SSE generator yields the id to the browser, then calls
+    wait_fn() which blocks until the user decides or the timeout fires.
+    Returns True (approved), False (denied), or None (timeout).
+    """
+    def on_confirm(_cmd: str):
+        approval_id, q = _register_approval()
+
+        def wait_fn():
+            try:
+                return q.get(timeout=_APPROVAL_TIMEOUT_S)
+            except _queue.Empty:
+                return None
+            finally:
+                _unregister_approval(approval_id)
+
+        return approval_id, wait_fn
+
+    return on_confirm
+
+
+@app.route("/api/v1/chat/approvals/<approval_id>", methods=["POST"])
+@require_role("admin")
+def api_chat_approve(approval_id):
+    """Deliver an approve/deny decision for a destructive tool call the
+    agent is waiting on. Admin-only because destructive verbs are
+    admin-gated everywhere else in the product; a viewer should never be
+    able to greenlight a ``kubectl delete`` via chat."""
+    body = request.json or {}
+    decision = body.get("decision")
+    if decision not in ("approve", "deny"):
+        return jsonify({"error": "decision must be 'approve' or 'deny'"}), 400
+    approved = decision == "approve"
+    if not _deliver_approval(approval_id, approved):
+        return jsonify({"error": "approval not pending (expired or unknown)"}), 404
+    log.info("chat.approval_decision", extra={
+        "approval_id": approval_id,
+        "approved":    approved,
+        "user_id":     _current_user_id(),
+    })
+    return jsonify({"ok": True, "approved": approved})
+
+
 @app.route("/api/v1/chat/<tid>/stream", methods=["POST"])
 @limiter.limit(_CHAT_STREAM_LIMITS)
 def api_chat_stream(tid):
@@ -1345,7 +1437,8 @@ def api_chat_stream(tid):
                 yield "data: [DONE]\n\n"
             else:
                 yield from _agent.run(messages, target, _session, tid,
-                                      user_id=uid, session_db_id=tid)
+                                      user_id=uid, session_db_id=tid,
+                                      on_confirm=_make_on_confirm())
         except Exception as e:
             log.error("chat.target_stream_error", extra={"target_id": tid, "error": str(e)[:200]})
             # Retry with fallback if available
