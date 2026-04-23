@@ -1989,7 +1989,7 @@ def api_event_update(event_id):
 # `debug`: those either open interactive sessions (wedges the request
 # thread) or mutate kubeconfig state we don't want the web to touch.
 _EXECUTE_ALLOWED_VERBS = {
-    "apply", "delete", "scale", "rollout", "patch",
+    "apply", "delete", "scale", "rollout", "patch", "set", "replace",
     "label", "annotate", "cordon", "uncordon", "drain", "taint",
 }
 
