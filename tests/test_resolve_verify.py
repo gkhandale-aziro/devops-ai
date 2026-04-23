@@ -413,6 +413,41 @@ class TestExecuteEndpoint:
                        json={"command": "kubectl -n demo apply -f fix.yaml"})
         assert r.status_code == 200, r.get_json()
 
+    def test_set_image_allowed(self, app_with_execute):
+        """Regression (v1.0 demo 2026-04-23): `kubectl set image` was
+        rejected with `verb not allowed` because `set` was missing from
+        the execute allowlist. `set` is the correct remediation for an
+        ImagePullBackOff Deployment (patches spec atomically) — it must
+        route through the Execute & Verify flow, not bounce."""
+        web, c = app_with_execute
+        eid = _seed_event(web)
+        _login_admin(c, web)
+
+        web._tools.execute.side_effect = lambda _t, cmd: (
+            "image updated" if "set image" in cmd else "Running|0"
+        )
+        with patch("monitor.verify.time.sleep", lambda _s: None):
+            r = c.post(f"/api/v1/events/{eid}/execute",
+                       json={"command":
+                             "kubectl set image deployment/demo-store-worker "
+                             "worker=nginx:latest -n demo"})
+        assert r.status_code == 200, r.get_json()
+
+    def test_replace_allowed(self, app_with_execute):
+        """`kubectl replace -f` is the non-interactive twin of `apply`
+        for full-object replacement. Same routing as `apply`."""
+        web, c = app_with_execute
+        eid = _seed_event(web)
+        _login_admin(c, web)
+
+        web._tools.execute.side_effect = lambda _t, cmd: (
+            "replaced" if "replace" in cmd else "Running|0"
+        )
+        with patch("monitor.verify.time.sleep", lambda _s: None):
+            r = c.post(f"/api/v1/events/{eid}/execute",
+                       json={"command": "kubectl replace -f fix.yaml"})
+        assert r.status_code == 200, r.get_json()
+
     def test_happy_path_persists_snapshots_and_resolves(self, app_with_execute):
         """End-to-end:
           - POST executes the command (ToolExecutor.execute called once with it)
