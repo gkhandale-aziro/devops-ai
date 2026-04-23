@@ -84,3 +84,47 @@ class TestDestructiveCommands:
 
     def test_destroy(self):
         assert is_destructive("terraform destroy") is True
+
+    # Regression: the approval gate missed `kubectl set image` on the first
+    # v1.0 demo. The AI picked the correct remediation (patch Deployment spec
+    # via `set image`) but filter.py only knew `kubectl scale` / `rollout
+    # restart`, so the command ran without prompting. These cover the family
+    # of spec-mutating verbs that should all route through the approval card.
+    def test_kubectl_set_image(self):
+        assert is_destructive(
+            "kubectl set image deployment/web nginx=nginx:1.27 -n demo"
+        ) is True
+
+    def test_kubectl_set_env(self):
+        assert is_destructive("kubectl set env deployment/web FOO=bar") is True
+
+    def test_kubectl_set_resources(self):
+        assert is_destructive(
+            "kubectl set resources deployment/web --limits=cpu=200m"
+        ) is True
+
+    def test_kubectl_replace(self):
+        assert is_destructive("kubectl replace -f deployment.yaml") is True
+
+    def test_kubectl_rollout_undo(self):
+        assert is_destructive("kubectl rollout undo deployment/web") is True
+
+    def test_kubectl_cordon(self):
+        assert is_destructive("kubectl cordon node-01") is True
+
+    def test_kubectl_uncordon(self):
+        assert is_destructive("kubectl uncordon node-01") is True
+
+    def test_kubectl_drain(self):
+        assert is_destructive(
+            "kubectl drain node-01 --ignore-daemonsets"
+        ) is True
+
+    def test_kubectl_taint(self):
+        assert is_destructive(
+            "kubectl taint nodes node-01 key=value:NoSchedule"
+        ) is True
+
+    def test_kubectl_exec(self):
+        # Arbitrary command execution inside a pod can do anything — gate it.
+        assert is_destructive("kubectl exec -it pod/web -- sh") is True
