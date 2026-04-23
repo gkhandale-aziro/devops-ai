@@ -84,3 +84,147 @@ class TestDestructiveCommands:
 
     def test_destroy(self):
         assert is_destructive("terraform destroy") is True
+
+    # Regression: the approval gate missed `kubectl set image` on the first
+    # v1.0 demo. The AI picked the correct remediation (patch Deployment spec
+    # via `set image`) but filter.py only knew `kubectl scale` / `rollout
+    # restart`, so the command ran without prompting. These cover the family
+    # of spec-mutating verbs that should all route through the approval card.
+    def test_kubectl_set_image(self):
+        assert is_destructive(
+            "kubectl set image deployment/web nginx=nginx:1.27 -n demo"
+        ) is True
+
+    def test_kubectl_set_env(self):
+        assert is_destructive("kubectl set env deployment/web FOO=bar") is True
+
+    def test_kubectl_set_resources(self):
+        assert is_destructive(
+            "kubectl set resources deployment/web --limits=cpu=200m"
+        ) is True
+
+    def test_kubectl_replace(self):
+        assert is_destructive("kubectl replace -f deployment.yaml") is True
+
+    def test_kubectl_rollout_undo(self):
+        assert is_destructive("kubectl rollout undo deployment/web") is True
+
+    def test_kubectl_cordon(self):
+        assert is_destructive("kubectl cordon node-01") is True
+
+    def test_kubectl_uncordon(self):
+        assert is_destructive("kubectl uncordon node-01") is True
+
+    def test_kubectl_drain(self):
+        assert is_destructive(
+            "kubectl drain node-01 --ignore-daemonsets"
+        ) is True
+
+    def test_kubectl_taint(self):
+        assert is_destructive(
+            "kubectl taint nodes node-01 key=value:NoSchedule"
+        ) is True
+
+    def test_kubectl_exec(self):
+        # Arbitrary command execution inside a pod can do anything — gate it.
+        assert is_destructive("kubectl exec -it pod/web -- sh") is True
+
+    def test_kubectl_label(self):
+        # label/annotate mutate object metadata — also gated.
+        assert is_destructive("kubectl label deployment/web tier=frontend") is True
+
+    def test_kubectl_annotate(self):
+        assert is_destructive(
+            "kubectl annotate deployment/web owner=platform"
+        ) is True
+
+
+class TestKubectlFlagPermutations:
+    """Regression: flags between `kubectl` and the verb used to hide
+    destructive invocations from the substring-based matcher. The agent
+    routinely emits `kubectl -n <ns> <verb>` and `kubectl --context <ctx>
+    <verb>` — both forms must still trip the approval gate."""
+
+    def test_short_namespace_flag_before_verb(self):
+        assert is_destructive(
+            "kubectl -n demo set image deployment/worker web=nginx:1.27"
+        ) is True
+
+    def test_long_namespace_flag_before_verb(self):
+        assert is_destructive(
+            "kubectl --namespace demo delete pod foo"
+        ) is True
+
+    def test_namespace_equals_form(self):
+        assert is_destructive(
+            "kubectl --namespace=demo exec -it pod/web -- sh"
+        ) is True
+
+    def test_context_flag_before_verb(self):
+        assert is_destructive(
+            "kubectl --context kind-aziro drain node-01"
+        ) is True
+
+    def test_multiple_flags_before_verb(self):
+        assert is_destructive(
+            "kubectl --context kind-aziro -n demo apply -f app.yaml"
+        ) is True
+
+    def test_boolean_flag_does_not_consume_verb(self):
+        # `-A` takes no value — the next token IS the verb.
+        assert is_destructive("kubectl -A delete pods --all") is True
+
+    def test_rollout_undo_with_flags(self):
+        assert is_destructive(
+            "kubectl -n demo rollout undo deployment/worker"
+        ) is True
+
+    def test_rollout_status_is_safe(self):
+        # rollout has destructive AND safe subverbs — only restart/undo fire.
+        assert is_destructive(
+            "kubectl -n demo rollout status deployment/worker"
+        ) is False
+
+    def test_rollout_history_is_safe(self):
+        assert is_destructive("kubectl rollout history deployment/worker") is False
+
+    def test_get_with_delete_in_field_selector_is_safe(self):
+        # Real false-positive guard: substring matcher used to flag any
+        # command containing ` delete `. The verb-aware matcher keys off
+        # the actual verb (`get`), not argument values.
+        assert is_destructive(
+            "kubectl get pods --field-selector=status.phase=Terminating"
+        ) is False
+
+    def test_unbalanced_quotes_falls_through_safely(self):
+        # shlex.split raises on unclosed quotes — we must not crash.
+        # The command falls through to the non-kubectl substring scan,
+        # which is safe (just matches nothing special here).
+        assert is_destructive('kubectl -n demo get pod "unclosed') is False
+
+
+class TestShellWrappers:
+    """Regression: a kubectl invocation wrapped in `sudo`, `env VAR=val`,
+    or a bare VAR=val prefix used to bypass the gate because tokens[0]
+    wasn't `kubectl`. Strip those wrappers before verb detection."""
+
+    def test_sudo_kubectl_delete(self):
+        assert is_destructive("sudo kubectl delete pod foo -n demo") is True
+
+    def test_env_var_prefix(self):
+        # `FOO=bar kubectl ...` is a valid shell form (per-command env).
+        assert is_destructive(
+            "KUBECONFIG=/tmp/kc kubectl apply -f app.yaml"
+        ) is True
+
+    def test_env_command_with_var(self):
+        assert is_destructive(
+            "env KUBECONFIG=/tmp/kc kubectl -n demo set image deployment/web web=nginx:1.27"
+        ) is True
+
+    def test_nice_kubectl(self):
+        assert is_destructive("nice kubectl drain node-01") is True
+
+    def test_wrapper_around_safe_kubectl_is_safe(self):
+        # Stripping wrappers must not turn `get` into destructive.
+        assert is_destructive("sudo kubectl get pods -A") is False
