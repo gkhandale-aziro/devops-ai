@@ -1,0 +1,164 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    app.kubernetes.io/part-of: aziro-demo
+    demo: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-store-config
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: demo-store
+    app.kubernetes.io/component: web
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <title>Aziro Demo Store</title>
+      </head>
+      <body style="font-family: system-ui, sans-serif; padding: 3rem; background: #f5f7fa; color: #2C3E50;">
+        <h1 style="color: #1E3A5F; margin-bottom: 0.2rem;">Aziro Demo Store</h1>
+        <p style="color: #666; margin-top: 0;">Sample app running on the cluster.</p>
+        <ul>
+          <li>Served from a ConfigMap</li>
+          <li>Backed by a PVC (1Gi)</li>
+          <li>Scaled by an HPA (CPU)</li>
+          <li>Exposed via a ClusterIP Service</li>
+        </ul>
+        <p style="color: #999; font-size: 0.85rem; margin-top: 2rem;">nginx:1.27-alpine · namespace demo</p>
+      </body>
+    </html>
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-store-creds
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: demo-store
+type: Opaque
+stringData:
+  DB_USER: demo_user
+  DB_PASS: not-a-real-password
+  API_KEY: demo-key-1234567890
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: demo-store-data
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: demo-store
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-store-web
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: demo-store
+    app.kubernetes.io/component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-store
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-store
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+              name: http
+          envFrom:
+            - secretRef:
+                name: demo-store-creds
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+            - name: data
+              mountPath: /var/data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: html
+          configMap:
+            name: demo-store-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: demo-store-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-store-web
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: demo-store
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: demo-store
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-store-web
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: demo-store
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-store-web
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
