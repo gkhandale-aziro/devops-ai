@@ -129,6 +129,15 @@ class TestDestructiveCommands:
         # Arbitrary command execution inside a pod can do anything — gate it.
         assert is_destructive("kubectl exec -it pod/web -- sh") is True
 
+    def test_kubectl_label(self):
+        # label/annotate mutate object metadata — also gated.
+        assert is_destructive("kubectl label deployment/web tier=frontend") is True
+
+    def test_kubectl_annotate(self):
+        assert is_destructive(
+            "kubectl annotate deployment/web owner=platform"
+        ) is True
+
 
 class TestKubectlFlagPermutations:
     """Regression: flags between `kubectl` and the verb used to hide
@@ -192,3 +201,30 @@ class TestKubectlFlagPermutations:
         # The command falls through to the non-kubectl substring scan,
         # which is safe (just matches nothing special here).
         assert is_destructive('kubectl -n demo get pod "unclosed') is False
+
+
+class TestShellWrappers:
+    """Regression: a kubectl invocation wrapped in `sudo`, `env VAR=val`,
+    or a bare VAR=val prefix used to bypass the gate because tokens[0]
+    wasn't `kubectl`. Strip those wrappers before verb detection."""
+
+    def test_sudo_kubectl_delete(self):
+        assert is_destructive("sudo kubectl delete pod foo -n demo") is True
+
+    def test_env_var_prefix(self):
+        # `FOO=bar kubectl ...` is a valid shell form (per-command env).
+        assert is_destructive(
+            "KUBECONFIG=/tmp/kc kubectl apply -f app.yaml"
+        ) is True
+
+    def test_env_command_with_var(self):
+        assert is_destructive(
+            "env KUBECONFIG=/tmp/kc kubectl -n demo set image deployment/web web=nginx:1.27"
+        ) is True
+
+    def test_nice_kubectl(self):
+        assert is_destructive("nice kubectl drain node-01") is True
+
+    def test_wrapper_around_safe_kubectl_is_safe(self):
+        # Stripping wrappers must not turn `get` into destructive.
+        assert is_destructive("sudo kubectl get pods -A") is False

@@ -37,6 +37,37 @@ _KUBECTL_DESTRUCTIVE_VERBS = frozenset({
 
 _KUBECTL_ROLLOUT_DESTRUCTIVE = frozenset({"restart", "undo"})
 
+# Shell wrappers the agent or a human might put in front of kubectl. Without
+# stripping these, `sudo kubectl delete ...` or `FOO=bar kubectl apply ...`
+# would slip past the gate because tokens[0] wouldn't be "kubectl".
+_SHELL_WRAPPERS = frozenset({
+    "sudo", "env", "nice", "nohup", "setsid", "time", "ionice", "stdbuf",
+})
+
+
+def _strip_wrappers(tokens):
+    """Drop leading env-var assignments (VAR=value) and wrapper commands.
+
+    Conservative: only strips bare wrapper names and well-formed shell-style
+    env assignments. If a wrapper carries its own flags (`sudo -E kubectl`),
+    we stop at the flag — that form falls through to the substring matcher.
+    """
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if "=" in tok and not tok.startswith("-"):
+            name = tok.split("=", 1)[0]
+            if name and (name[0].isalpha() or name[0] == "_") and all(
+                c.isalnum() or c == "_" for c in name
+            ):
+                i += 1
+                continue
+        if tok in _SHELL_WRAPPERS:
+            i += 1
+            continue
+        break
+    return tokens[i:]
+
 
 def _kubectl_verb(command):
     """Return (verb, subverb) for a kubectl invocation, skipping global flags.
@@ -44,11 +75,15 @@ def _kubectl_verb(command):
     Returns (None, None) if the command isn't kubectl or can't be tokenized.
     Handles both `--flag=value` and `--flag value` forms, plus short flags
     like `-n demo` and standalone boolean flags like `--all-namespaces`.
+    Also strips leading shell wrappers (`sudo kubectl ...`, `env FOO=bar
+    kubectl ...`) so those invocations still route through the approval gate.
     """
     try:
         tokens = shlex.split(command)
     except ValueError:
         return (None, None)
+
+    tokens = _strip_wrappers(tokens)
 
     if not tokens or tokens[0] != "kubectl":
         return (None, None)
