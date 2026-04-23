@@ -128,3 +128,67 @@ class TestDestructiveCommands:
     def test_kubectl_exec(self):
         # Arbitrary command execution inside a pod can do anything — gate it.
         assert is_destructive("kubectl exec -it pod/web -- sh") is True
+
+
+class TestKubectlFlagPermutations:
+    """Regression: flags between `kubectl` and the verb used to hide
+    destructive invocations from the substring-based matcher. The agent
+    routinely emits `kubectl -n <ns> <verb>` and `kubectl --context <ctx>
+    <verb>` — both forms must still trip the approval gate."""
+
+    def test_short_namespace_flag_before_verb(self):
+        assert is_destructive(
+            "kubectl -n demo set image deployment/worker web=nginx:1.27"
+        ) is True
+
+    def test_long_namespace_flag_before_verb(self):
+        assert is_destructive(
+            "kubectl --namespace demo delete pod foo"
+        ) is True
+
+    def test_namespace_equals_form(self):
+        assert is_destructive(
+            "kubectl --namespace=demo exec -it pod/web -- sh"
+        ) is True
+
+    def test_context_flag_before_verb(self):
+        assert is_destructive(
+            "kubectl --context kind-aziro drain node-01"
+        ) is True
+
+    def test_multiple_flags_before_verb(self):
+        assert is_destructive(
+            "kubectl --context kind-aziro -n demo apply -f app.yaml"
+        ) is True
+
+    def test_boolean_flag_does_not_consume_verb(self):
+        # `-A` takes no value — the next token IS the verb.
+        assert is_destructive("kubectl -A delete pods --all") is True
+
+    def test_rollout_undo_with_flags(self):
+        assert is_destructive(
+            "kubectl -n demo rollout undo deployment/worker"
+        ) is True
+
+    def test_rollout_status_is_safe(self):
+        # rollout has destructive AND safe subverbs — only restart/undo fire.
+        assert is_destructive(
+            "kubectl -n demo rollout status deployment/worker"
+        ) is False
+
+    def test_rollout_history_is_safe(self):
+        assert is_destructive("kubectl rollout history deployment/worker") is False
+
+    def test_get_with_delete_in_field_selector_is_safe(self):
+        # Real false-positive guard: substring matcher used to flag any
+        # command containing ` delete `. The verb-aware matcher keys off
+        # the actual verb (`get`), not argument values.
+        assert is_destructive(
+            "kubectl get pods --field-selector=status.phase=Terminating"
+        ) is False
+
+    def test_unbalanced_quotes_falls_through_safely(self):
+        # shlex.split raises on unclosed quotes — we must not crash.
+        # The command falls through to the non-kubectl substring scan,
+        # which is safe (just matches nothing special here).
+        assert is_destructive('kubectl -n demo get pod "unclosed') is False
