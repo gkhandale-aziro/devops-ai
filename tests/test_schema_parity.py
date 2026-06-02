@@ -31,6 +31,8 @@ from store.schema import metadata  # noqa: E402
 EXPECTED_TABLES = {
     "events", "snapshots", "analyses", "metrics", "feedback", "llm_usage",
     "users", "login_failures", "audit_log",
+    # Added in 0002_lifecycle — append-only log of state changes.
+    "incident_transitions",
 }
 
 # Per-table columns that predate PR-A. If one of these goes missing, an
@@ -39,6 +41,8 @@ EXPECTED_COLUMNS: dict[str, set[str]] = {
     "events": {
         "id", "timestamp", "source", "level", "reason", "object",
         "namespace", "message", "status", "raw", "target_id", "target_name",
+        # 0002_lifecycle: 8-state machine columns.
+        "lifecycle_state", "approved_by", "approved_at",
     },
     "snapshots":     {"id", "event_id", "timestamp", "kind", "content"},
     "analyses":      {"id", "event_id", "timestamp", "diagnosis", "remediation"},
@@ -56,14 +60,22 @@ EXPECTED_COLUMNS: dict[str, set[str]] = {
         "id", "timestamp", "user_id", "username", "action", "target",
         "status", "remote_ip", "request_id",
     },
+    "incident_transitions": {
+        "id", "event_id", "timestamp", "from_state", "to_state",
+        "actor", "reason", "details",
+    },
 }
 
 EXPECTED_INDEXES = {
-    "events":        {"idx_events_object", "idx_events_timestamp", "idx_events_level"},
+    "events": {
+        "idx_events_object", "idx_events_timestamp", "idx_events_level",
+        "idx_events_lifecycle_state",
+    },
     "metrics":       {"idx_metrics_target_time"},
     "llm_usage":     {"idx_llm_usage_user_ts"},
     "login_failures": {"idx_login_failures_username_ts"},
     "audit_log":     {"idx_audit_log_ts", "idx_audit_log_user_ts"},
+    "incident_transitions": {"idx_incident_transitions_event_ts"},
 }
 
 # Named unique constraints that must survive any migration. Drop/rename
@@ -79,6 +91,7 @@ EXPECTED_UNIQUES = {
 EXPECTED_FKS: dict[str, dict[str, tuple[str, str, str]]] = {
     "snapshots": {"event_id": ("events", "id", "CASCADE")},
     "analyses":  {"event_id": ("events", "id", "CASCADE")},
+    "incident_transitions": {"event_id": ("events", "id", "CASCADE")},
 }
 
 
